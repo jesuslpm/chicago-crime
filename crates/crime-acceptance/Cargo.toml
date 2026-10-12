@@ -1,0 +1,21 @@
+[package]
+name = "crime-acceptance"
+description = "Independent acceptance verifier of a generated Chicago crime dataset against its source CSV."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# Independence (child PRD, "Verificación sin consultor"): the verifier reads the tables with the
+# LevelDB table reader, the tuple format and the CSV parser alone. It must never depend on
+# `crime-dataset` or `crime-generator`, whose code it is checking.
+[dependencies]
+csv.workspace = true
+foundationdb-tuple.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+sstable.workspace = true
+
+[dev-dependencies]
+# Only to build small datasets for the tests; the verifier itself never uses the generator.
+crime-generator = { path = "../crime-generator" }
+tempfile.workspace = true
