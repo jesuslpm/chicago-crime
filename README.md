@@ -43,8 +43,8 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
   starting state verified against the code and data, flow, validations and messages, decisions with
   their reasons, explicit out-of-scope items and acceptance criteria. The project skill in
   [`.claude/skills/prd`](.claude/skills/prd/SKILL.md) holds the template.
-  - [Parent PRD](docs/prd/chicago-crime/chicago-crime.prd.md): the generator and the query app.
-  - [Generator PRD](docs/prd/chicago-crime/generador.prd.md): this delivery, acceptance criteria AC-G1 to AC-G10.
+  - [Parent PRD](docs/prd/chicago-crime/chicago-crime.prd.en.md) ([Spanish original](docs/prd/chicago-crime/chicago-crime.prd.md)): the generator and the query app.
+  - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): this delivery, acceptance criteria AC-G1 to AC-G10.
 - **ODD (Organic Driven Development).** The PRD becomes a feature document with an objective,
   implementation decisions and a task checklist. That document is the single place for progress and
   evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md). Each task:
@@ -148,5 +148,5 @@ Add `--reference` to also require the exact figures of the reference extract.
 | `crates/crime-generator` | The generator. |
 | `crates/crime-acceptance` | Independent verifier of a published dataset. |
 | `scripts/acceptance` | Acceptance script for the reference CSV. |
-| `docs/prd` | Product requirements (in Spanish). |
+| `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |
