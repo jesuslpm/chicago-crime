@@ -1,6 +1,7 @@
 //! Command line options and the [`Config`] they resolve to. Help and errors are in Spanish.
 
 use std::ffi::OsString;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use clap::error::{ContextKind, ContextValue, ErrorKind};
@@ -8,6 +9,7 @@ use clap::{ArgAction, Parser};
 use crime_dataset::Compression;
 
 use crate::messages;
+use crate::sort::DEFAULT_SEGMENT_SIZE;
 
 /// Fallback folder name for the default log when the output path has none (a drive root).
 const FALLBACK_OUTPUT_NAME: &str = "dataset";
@@ -65,6 +67,12 @@ pub struct Args {
     )]
     pub no_compression: bool,
 
+    // Entries the external sort keeps in memory before writing a segment to disk. Hidden: it
+    // exists for tests and memory tuning, not for operators. (A doc comment would become its
+    // help text.)
+    #[arg(long, value_name = "N", hide = true)]
+    pub segment_size: Option<NonZeroUsize>,
+
     #[arg(short, long, action = ArgAction::Help, help = "Muestra esta ayuda.")]
     help: Option<bool>,
 }
@@ -111,6 +119,8 @@ pub struct Config {
     /// Whether an existing dataset in `output` may be replaced.
     pub overwrite: bool,
     pub compression: Compression,
+    /// Entries held in memory per sort segment.
+    pub segment_size: NonZeroUsize,
 }
 
 impl Config {
@@ -130,6 +140,7 @@ impl Config {
             } else {
                 Compression::Snappy
             },
+            segment_size: args.segment_size.unwrap_or(DEFAULT_SEGMENT_SIZE),
         }
     }
 }

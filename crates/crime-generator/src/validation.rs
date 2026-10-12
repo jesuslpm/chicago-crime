@@ -237,7 +237,7 @@ fn decimal(index: usize, text: &str) -> Result<f64, RejectReason> {
 
 /// Re-serializes a row as one CSV line, quoting only where needed. Invalid UTF-8 is replaced so
 /// the line can be written to the text log.
-fn to_csv_line(row: &ByteRecord) -> String {
+pub(crate) fn to_csv_line(row: &ByteRecord) -> String {
     let mut writer = csv::Writer::from_writer(Vec::new());
     writer
         .write_byte_record(row)

@@ -31,6 +31,31 @@ pub fn header_mismatch(column: usize, expected: &str, found: &str) -> String {
     )
 }
 
+pub fn dataset_exists() -> String {
+    "La carpeta de salida ya contiene un conjunto de datos. Usa la opción de sobrescritura para \
+     reemplazarlo."
+        .to_owned()
+}
+
+pub fn output_unwritable(dir: &Path) -> String {
+    format!(
+        "No se puede escribir en la carpeta de salida {}.",
+        dir.display()
+    )
+}
+
+pub fn insufficient_space(dir: &Path) -> String {
+    format!("Espacio insuficiente en {}.", dir.display())
+}
+
+/// A table received a key that is not greater than the previous one: a defect of the generator.
+pub fn unordered_keys(file: &Path) -> String {
+    format!(
+        "Error interno: las claves de {} no llegan en orden estrictamente creciente.",
+        file.display()
+    )
+}
+
 // Rejected rows. `line` is the line of the file where the row starts.
 
 pub fn wrong_column_count(line: u64, expected: usize, found: usize) -> String {
@@ -73,6 +98,12 @@ pub fn invalid_utf8(line: u64, column: &str) -> String {
     format!("Fila {line} omitida, columna \"{column}\": el texto no es UTF-8 válido.")
 }
 
+/// A repeated ID: the row at `first_line` is kept (decision D5). IDs are written plainly, like
+/// row numbers.
+pub fn duplicate_id(line: u64, id: i64, first_line: u64) -> String {
+    format!("Fila {line} omitida: el ID {id} ya apareció en la fila {first_line}.")
+}
+
 /// Log line of a rejected row: the reason followed by the original row as a CSV line.
 pub fn rejected_row(reason: &str, raw: &str) -> String {
     format!("{reason} Contenido original: {raw}")
@@ -94,6 +125,19 @@ pub fn source_fingerprint(source: &SourceInfo) -> String {
         source.file_name,
         source.sha256,
         thousands(source.size_bytes)
+    )
+}
+
+pub fn sort_completed(segments: usize) -> String {
+    format!("Ordenación completada. Segmentos temporales en disco: {segments}.")
+}
+
+/// Final count: duplicates are included in the rejected records.
+pub fn generation_completed(counts: RecordCounts) -> String {
+    format!(
+        "Generación completada: {} registros válidos, {} rechazados (ver log).",
+        thousands(counts.valid),
+        thousands(counts.rejected)
     )
 }
 

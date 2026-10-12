@@ -27,6 +27,39 @@ fn defaults_use_the_system_temp_dir_snappy_and_a_log_next_to_the_output() {
     assert_eq!(config.log, dir.path().join("dataset-20261012-153000.log"));
     assert!(!config.overwrite);
     assert_eq!(config.compression, Compression::Snappy);
+    assert_eq!(config.segment_size.get(), 250_000);
+}
+
+#[test]
+fn hidden_segment_size_option_is_honoured() {
+    let config = config_from(&[
+        "--input",
+        "in.csv",
+        "--output",
+        "out",
+        "--segment-size",
+        "2",
+    ]);
+
+    assert_eq!(config.segment_size.get(), 2);
+}
+
+#[test]
+fn zero_segment_size_is_refused() {
+    let parsed = parse([
+        "crime-generator",
+        "--input",
+        "in.csv",
+        "--output",
+        "out",
+        "--segment-size",
+        "0",
+    ]);
+
+    assert!(
+        matches!(parsed, Parsed::Invalid(_)),
+        "a segment holds at least one entry: {parsed:?}"
+    );
 }
 
 #[test]
@@ -110,4 +143,8 @@ fn help_is_in_spanish() {
     assert!(text.contains("--input <ARCHIVO>"), "{text}");
     assert!(text.contains("--no-compression"), "{text}");
     assert!(!text.contains("Usage:"), "{text}");
+    assert!(
+        !text.contains("--segment-size"),
+        "tuning options stay hidden: {text}"
+    );
 }

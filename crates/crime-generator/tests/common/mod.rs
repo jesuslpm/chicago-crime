@@ -4,11 +4,18 @@
 // Each test crate uses a different subset of these helpers.
 #![allow(dead_code)]
 
+use std::fs;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crime_dataset::{CivilDateTime, CrimeRecord, HEADER};
+use crime_dataset::{CivilDateTime, Compression, CrimeRecord, HEADER};
+use crime_generator::cli::Config;
 use crime_generator::ingest::{CsvIngest, RowOutcome};
+use crime_generator::preflight::create_log;
+use crime_generator::sort::DEFAULT_SEGMENT_SIZE;
+use crime_generator::{Abort, RunSummary};
+use sstable::{Options, SSIterator, Table};
+use tempfile::TempDir;
 
 /// One CSV row as raw field bytes.
 pub type Row = Vec<Vec<u8>>;
@@ -145,4 +152,108 @@ pub fn assert_valid(outcome: &RowOutcome, line: u64, id: i64) {
         .as_ref()
         .unwrap_or_else(|rejection| panic!("line {line} should be valid: {rejection:?}"));
     assert_eq!((row.line, row.record.id), (line, id));
+}
+
+/// The sample row with its own ID, case number and block, so rows stay distinguishable after
+/// they are stored.
+pub fn distinct_row(id: i64) -> Row {
+    let row = with_field(row_with_id(id), "Case Number", format!("JC{id}").as_bytes());
+    with_field(row, "Block", format!("{id:05}XX S STATE ST").as_bytes())
+}
+
+/// [`distinct_row`] fully typed.
+pub fn distinct_record(id: i64) -> CrimeRecord {
+    CrimeRecord {
+        id,
+        case_number: format!("JC{id}"),
+        block: format!("{id:05}XX S STATE ST"),
+        ..sample_record()
+    }
+}
+
+/// A row as the log writes it: one CSV line, quoted only where needed.
+pub fn plain_csv_line(row: &Row) -> String {
+    let mut writer = csv::Writer::from_writer(Vec::new());
+    writer
+        .write_record(row)
+        .expect("writing to memory succeeds");
+    let bytes = writer.into_inner().expect("flushing to memory succeeds");
+    String::from_utf8(bytes)
+        .expect("fixture rows are UTF-8")
+        .trim_end()
+        .to_owned()
+}
+
+/// A folder with an input CSV and a temporary folder, where several generations can run.
+pub struct Scenario {
+    pub dir: TempDir,
+    pub input: PathBuf,
+    pub temp_dir: PathBuf,
+}
+
+impl Scenario {
+    /// Writes the expected header followed by `rows` as the input CSV.
+    pub fn new(rows: &[Row]) -> Self {
+        let dir = tempfile::tempdir().expect("a temporary directory can be created");
+        let input = dir.path().join("crimes.csv");
+        fs::write(&input, csv_with_header(rows)).expect("the fixture can be written");
+        let temp_dir = dir.path().join("tmp");
+        fs::create_dir(&temp_dir).expect("the temporary folder can be created");
+        Self {
+            dir,
+            input,
+            temp_dir,
+        }
+    }
+
+    /// Default options with an output folder and a log of their own, both named after `name`.
+    pub fn config(&self, name: &str) -> Config {
+        Config {
+            input: self.input.clone(),
+            output: self.dir.path().join(name),
+            temp_dir: self.temp_dir.clone(),
+            log: self.dir.path().join(format!("{name}.log")),
+            overwrite: false,
+            compression: Compression::Snappy,
+            segment_size: DEFAULT_SEGMENT_SIZE,
+        }
+    }
+}
+
+/// Runs a generation with a log that is not echoed to the console; returns the result and the
+/// log content.
+pub fn generate(config: &Config) -> (Result<RunSummary, Abort>, String) {
+    let mut log = create_log(&config.log, false).expect("the log can be created");
+    let result = crime_generator::generate(config, &mut log);
+    drop(log);
+    let content = fs::read_to_string(&config.log).expect("the log can be read");
+    (result, content)
+}
+
+/// Every key and value of a table in file order, read with the `sstable` reader alone.
+pub fn read_table(path: &Path) -> Vec<(Vec<u8>, Vec<u8>)> {
+    let table = Table::new_from_file(Options::default(), path)
+        .unwrap_or_else(|status| panic!("{} should open: {status:?}", path.display()));
+    let mut entries = table.iter();
+    let mut all = Vec::new();
+    while let Some(entry) = SSIterator::next(&mut entries) {
+        all.push(entry);
+    }
+    all
+}
+
+/// Names of everything directly inside `dir`, sorted.
+pub fn folder_entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = fs::read_dir(dir)
+        .expect("the folder can be listed")
+        .map(|entry| {
+            entry
+                .expect("the entry can be read")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
 }

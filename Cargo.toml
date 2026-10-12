@@ -16,4 +16,5 @@ foundationdb-tuple = { version = "0.11.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11.0"
+sstable = "0.11.1"
 tempfile = "3.27.0"

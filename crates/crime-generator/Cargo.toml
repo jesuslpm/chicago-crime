@@ -11,6 +11,9 @@ clap.workspace = true
 crime-dataset.workspace = true
 csv.workspace = true
 sha2.workspace = true
+sstable.workspace = true
+tempfile.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true
+# The independent read-back tests unpack tuples without the dataset crate.
+foundationdb-tuple.workspace = true

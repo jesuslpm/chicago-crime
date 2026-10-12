@@ -5,6 +5,8 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crime_dataset::PRIMARY_FILE_NAME;
+
 use crate::Abort;
 use crate::log::RunLog;
 
@@ -46,6 +48,21 @@ pub fn check_temp_dir(dir: &Path) -> Result<(), Abort> {
     } else {
         Err(unusable())
     }
+}
+
+/// The output folder, if it exists, must be a folder, and must not hold a dataset unless
+/// overwriting was allowed. A missing folder is created later, only when there is something to
+/// write into it.
+pub fn check_output(output: &Path, overwrite: bool) -> Result<(), Abort> {
+    if output.exists() && !output.is_dir() {
+        return Err(Abort::OutputUnwritable {
+            dir: output.to_path_buf(),
+        });
+    }
+    if !overwrite && output.join(PRIMARY_FILE_NAME).exists() {
+        return Err(Abort::DatasetExists);
+    }
+    Ok(())
 }
 
 /// A name no other run or file is expected to use.

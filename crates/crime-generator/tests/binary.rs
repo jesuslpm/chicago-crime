@@ -46,7 +46,7 @@ fn default_log(dir: &Path, output_name: &str) -> PathBuf {
 }
 
 #[test]
-fn reads_the_csv_and_logs_rejections_next_to_the_output_folder() {
+fn writes_the_primary_table_and_logs_rejections_next_to_the_output_folder() {
     let dir = tempfile::tempdir().expect("a temporary directory can be created");
     let input = dir.path().join("crimes.csv");
     fs::write(
@@ -70,9 +70,10 @@ fn reads_the_csv_and_logs_rejections_next_to_the_output_folder() {
     );
     let rejection = "Fila 3 omitida, columna \"Date\": \"tomorrow\" no es una fecha válida \
                      (formato MM/DD/AAAA hh:mm:ss AM/PM).";
-    let summary = "Lectura completada: 2 registros válidos, 1 rechazados.";
+    let reading = "Lectura completada: 2 registros válidos, 1 rechazados.";
+    let summary = "Generación completada: 2 registros válidos, 1 rechazados (ver log).";
     let log = fs::read_to_string(default_log(dir.path(), "dataset")).expect("log");
-    for expected in [rejection, summary] {
+    for expected in [rejection, reading, summary] {
         assert!(
             log.contains(expected),
             "log should contain {expected:?}: {log}"
@@ -83,7 +84,33 @@ fn reads_the_csv_and_logs_rejections_next_to_the_output_folder() {
         );
     }
     assert!(log.contains("SHA-256"), "{log}");
-    assert!(!output.exists(), "no dataset is written yet");
+    assert!(
+        output.join("primary.sst").is_file(),
+        "the primary table is published"
+    );
+}
+
+#[test]
+fn an_existing_dataset_exits_with_failure_and_is_kept() {
+    let dir = tempfile::tempdir().expect("a temporary directory can be created");
+    let input = dir.path().join("crimes.csv");
+    fs::write(&input, csv_with_header(&[row_with_id(1)])).expect("the fixture can be written");
+    let output = dir.path().join("dataset");
+    fs::create_dir(&output).expect("the output folder can be created");
+    fs::write(output.join("primary.sst"), b"previous").expect("the fixture can be written");
+
+    let result = generator(&[&input, &output, dir.path()]);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(!result.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("La carpeta de salida ya contiene un conjunto de datos."),
+        "{stderr}"
+    );
+    assert_eq!(
+        fs::read(output.join("primary.sst")).expect("the table can be read"),
+        b"previous"
+    );
 }
 
 #[test]
