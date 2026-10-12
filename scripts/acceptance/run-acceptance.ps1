@@ -17,7 +17,10 @@
                  temporary files and the dataset intact;
       AC-G6      a rerun with --overwrite killed with Stop-Process -Force during the merge leaves
                  the published dataset intact and unreferenced; the next run discards the leftovers
-                 and completes (and so replaces the dataset: the second half of AC-G8);
+                 and completes (and so replaces the dataset: the second half of AC-G8). The kill
+                 follows the run's state, not the clock: it fires as soon as the log shows the
+                 primary sort finished, the run's sort folder is in the temp folder and its new
+                 version folder exists;
       AC-G5      a CSV with a 21-column row, an invalid date and a repeated ID completes with 3
                  rejected (parent AC13).
 
@@ -31,9 +34,9 @@
 .PARAMETER Csv
     The reference CSV. By default, chicago-crime-data.csv at the repository root.
 
-.PARAMETER KillAfterSeconds
-    When the run of AC-G6 is killed; 25 s falls in the merge of the primary table on the reference
-    machine.
+.PARAMETER KillTimeoutSeconds
+    How long AC-G6 waits for its run to reach the merge of the primary table. If the run has not
+    reached it by then, it is killed anyway and AC-G6 fails; if it ends first, AC-G6 fails too.
 
 .PARAMETER CtrlCAfterSeconds
     When Ctrl+C is pressed in the run of AC-G7.
@@ -49,7 +52,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$WorkDir,
     [string]$Csv,
-    [int]$KillAfterSeconds = 25,
+    [int]$KillTimeoutSeconds = 600,
     [int]$CtrlCAfterSeconds = 25,
     [switch]$SkipBuild
 )
@@ -78,6 +81,8 @@ $Messages = @{
     OperatorCancelled = 'Generación cancelada por el operador. No se ha modificado el conjunto existente.'
     Leftovers         = 'Se han descartado restos de una generación interrumpida anterior.'
     StaleSortDirs     = 'Se han descartado carpetas temporales de una generación interrumpida anterior.'
+    # The start of the line written when the primary sort ends, before the merge.
+    SortCompleted     = 'Ordenación completada.'
     HeaderMismatch    = 'La cabecera no coincide con el esquema: columna 5 esperaba "IUCR" y encontró "IUCR_ALTERADA".'
     ReferenceSummary  = 'Generación completada: 8.656.904 registros válidos, 0 rechazados (ver log).'
     Ac13Summary       = 'Generación completada: 999 registros válidos, 3 rechazados (ver log).'
@@ -170,14 +175,17 @@ function Test-SameTables($Left, $Right) {
 # --- Processes ---
 
 # Runs a program with its output captured. With -SampleMemory it samples PeakPagedMemorySize64
-# (the peak private committed bytes) every 50 ms; with -KillAfterSeconds it kills the process with
-# Stop-Process -Force at that moment, after listing the temporary and output folders.
+# (the peak private committed bytes) every 50 ms. With -KillWhen it asks that script block every
+# 50 ms whether to kill: once it returns a description of the state it waited for, or once
+# -KillTimeoutSeconds have passed, the process is killed with Stop-Process -Force after listing
+# the temporary and output folders. AtKill.Observed holds that description, or $null on timeout.
 function Invoke-Program {
     param(
         [string]$FilePath,
         [string[]]$Arguments,
         [switch]$SampleMemory,
-        [int]$KillAfterSeconds = 0,
+        [scriptblock]$KillWhen,
+        [int]$KillTimeoutSeconds = 600,
         [string]$TempDir,
         [string]$OutputDir
     )
@@ -205,13 +213,19 @@ function Invoke-Program {
             }
             catch { }
         }
-        if ($KillAfterSeconds -gt 0 -and $null -eq $atKill -and $watch.Elapsed.TotalSeconds -ge $KillAfterSeconds) {
-            $atKill = [pscustomobject]@{
-                Seconds       = $watch.Elapsed.TotalSeconds
-                TempEntries   = @(Get-EntryNames $TempDir)
-                OutputEntries = @(Get-EntryNames $OutputDir)
+        if ($KillWhen -and $null -eq $atKill) {
+            # A read that fails while the run changes its files only means "not yet".
+            $observed = try { & $KillWhen } catch { $null }
+            if ($observed -or $watch.Elapsed.TotalSeconds -ge $KillTimeoutSeconds) {
+                $atKill = [pscustomobject]@{
+                    Seconds       = $watch.Elapsed.TotalSeconds
+                    Observed      = $observed
+                    TempEntries   = @(Get-EntryNames $TempDir)
+                    OutputEntries = @(Get-EntryNames $OutputDir)
+                }
+                # The process may have ended meanwhile; the checks after the kill then fail.
+                Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             }
-            Stop-Process -Id $process.Id -Force
         }
         Start-Sleep -Milliseconds 50
     }
@@ -233,10 +247,24 @@ function Get-GeneratorArguments([string]$Source, [string]$Output, [string]$Log, 
     $arguments
 }
 
-function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switch]$Overwrite, [int]$KillAfterSeconds = 0) {
+function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switch]$Overwrite, [scriptblock]$KillWhen) {
     $arguments = Get-GeneratorArguments -Source $Source -Output $Output -Log $Log -Overwrite:$Overwrite
     Invoke-Program -FilePath $GeneratorExe -Arguments $arguments -SampleMemory `
-        -KillAfterSeconds $KillAfterSeconds -TempDir $TempDir -OutputDir $Output
+        -KillWhen $KillWhen -KillTimeoutSeconds $KillTimeoutSeconds -TempDir $TempDir -OutputDir $Output
+}
+
+# The state in which AC-G6 kills its run, so that the kill lands in the merge of the primary
+# table: the log shows the primary sort finished, the run's sort folder is in the temp folder
+# and its new version folder exists in the output folder (the next run must find it there).
+# Returns that state in words, or $null while the run has not reached it.
+function Get-MergeState([string]$Log, [string]$Output, [string]$Temp, [string[]]$OutputBefore, [string[]]$TempBefore) {
+    $newVersions = @(Get-EntryNames $Output | Where-Object { $_ -like 'dataset-*' -and $OutputBefore -notcontains $_ })
+    $sortDirs = @(Get-EntryNames $Temp | Where-Object { $_ -like 'crime-generator-sort-*' -and $TempBefore -notcontains $_ })
+    if ($newVersions.Count -eq 0 -or $sortDirs.Count -eq 0) { return $null }
+    $sortLine = @(Get-Lines (Read-SharedText $Log) |
+            Where-Object { $_.StartsWith($Messages.SortCompleted, [System.StringComparison]::Ordinal) }) | Select-Object -First 1
+    if (-not $sortLine) { return $null }
+    'log line "{0}", sort folders {1}, new version folder {2}' -f $sortLine, ($sortDirs -join ', '), ($newVersions -join ', ')
 }
 
 # The peak the generator reports in its summary, in bytes ("Pico de memoria privada comprometida:
@@ -363,17 +391,18 @@ Write-Step 'Independent verifier on Run A'
 $verifier = Invoke-Program -FilePath $VerifierExe -Arguments @('--csv', $Csv, '--dataset', $RunA, '--reference')
 $verdicts = @{}
 foreach ($line in Get-Lines $verifier.Stdout) {
-    $match = [regex]::Match($line, '^(PASS|FAIL)  (\S+)  (.*)$')
+    $match = [regex]::Match($line, '^(PASS|FAIL|SKIP)  (\S+)  (.*)$')
     if ($match.Success) {
-        $verdicts[$match.Groups[2].Value] = [pscustomobject]@{ Passed = $match.Groups[1].Value -eq 'PASS'; Summary = $match.Groups[3].Value }
+        $verdicts[$match.Groups[2].Value] = [pscustomobject]@{ Outcome = $match.Groups[1].Value; Summary = $match.Groups[3].Value }
     }
 }
+# With --reference the verifier never skips; on the reference CSV only a PASS proves a criterion.
 function Get-VerdictResult([string[]]$Criteria) {
     $passed = $true
     $parts = foreach ($criterion in $Criteria) {
         if ($verdicts.ContainsKey($criterion)) {
-            $passed = $passed -and $verdicts[$criterion].Passed
-            '{0} {1}: {2}' -f $criterion, $(if ($verdicts[$criterion].Passed) { 'PASS' } else { 'FAIL' }), $verdicts[$criterion].Summary
+            $passed = $passed -and $verdicts[$criterion].Outcome -eq 'PASS'
+            '{0} {1}: {2}' -f $criterion, $verdicts[$criterion].Outcome, $verdicts[$criterion].Summary
         }
         else {
             $passed = $false
@@ -466,11 +495,17 @@ Add-Section (@('## AC-G7: log of the run cancelled with Ctrl+C', '', (Format-Cod
 
 # --- AC-G6: a hard kill during the merge, then a normal run ---
 
-Write-Step "AC-G6: Stop-Process -Force after $KillAfterSeconds s"
+Write-Step 'AC-G6: Stop-Process -Force once the primary sort has finished'
 $currentBefore = Get-CurrentName $RunA
 $versionBefore = Get-Snapshot (Join-Path $RunA $currentBefore)
 $killLog = Join-Path $LogDir 'ac-g6-killed.log'
-$killed = Invoke-Generator -Source $Csv -Output $RunA -Log $killLog -Overwrite -KillAfterSeconds $KillAfterSeconds
+$outputBeforeKill = @(Get-EntryNames $RunA)
+$tempBeforeKill = @(Get-EntryNames $TempDir)
+$inMerge = {
+    Get-MergeState -Log $script:killLog -Output $script:RunA -Temp $script:TempDir `
+        -OutputBefore $script:outputBeforeKill -TempBefore $script:tempBeforeKill
+}
+$killed = Invoke-Generator -Source $Csv -Output $RunA -Log $killLog -Overwrite -KillWhen $inMerge
 $killText = Read-SharedText $killLog
 $phase = @(Get-Lines $killText)[-1]
 $currentAfterKill = Get-CurrentName $RunA
@@ -478,9 +513,14 @@ $versionAfterKill = Get-Snapshot (Join-Path $RunA $currentAfterKill)
 $outputAfterKill = @(Get-EntryNames $RunA)
 $tempAfterKill = @(Get-EntryNames $TempDir)
 $unreferenced = @($outputAfterKill | Where-Object { $_ -like 'dataset-*' -and $_ -ne $currentBefore })
-$intact = $null -ne $killed.AtKill -and $currentAfterKill -eq $currentBefore -and $versionAfterKill -eq $versionBefore
-Add-Result 'AC-G6 (kill)' $intact ('killed at {0} with exit {1}; last log line then: "{2}"; output then: {3}; afterwards CURRENT still names {4} and its files are byte-identical: {5}; unreferenced version folders left: {6}; sort folders left: {7}' -f `
-        $(if ($killed.AtKill) { Format-Seconds $killed.AtKill.Seconds } else { 'never (the run ended first)' }), $killed.ExitCode, $phase, `
+# Only a kill in the state waited for proves anything: a run that ended first, or a timeout, fails.
+$killedInMerge = $null -ne $killed.AtKill -and $null -ne $killed.AtKill.Observed
+$intact = $killedInMerge -and $currentAfterKill -eq $currentBefore -and $versionAfterKill -eq $versionBefore
+$killedWhen = if ($killedInMerge) { 'at {0}, once it observed {1}' -f (Format-Seconds $killed.AtKill.Seconds), $killed.AtKill.Observed }
+elseif ($null -ne $killed.AtKill) { "at the timeout of $KillTimeoutSeconds s, without observing the primary sort finished (FAIL)" }
+else { 'never: the run ended before the primary sort was observed finished (FAIL)' }
+Add-Result 'AC-G6 (kill)' $intact ('killed {0}; exit {1}; last log line then: "{2}"; output then: {3}; afterwards CURRENT still names {4} and its files are byte-identical: {5}; unreferenced version folders left: {6}; sort folders left: {7}' -f `
+        $killedWhen, $killed.ExitCode, $phase, `
     $(if ($killed.AtKill) { $killed.AtKill.OutputEntries -join ', ' } else { '-' }), $currentBefore, $intact, ($unreferenced -join ', '), ($tempAfterKill -join ', '))
 
 Write-Step 'AC-G6: next run with --overwrite'

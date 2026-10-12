@@ -4,9 +4,9 @@
 //! crime-acceptance --csv <file> --dataset <output folder> [--reference]
 //! ```
 //!
-//! It prints one PASS or FAIL line per check and a final result line, and exits with 0 when
-//! every check passed, 1 when any failed and 2 when the command line is not valid. Progress goes
-//! to the standard error.
+//! It prints one PASS, FAIL or SKIP line per check and a final result line, and exits with 0 when
+//! no check failed (a SKIP counts as neither PASS nor FAIL), 1 when any failed and 2 when the
+//! command line is not valid. Progress goes to the standard error.
 
 use std::ffi::OsString;
 use std::path::PathBuf;

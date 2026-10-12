@@ -12,7 +12,7 @@
 //! - [`indexes`]: the five index definitions and their keys;
 //! - [`dataset`]: `CURRENT`, the version folder, the manifest and the tables on disk;
 //! - [`verify`]: every check of AC-G1, AC-G3 and AC-G4 plus the manifest;
-//! - [`report`]: one PASS or FAIL line per check.
+//! - [`report`]: one PASS, FAIL or SKIP line per check.
 
 pub mod civil;
 pub mod dataset;
@@ -21,5 +21,5 @@ pub mod indexes;
 pub mod report;
 pub mod verify;
 
-pub use report::{Check, Report};
+pub use report::{Check, Outcome, Report};
 pub use verify::{Options, verify};

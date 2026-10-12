@@ -93,7 +93,8 @@ It builds in release mode and checks, inside `-WorkDir`:
 - a rerun refused without `--overwrite` (AC-G8);
 - a CSV with an altered header (AC-G9, and parent AC9 in AC-G5);
 - a real Ctrl+C (AC-G7);
-- a run killed during the merge, then a run that recovers (AC-G6);
+- a run killed during the merge, as soon as its log shows the primary sort finished, then a run
+  that recovers (AC-G6);
 - a CSV with three bad rows (parent AC13 in AC-G5).
 
 It takes about 6 minutes and 6 GB of disk on the reference machine, writes `acceptance-report.md`
@@ -105,6 +106,8 @@ To run only the verifier on a dataset:
 target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset D:\datasets\chicago --reference
 ```
 
-It prints one PASS or FAIL line per check and exits with 0 only when all pass. `--reference` also
-requires the exact figures measured on the reference CSV; without it, the expected figures come from
-the CSV given.
+It prints one PASS, FAIL or SKIP line per check and exits with 0 only when none fails. `--reference`
+also requires the exact figures measured on the reference CSV, and a row of every sample category.
+Without it, the expected figures come from the CSV given, and a sample category that CSV lacks (a row
+in the spring-forward hour, one without coordinates, one without Ward) is reported as SKIP, which
+counts as neither PASS nor FAIL; every row is still compared field by field.

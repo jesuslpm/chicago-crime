@@ -9,8 +9,8 @@
 //! | `MANIFEST-TABLES` | The manifest's entry counts and file sizes equal the tables on disk. |
 //! | `AC-G1` | The primary table has one entry per valid record, keys strictly increasing. |
 //! | `AC-G3` | Every stored record equals its CSV row field by field. |
-//! | `AC-G3-SAMPLE` | The parent's AC3 sample: first and last ID, one without coordinates, one without Ward. |
-//! | `AC-G3-DST` | Rows in the spring-forward hour are stored exactly as published (parent AC12). |
+//! | `AC-G3-SAMPLE` | The parent's AC3 sample: first and last ID, one without coordinates, one without Ward. A category the CSV lacks is skipped, unless `--reference`. |
+//! | `AC-G3-DST` | Rows in the spring-forward hour are stored exactly as published (parent AC12). SKIP when the CSV has none, unless `--reference`. |
 //! | `AC-G4-<index>` | Each index table equals, entry by entry, the keys rebuilt from the CSV. |
 //! | `AC-G4-THEFT`, `AC-G4-COMMUNITY-NIL` | The parent's AC4 and AC5 counts. |
 //! | `AC-G4-SHARED-CASES` | Every shared case number lists every ID that shares it (parent AC8). |
@@ -23,7 +23,11 @@
 //!
 //! Without [`Options::reference`] the expected figures come from the CSV itself (parent PRD:
 //! "con otro CSV compatible, esos resultados deben coincidir con los registros válidos realmente
-//! procesados"); with it, the exact figures measured on the reference CSV are required too.
+//! procesados"), and a compatible CSV may lack a sample category altogether: no row in the
+//! spring-forward hour, without coordinates or without Ward. That sample is then skipped (SKIP,
+//! neither PASS nor FAIL), while every row is still compared field by field in `AC-G3`. With
+//! [`Options::reference`], the exact figures measured on the reference CSV are required too, and
+//! so is every sample category, since the reference CSV has rows of each.
 
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
@@ -134,7 +138,7 @@ pub fn verify(
         tables_check(&version, &manifest, &stored, &index_scans),
         ac_g1_check(&manifest, &stored, &scan, options),
         ac_g3_check(&manifest, &stored, &scan),
-        sample_check(&stored, &scan),
+        sample_check(&stored, &scan, options),
         dst_check(&scan, options),
     ]);
     for ((spec, index_scan), untypable) in INDEXES.iter().zip(&index_scans).zip(&scan.untypable) {
@@ -681,7 +685,10 @@ fn ac_g3_check(manifest: &ManifestFacts, stored: &StoredFacts, scan: &CsvScan) -
     .with_details(details)
 }
 
-fn sample_check(stored: &StoredFacts, scan: &CsvScan) -> Check {
+/// A sample whose category the CSV lacks is skipped, unless the reference CSV is required: that
+/// one has a row of every category.
+fn sample_check(stored: &StoredFacts, scan: &CsvScan, options: Options) -> Check {
+    const CRITERION: &str = "AC-G3-SAMPLE";
     // The rows without coordinates or Ward were taken from compared rows only.
     let compared = |id: Option<i64>| id.map(|id| (id, true));
     let samples = [
@@ -694,6 +701,7 @@ fn sample_check(stored: &StoredFacts, scan: &CsvScan) -> Check {
         ("without Ward", compared(scan.first_without_ward)),
     ];
     let mut passed = true;
+    let mut skipped = 0;
     let described: Vec<String> = samples
         .iter()
         .map(|&(label, sample)| match sample {
@@ -707,23 +715,35 @@ fn sample_check(stored: &StoredFacts, scan: &CsvScan) -> Check {
                 };
                 format!("{label} {id} {outcome}")
             }
+            None if !options.reference => {
+                skipped += 1;
+                format!("{label}: SKIP, the CSV has no such row")
+            }
             None => {
                 passed = false;
                 format!("{label}: no such row")
             }
         })
         .collect();
-    Check::new(
-        "AC-G3-SAMPLE",
-        passed,
-        format!(
-            "parent AC3 sample, every field compared: {}",
-            described.join(", ")
-        ),
-    )
+    let summary = format!(
+        "parent AC3 sample, every field compared: {}",
+        described.join(", ")
+    );
+    if skipped == samples.len() {
+        Check::skipped(CRITERION, summary)
+    } else {
+        Check::new(CRITERION, passed, summary)
+    }
 }
 
+/// Without the reference CSV, a CSV with no row in the spring-forward hour skips the check.
 fn dst_check(scan: &CsvScan, options: Options) -> Check {
+    if scan.spring_forward_rows == 0 && !options.reference {
+        return Check::skipped(
+            "AC-G3-DST",
+            "the CSV has no row with a Date in the spring-forward hour",
+        );
+    }
     let mut passed =
         scan.spring_forward_rows > 0 && scan.spring_forward_exact == scan.spring_forward_rows;
     let mut details = scan.spring_forward_failures.clone();

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crime_acceptance::{Options, Report, verify};
+use crime_acceptance::{Options, Outcome, Report, verify};
 use crime_generator::cancel::CancelFlag;
 use crime_generator::cli::{self, Config, Parsed};
 use crime_generator::preflight::create_log;
@@ -227,7 +227,7 @@ fn failed(report: &Report) -> Vec<&str> {
     report
         .checks
         .iter()
-        .filter(|check| !check.passed)
+        .filter(|check| check.failed())
         .map(|check| check.criterion.as_str())
         .collect()
 }
@@ -297,7 +297,7 @@ fn a_changed_field_in_the_primary_table_fails_ac_g3_naming_the_row_and_column() 
     let report = fixture.verify();
 
     let ac_g3 = check(&report, "AC-G3");
-    assert!(!ac_g3.passed, "{}", report.render());
+    assert!(ac_g3.failed(), "{}", report.render());
     assert!(
         ac_g3.summary.contains("1 mismatched"),
         "{}",
@@ -308,8 +308,8 @@ fn a_changed_field_in_the_primary_table_fails_ac_g3_naming_the_row_and_column() 
         details.contains("ID 900") && details.contains("Block"),
         "{details}"
     );
-    assert!(check(&report, "AC-G1").passed, "{}", report.render());
-    assert!(check(&report, "AC-G4-date").passed, "{}", report.render());
+    assert!(check(&report, "AC-G1").passed(), "{}", report.render());
+    assert!(check(&report, "AC-G4-date").passed(), "{}", report.render());
 }
 
 #[test]
@@ -324,7 +324,7 @@ fn a_missing_index_entry_fails_that_index_only() {
     let failures = failed(&report);
     assert!(failures.contains(&"AC-G4-district"), "{}", report.render());
     for criterion in ["AC-G1", "AC-G3", "AC-G4-date", "AC-G4-case_number"] {
-        assert!(check(&report, criterion).passed, "{}", report.render());
+        assert!(check(&report, criterion).passed(), "{}", report.render());
     }
 }
 
@@ -364,17 +364,82 @@ fn a_stray_file_in_the_version_folder_fails_the_layout() {
     assert!(failed(&report).contains(&"LAYOUT"), "{}", report.render());
 }
 
+/// Rows of a compatible CSV with none of the optional sample categories: no Date in the
+/// spring-forward hour, and every row with coordinates and a Ward.
+fn rows_without_optional_samples() -> Vec<Vec<String>> {
+    vec![
+        row(&[]),
+        row(&[
+            ("ID", "634"),
+            ("Case Number", "JA100"),
+            ("Primary Type", "THEFT"),
+        ]),
+        row(&[("ID", "5000"), ("Case Number", "JA100")]),
+    ]
+}
+
 #[test]
-fn a_csv_without_a_row_in_the_spring_forward_hour_fails_the_dst_check() {
-    let rows: Vec<Vec<String>> = fixture_rows()
-        .into_iter()
-        .filter(|fields| fields[0] != "14353993")
-        .collect();
-    let fixture = Fixture::with_rows(&rows);
+fn without_the_reference_missing_sample_categories_are_skipped_and_the_verifier_passes() {
+    let fixture = Fixture::with_rows(&rows_without_optional_samples());
 
     let report = fixture.verify();
 
-    assert_eq!(failed(&report), ["AC-G3-DST"], "{}", report.render());
+    let rendered = report.render();
+    assert!(report.passed(), "{rendered}");
+    assert_eq!(
+        check(&report, "AC-G3-DST").outcome,
+        Outcome::Skip,
+        "{rendered}"
+    );
+    assert!(rendered.contains("SKIP  AC-G3-DST  "), "{rendered}");
+    let sample = check(&report, "AC-G3-SAMPLE");
+    // The first and last IDs are still compared, so the sample as a whole passes.
+    assert_eq!(sample.outcome, Outcome::Pass, "{rendered}");
+    for category in ["without coordinates", "without Ward"] {
+        assert!(
+            sample.summary.contains(&format!("{category}: SKIP")),
+            "{rendered}"
+        );
+    }
+    assert!(
+        check(&report, "AC-G3")
+            .summary
+            .contains("3 CSV rows compared"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("RESULT: PASS"), "{rendered}");
+
+    let binary = Command::new(env!("CARGO_BIN_EXE_crime-acceptance"))
+        .arg("--csv")
+        .arg(&fixture.csv)
+        .arg("--dataset")
+        .arg(&fixture.output)
+        .output()
+        .expect("the verifier runs");
+    let stdout = String::from_utf8_lossy(&binary.stdout);
+    assert_eq!(binary.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("SKIP  AC-G3-DST  "), "{stdout}");
+}
+
+#[test]
+fn with_the_reference_missing_sample_categories_fail() {
+    let fixture = Fixture::with_rows(&rows_without_optional_samples());
+
+    let report = fixture.verify_with(&fixture.csv, Options { reference: true });
+
+    let rendered = report.render();
+    let failures = failed(&report);
+    for criterion in ["AC-G3-SAMPLE", "AC-G3-DST"] {
+        assert!(failures.contains(&criterion), "{rendered}");
+    }
+    let sample = check(&report, "AC-G3-SAMPLE");
+    for category in ["without coordinates", "without Ward"] {
+        assert!(
+            sample.summary.contains(&format!("{category}: no such row")),
+            "{rendered}"
+        );
+    }
+    assert!(!rendered.contains("SKIP"), "{rendered}");
 }
 
 #[test]
@@ -393,7 +458,7 @@ fn the_reference_option_requires_the_figures_measured_on_the_reference_csv() {
     ] {
         assert!(failures.contains(&criterion), "{}", report.render());
     }
-    assert!(check(&report, "AC-G3").passed, "{}", report.render());
+    assert!(check(&report, "AC-G3").passed(), "{}", report.render());
 }
 
 #[test]
@@ -412,7 +477,11 @@ fn the_binary_prints_one_line_per_check_and_exits_with_the_outcome() {
     assert_eq!(passed.status.code(), Some(0), "{stdout}");
     let outcome_lines: Vec<&str> = stdout
         .lines()
-        .filter(|line| line.starts_with("PASS") || line.starts_with("FAIL"))
+        .filter(|line| {
+            ["PASS", "FAIL", "SKIP"]
+                .iter()
+                .any(|outcome| line.starts_with(outcome))
+        })
         .collect();
     assert_eq!(outcome_lines.len(), CRITERIA.len(), "{stdout}");
     assert!(stdout.contains("RESULT: PASS"), "{stdout}");

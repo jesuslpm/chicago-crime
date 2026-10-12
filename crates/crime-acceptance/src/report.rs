@@ -1,24 +1,59 @@
-//! The outcome of a verification: one line per check, PASS or FAIL.
+//! The outcome of a verification: one line per check, PASS, FAIL or SKIP.
 
 use std::fmt::Write as _;
+
+/// What one check concluded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    Pass,
+    Fail,
+    /// The CSV has nothing for the check to look at, such as no row in the spring-forward hour.
+    /// It counts as neither PASS nor FAIL.
+    Skip,
+}
+
+impl Outcome {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pass => "PASS",
+            Self::Fail => "FAIL",
+            Self::Skip => "SKIP",
+        }
+    }
+}
 
 /// One check of the verification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Check {
     /// What the check proves, such as `AC-G1` or `AC-G4-date`; stable, so scripts can look for it.
     pub criterion: String,
-    pub passed: bool,
-    /// One line with the figures behind the outcome.
+    pub outcome: Outcome,
+    /// One line with the figures behind the outcome, or why the check was skipped.
     pub summary: String,
     /// Further lines, such as the first mismatches found.
     pub details: Vec<String>,
 }
 
 impl Check {
+    /// A check that passed or failed.
     pub fn new(criterion: impl Into<String>, passed: bool, summary: impl Into<String>) -> Self {
+        let outcome = if passed { Outcome::Pass } else { Outcome::Fail };
+        Self::with_outcome(criterion, outcome, summary)
+    }
+
+    /// A check with nothing to look at; `reason` says why.
+    pub fn skipped(criterion: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self::with_outcome(criterion, Outcome::Skip, reason)
+    }
+
+    fn with_outcome(
+        criterion: impl Into<String>,
+        outcome: Outcome,
+        summary: impl Into<String>,
+    ) -> Self {
         Self {
             criterion: criterion.into(),
-            passed,
+            outcome,
             summary: summary.into(),
             details: Vec::new(),
         }
@@ -27,6 +62,14 @@ impl Check {
     pub fn with_details(mut self, details: Vec<String>) -> Self {
         self.details = details;
         self
+    }
+
+    pub fn passed(&self) -> bool {
+        self.outcome == Outcome::Pass
+    }
+
+    pub fn failed(&self) -> bool {
+        self.outcome == Outcome::Fail
     }
 }
 
@@ -37,9 +80,9 @@ pub struct Report {
 }
 
 impl Report {
-    /// Whether there is at least one check and every check passed.
+    /// Whether no check failed and at least one passed: a skipped check counts as neither.
     pub fn passed(&self) -> bool {
-        !self.checks.is_empty() && self.checks.iter().all(|check| check.passed)
+        self.checks.iter().any(Check::passed) && !self.checks.iter().any(Check::failed)
     }
 
     /// The check named `criterion`, if it ran.
@@ -49,25 +92,45 @@ impl Report {
             .find(|check| check.criterion == criterion)
     }
 
-    /// One line per check (`PASS  <criterion>  <summary>`), its details indented below it, and a
-    /// final result line.
+    /// One line per check (`PASS  <criterion>  <summary>`, or `FAIL` or `SKIP`), its details
+    /// indented below it, and a final result line.
     pub fn render(&self) -> String {
         let mut text = String::new();
         for check in &self.checks {
-            let outcome = if check.passed { "PASS" } else { "FAIL" };
             // Writing to a String cannot fail.
-            let _ = writeln!(text, "{outcome}  {}  {}", check.criterion, check.summary);
+            let _ = writeln!(
+                text,
+                "{}  {}  {}",
+                check.outcome.label(),
+                check.criterion,
+                check.summary
+            );
             for detail in &check.details {
                 let _ = writeln!(text, "        {detail}");
             }
         }
-        let failed = self.checks.iter().filter(|check| !check.passed).count();
+        let count = |outcome: Outcome| {
+            self.checks
+                .iter()
+                .filter(|check| check.outcome == outcome)
+                .count()
+        };
+        let (failed, skipped) = (count(Outcome::Fail), count(Outcome::Skip));
+        let skipped_text = if skipped > 0 {
+            format!(", {skipped} skipped")
+        } else {
+            String::new()
+        };
         let _ = if self.passed() {
-            writeln!(text, "RESULT: PASS ({} checks)", self.checks.len())
+            writeln!(
+                text,
+                "RESULT: PASS ({} checks{skipped_text})",
+                self.checks.len()
+            )
         } else {
             writeln!(
                 text,
-                "RESULT: FAIL ({failed} of {} checks failed)",
+                "RESULT: FAIL ({failed} of {} checks failed{skipped_text})",
                 self.checks.len()
             )
         };
@@ -128,7 +191,38 @@ mod tests {
             "PASS  AC-G1  8,656,904 entries\nFAIL  AC-G3  1 mismatch\n        ID 5\nRESULT: FAIL (1 \
              of 2 checks failed)\n"
         );
-        assert!(report.check("AC-G3").is_some_and(|check| !check.passed));
+        assert!(report.check("AC-G3").is_some_and(Check::failed));
         assert!(report.check("AC-G9").is_none());
+    }
+
+    #[test]
+    fn a_skipped_check_renders_as_skip_and_neither_passes_nor_fails_the_report() {
+        let mut report = Report::default();
+        report.checks.push(Check::skipped(
+            "AC-G3-DST",
+            "the CSV has no row in the spring-forward hour",
+        ));
+        assert!(
+            !report.passed(),
+            "a report with nothing checked proves nothing"
+        );
+
+        report
+            .checks
+            .insert(0, Check::new("AC-G1", true, "3 entries"));
+        assert!(report.passed());
+        assert_eq!(
+            report.render(),
+            "PASS  AC-G1  3 entries\nSKIP  AC-G3-DST  the CSV has no row in the spring-forward \
+             hour\nRESULT: PASS (2 checks, 1 skipped)\n"
+        );
+
+        report.checks.push(Check::new("AC-G3", false, "1 mismatch"));
+        assert!(!report.passed());
+        assert!(
+            report
+                .render()
+                .ends_with("RESULT: FAIL (1 of 3 checks failed, 1 skipped)\n")
+        );
     }
 }
