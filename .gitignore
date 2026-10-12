@@ -1,0 +1,8 @@
+# Local AI runtime state
+.atl/
+
+# Rust build output
+/target/
+
+# Reference dataset (2.3 GB) — never committed
+/chicago-crime-data.csv
