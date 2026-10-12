@@ -128,6 +128,20 @@ pub fn leftover_kept(path: &Path) -> String {
     )
 }
 
+/// Sort folders of a generator that was killed were deleted from the temporary folder.
+pub fn stale_sort_dirs_discarded() -> String {
+    "Se han descartado carpetas temporales de una generación interrumpida anterior.".to_owned()
+}
+
+/// A sort folder of a generator that was killed could not be deleted; the next run tries again.
+pub fn stale_sort_dir_kept(dir: &Path) -> String {
+    format!(
+        "Aviso: no se ha podido eliminar la carpeta temporal {}; se reintentará en la próxima \
+         generación.",
+        dir.display()
+    )
+}
+
 /// The CSV has the header and no rows at all: an empty dataset is published.
 pub fn empty_csv() -> String {
     "Aviso: el CSV no contiene registros; el conjunto generado está vacío.".to_owned()

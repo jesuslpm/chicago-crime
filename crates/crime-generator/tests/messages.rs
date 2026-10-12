@@ -13,7 +13,8 @@ use crime_generator::messages::{
     dataset_published, duplicate_id, empty_csv, format_duration, generation_cancelled,
     generation_completed, index_sort_completed, indexes_generated, leftover_kept,
     leftovers_discarded, log_location, mebibytes, memory_limit_exceeded, operator_cancelled,
-    peak_memory, previous_version_kept, published_file, reading_completed, run_duration, thousands,
+    peak_memory, previous_version_kept, published_file, reading_completed, run_duration,
+    stale_sort_dir_kept, stale_sort_dirs_discarded, thousands,
 };
 
 #[test]
@@ -122,6 +123,19 @@ fn publication_messages_match_the_prd() {
     assert_eq!(
         empty_csv(),
         "Aviso: el CSV no contiene registros; el conjunto generado está vacío."
+    );
+}
+
+#[test]
+fn stale_sort_folder_messages_say_what_was_discarded_or_kept() {
+    assert_eq!(
+        stale_sort_dirs_discarded(),
+        "Se han descartado carpetas temporales de una generación interrumpida anterior."
+    );
+    assert_eq!(
+        stale_sort_dir_kept(Path::new("D:/scratch/crime-generator-sort-48804-a1B2c3")),
+        "Aviso: no se ha podido eliminar la carpeta temporal \
+         D:/scratch/crime-generator-sort-48804-a1B2c3; se reintentará en la próxima generación."
     );
 }
 

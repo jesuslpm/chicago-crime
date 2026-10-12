@@ -9,6 +9,11 @@
 //! never touches other files, and that folder is deleted with every segment when the merged
 //! stream is closed or dropped, or when an unfinished sort is dropped.
 //!
+//! A process that is killed runs no cleanup at all, so its sort folders would stay forever. That
+//! is why each folder name carries the ID of the process that owns it ([`sort_dir_owner`]): a
+//! later run deletes the folders whose process has ended ([`discard_stale_sort_dirs`]) and never
+//! touches those of a running one.
+//!
 //! The sort is stable: the in-memory sort is stable and the merge breaks ties by segment, which
 //! follows input order. With a total order, as the generator uses, the output does not depend on
 //! the segment size at all.
@@ -23,18 +28,24 @@
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
 
 /// Items held in memory before a segment is written to disk.
 pub const DEFAULT_SEGMENT_SIZE: NonZeroUsize = NonZeroUsize::new(250_000).unwrap();
 
-/// Name prefix of the folder each sort creates inside the temporary folder.
+/// Name prefix of the folder each sort creates inside the temporary folder. The ID of the process
+/// that owns the folder, a hyphen and [`SORT_DIR_RANDOM_CHARS`] random characters follow (see
+/// [`sort_dir_owner`]).
 pub const SORT_DIR_PREFIX: &str = "crime-generator-sort-";
+
+/// Random ASCII letters and digits at the end of a sort folder name, so that several sorts of
+/// one process get folders of their own.
+pub const SORT_DIR_RANDOM_CHARS: usize = 6;
 
 /// Buffer of each segment file while it is written and while it is merged.
 const SEGMENT_BUFFER_BYTES: usize = 64 * 1024;
@@ -61,15 +72,18 @@ pub struct ExternalSort<T: Sortable> {
 }
 
 impl<T: Sortable> ExternalSort<T> {
-    /// Starts a sort whose segments go to a new folder inside `temp_dir`. At most `segment_size`
-    /// items are held in memory at a time.
+    /// Starts a sort whose segments go to a new folder inside `temp_dir`, named after this
+    /// process (see [`sort_dir_owner`]). At most `segment_size` items are held in memory at a
+    /// time.
     pub fn new(
         temp_dir: &Path,
         segment_size: NonZeroUsize,
         compare: Compare<T>,
     ) -> io::Result<Self> {
+        // `tempfile` appends random ASCII letters and digits and retries on a name collision.
         let dir = tempfile::Builder::new()
-            .prefix(SORT_DIR_PREFIX)
+            .prefix(&format!("{SORT_DIR_PREFIX}{}-", std::process::id()))
+            .rand_bytes(SORT_DIR_RANDOM_CHARS)
             .tempdir_in(temp_dir)?;
         Ok(Self {
             compare,
@@ -142,7 +156,68 @@ impl<T: Sortable> ExternalSort<T> {
     }
 }
 
-fn segment_path(dir: &Path, index: usize) -> std::path::PathBuf {
+/// The ID of the process that owns the sort folder `name`, or `None` when `name` is not exactly
+/// the shape [`ExternalSort::new`] writes: [`SORT_DIR_PREFIX`], the process ID as a positive
+/// number without leading zeros (`[1-9][0-9]*`) that fits a `u32`, a hyphen and
+/// [`SORT_DIR_RANDOM_CHARS`] ASCII letters or digits.
+///
+/// Anything else, including the shape older versions wrote without the process ID, has no known
+/// owner and is never treated as a sort folder.
+pub fn sort_dir_owner(name: &str) -> Option<u32> {
+    let rest = name.strip_prefix(SORT_DIR_PREFIX)?;
+    let (process_id, random) = rest.split_once('-')?;
+    let positive = !process_id.is_empty()
+        && !process_id.starts_with('0')
+        && process_id.bytes().all(|byte| byte.is_ascii_digit());
+    let random_shape = random.len() == SORT_DIR_RANDOM_CHARS
+        && random.bytes().all(|byte| byte.is_ascii_alphanumeric());
+    if positive && random_shape {
+        process_id.parse().ok()
+    } else {
+        None
+    }
+}
+
+/// What [`discard_stale_sort_dirs`] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StaleSortDirs {
+    /// Sort folders of ended processes that were deleted.
+    pub removed: usize,
+    /// Sort folders of ended processes that could not be deleted; a later run tries again.
+    pub kept: Vec<PathBuf>,
+}
+
+/// Deletes the sort folders that a killed generator left in `temp_dir`.
+///
+/// A sort folder is deleted when its process has ended: when its name has exactly the shape of
+/// [`sort_dir_owner`], it is a folder, and `is_alive` says that its owner is not running. Every
+/// other entry is left alone, files and links included, and so are the folders of running
+/// processes, this one included: they may be sorting right now. Best effort: a folder that cannot
+/// be listed or deleted is skipped and reported in [`StaleSortDirs::kept`], and the run goes on.
+pub fn discard_stale_sort_dirs(temp_dir: &Path, is_alive: impl Fn(u32) -> bool) -> StaleSortDirs {
+    let mut outcome = StaleSortDirs::default();
+    let Ok(entries) = fs::read_dir(temp_dir) else {
+        return outcome;
+    };
+    for entry in entries.flatten() {
+        let Some(owner) = entry.file_name().to_str().and_then(sort_dir_owner) else {
+            continue;
+        };
+        // `file_type` does not follow links: a link or junction is never a sort folder.
+        let is_dir = entry.file_type().is_ok_and(|file_type| file_type.is_dir());
+        if !is_dir || is_alive(owner) {
+            continue;
+        }
+        match fs::remove_dir_all(entry.path()) {
+            Ok(()) => outcome.removed += 1,
+            Err(_) => outcome.kept.push(entry.path()),
+        }
+    }
+    outcome.kept.sort();
+    outcome
+}
+
+fn segment_path(dir: &Path, index: usize) -> PathBuf {
     dir.join(format!("segment-{index:06}"))
 }
 

@@ -6,7 +6,9 @@
 //! - [`preflight`]: checks that run before any row is read;
 //! - [`ingest`] and [`validation`]: streaming the CSV into typed records or rejections;
 //! - [`hashing`]: the source fingerprint computed during the same read (decision G4);
-//! - [`sort`]: the external merge sort with bounded memory;
+//! - [`sort`]: the external merge sort with bounded memory, and the cleanup of the sort folders
+//!   that a killed run left behind;
+//! - [`process`]: whether the process that owns such a folder is still running;
 //! - [`primary`]: sort entries of the primary table and the duplicate rule (decision D5);
 //! - [`index`]: sort entries of the secondary index tables (decision D2);
 //! - [`table`]: the LevelDB table writer (decisions D1 and G2);
@@ -32,6 +34,7 @@ pub mod memory;
 pub mod messages;
 pub mod preflight;
 pub mod primary;
+pub mod process;
 pub mod publish;
 pub mod sort;
 pub mod table;
@@ -152,7 +155,8 @@ pub fn generate(
     result
 }
 
-/// Preflight and the lock of the output folder, header, rows through validation into the
+/// Preflight and the lock of the output folder, the cleanup of the sort folders that killed runs
+/// left in the temporary folder, header, rows through validation into the
 /// external sort, the duplicate rule on the merged stream, the primary table and, from the
 /// records it accepts, a second sort into the five index tables, all written into a new version
 /// folder that is published with its manifest in one switch, and the final summary.
@@ -172,6 +176,7 @@ fn build(
     preflight::check_output(&config.output)?;
     // Held until the run ends, so no other generation can change the folder meanwhile.
     let output = OutputFolder::open(&config.output, config.overwrite, log)?;
+    discard_stale_sort_dirs(&config.temp_dir, log)?;
     let temp_error = |error: io::Error| Abort::temp_io(&config.temp_dir, &error);
     let output_error = |error: io::Error| Abort::output_io(&config.output, &error);
     let mut memory_watch = MemoryWatch::new(config.memory_limit_mib);
@@ -260,6 +265,20 @@ fn build(
         let _ = log.line(&line);
     }
     Ok(summary)
+}
+
+/// Deletes the sort folders that killed generators left in `temp_dir` (child flow, step 2): says
+/// once that they were discarded if at least one was, and names each one that could not be
+/// deleted. Runs only once the output folder accepted the run, so a refused run changes nothing.
+fn discard_stale_sort_dirs(temp_dir: &Path, log: &mut RunLog) -> Result<(), Abort> {
+    let stale = sort::discard_stale_sort_dirs(temp_dir, process::is_alive);
+    if stale.removed > 0 {
+        log.line(&messages::stale_sort_dirs_discarded())?;
+    }
+    for dir in &stale.kept {
+        log.line(&messages::stale_sort_dir_kept(dir))?;
+    }
+    Ok(())
 }
 
 /// The final summary of a published run (parent flow A, step 9; child flow, step 5): the counts,
