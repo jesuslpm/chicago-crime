@@ -103,6 +103,14 @@ pub fn leftovers_discarded() -> String {
     "Se han descartado restos de una generación interrumpida anterior.".to_owned()
 }
 
+/// A leftover of an interrupted run could not be deleted; the next run tries again.
+pub fn leftover_kept(path: &Path) -> String {
+    format!(
+        "Aviso: no se ha podido eliminar el resto {}; se reintentará en la próxima generación.",
+        path.display()
+    )
+}
+
 /// The CSV has the header and no rows at all: an empty dataset is published.
 pub fn empty_csv() -> String {
     "Aviso: el CSV no contiene registros; el conjunto generado está vacío.".to_owned()

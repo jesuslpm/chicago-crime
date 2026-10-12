@@ -7,7 +7,8 @@
 //! 1. holds the output lock ([`OutputLock`]) for the whole run, so two generators never share an
 //!    output folder;
 //! 2. inspects the folder ([`OutputFolder::open`]): anything that is not part of a dataset is
-//!    refused and left alone, an existing dataset needs the overwrite option, and version folders
+//!    refused and left alone (a folder is a version only if its name has exactly the shape this
+//!    generator writes), an existing dataset needs the overwrite option, and version folders
 //!    that `CURRENT` does not name, like a `CURRENT.tmp`, are leftovers of an interrupted run and
 //!    are deleted;
 //! 3. writes every table into a fresh version folder that nothing references yet
@@ -133,9 +134,10 @@ pub struct OutputFolder {
 impl OutputFolder {
     /// Creates the folder if it is missing, takes its lock and checks what it holds, in this
     /// order: anything that is not part of a dataset is refused, and an existing dataset needs
-    /// `overwrite`; both refusals change nothing. Then leftovers of interrupted runs are deleted
-    /// and reported once in the log. A leftover that cannot be deleted is ignored: the new
-    /// version never uses its name, and the next run tries again.
+    /// `overwrite`; both refusals change nothing. Then leftovers of interrupted runs are deleted.
+    /// The log says once that leftovers were discarded if at least one was, and names each one
+    /// that could not be deleted: the run goes on, the new version never uses its name, and the
+    /// next run tries again.
     pub fn open(dir: &Path, overwrite: bool, log: &mut RunLog) -> Result<Self, Abort> {
         let unwritable = |error: io::Error| Abort::output_io(dir, &error);
         let created = !dir.exists();
@@ -165,32 +167,34 @@ impl OutputFolder {
             return Err(Abort::DatasetExists);
         }
         folder.current = contents.current;
-        if !contents.leftovers.is_empty() {
-            for leftover in &contents.leftovers {
-                let _ = remove_entry(&dir.join(leftover));
+        let mut discarded = false;
+        let mut kept = Vec::new();
+        for leftover in contents.leftovers {
+            let path = dir.join(leftover);
+            match fail::check(FailPoint::LeftoverRemoval).and_then(|()| remove_entry(&path)) {
+                Ok(()) => discarded = true,
+                Err(_) => kept.push(path),
             }
+        }
+        if discarded {
             log.line(&messages::leftovers_discarded())?;
+        }
+        for path in kept {
+            log.line(&messages::leftover_kept(&path))?;
         }
         Ok(folder)
     }
 
-    /// Creates a new, empty version folder that nothing references yet, named
-    /// `dataset-<YYYYMMDD-HHMMSS>-<process id>`. If that folder exists (a run of the same
-    /// process published a version in the same second), a number is appended: an existing
-    /// folder is never reused.
+    /// Creates a new, empty version folder that nothing references yet, named by
+    /// [`version_dir_name`] after the local time and this process. If that folder exists (a run
+    /// of the same process published a version in the same second, or a leftover with that name
+    /// could not be deleted), a number is appended: an existing folder is never reused.
     pub fn create_version(&self) -> io::Result<NewVersion> {
-        let base = format!(
-            "{VERSION_DIR_PREFIX}{}-{}",
-            local_timestamp(),
-            std::process::id()
-        );
+        let timestamp = local_timestamp();
+        let process_id = std::process::id();
         let mut attempt = 0;
         loop {
-            let name = if attempt == 0 {
-                base.clone()
-            } else {
-                format!("{base}-{attempt}")
-            };
+            let name = version_dir_name(&timestamp, process_id, attempt);
             let dir = self.dir.join(&name);
             match fs::create_dir(&dir) {
                 Ok(()) => {
@@ -268,6 +272,18 @@ impl Drop for OutputFolder {
     }
 }
 
+/// Name of a new version folder: `dataset-<timestamp>-<process id>` for the first `attempt` (0)
+/// and `-<attempt>` appended for the next ones. With a timestamp from [`local_timestamp`]
+/// (`YYYYMMDD-HHMMSS`), these are exactly the names that [`is_version_dir_name`] accepts.
+pub fn version_dir_name(timestamp: &str, process_id: u32, attempt: u32) -> String {
+    let name = format!("{VERSION_DIR_PREFIX}{timestamp}-{process_id}");
+    if attempt == 0 {
+        name
+    } else {
+        format!("{name}-{attempt}")
+    }
+}
+
 /// A version folder being written. Unless it is published, dropping it deletes the folder and
 /// everything in it, so its tables must be closed first.
 pub struct NewVersion {
@@ -297,9 +313,10 @@ struct Contents {
     /// The version folder that a valid `CURRENT` names.
     current: Option<String>,
     /// Ours, but no longer needed: version folders that `CURRENT` does not name, and
-    /// `CURRENT.tmp`.
+    /// `CURRENT.tmp`; sorted by name.
     leftovers: Vec<String>,
-    /// Everything else, sorted by name. The lock file is neither.
+    /// Everything else, sorted by name, including folders that only start like a version folder
+    /// (see [`is_version_dir_name`]), such as `dataset-backup`. The lock file is neither.
     foreign: Vec<String>,
 }
 
@@ -341,6 +358,7 @@ impl Contents {
                 .into_iter()
                 .filter(|name| Some(name) != current.as_ref()),
         );
+        leftovers.sort();
         foreign.sort();
         Ok(Self {
             has_current,

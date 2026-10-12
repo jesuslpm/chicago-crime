@@ -3,7 +3,8 @@
 //! ```text
 //! <output folder>/
 //!     CURRENT                              name of the active version folder and a line feed
-//!     dataset-<YYYYMMDD-HHMMSS>-<pid>/     one version folder (a few more may exist briefly)
+//!     dataset-<YYYYMMDD>-<HHMMSS>-<pid>/   one version folder (a few more may exist briefly);
+//!                                          `-<n>` is appended when that name was taken
 //!         primary.sst
 //!         index-<name>.sst                 one per index
 //!         manifest.json
@@ -23,20 +24,33 @@ use std::path::{Path, PathBuf};
 /// File in the output folder that names the active version folder.
 pub const CURRENT_FILE_NAME: &str = "CURRENT";
 
-/// Every version folder name starts with this prefix and continues with ASCII letters, digits
-/// and hyphens only (see [`is_version_dir_name`]).
+/// Every version folder name starts with this prefix (see [`is_version_dir_name`] for the rest).
 pub const VERSION_DIR_PREFIX: &str = "dataset-";
 
-/// Whether `name` is a valid version folder name: [`VERSION_DIR_PREFIX`] followed by at least one
-/// ASCII letter, digit or hyphen, and nothing else. Such a name can never be a path: it has no
-/// separators, no drive and no `.` or `..` component.
+/// Whether `name` is a valid version folder name, exactly as the generator writes it:
+/// [`VERSION_DIR_PREFIX`], the date (`YYYYMMDD`, 8 digits), the time (`HHMMSS`, 6 digits), the
+/// process ID and, when the generator had to try another name, an attempt number, all separated
+/// by hyphens. The process ID and the attempt number have at least one digit, and every digit is
+/// an ASCII one.
+///
+/// Anything else is not a version folder, even when it starts with the prefix: a user folder such
+/// as `dataset-backup` or `dataset-2024` is never mistaken for a version, so a generator never
+/// deletes it as a leftover. A valid name can never be a path either: it has no separators, no
+/// drive and no `.` or `..` component.
 pub fn is_version_dir_name(name: &str) -> bool {
-    name.strip_prefix(VERSION_DIR_PREFIX).is_some_and(|rest| {
-        !rest.is_empty()
-            && rest
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-    })
+    let Some(rest) = name.strip_prefix(VERSION_DIR_PREFIX) else {
+        return false;
+    };
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let timestamp =
+        |date: &str, time: &str| date.len() == 8 && time.len() == 6 && digits(date) && digits(time);
+    match rest.split('-').collect::<Vec<_>>()[..] {
+        [date, time, process_id] => timestamp(date, time) && digits(process_id),
+        [date, time, process_id, attempt] => {
+            timestamp(date, time) && digits(process_id) && digits(attempt)
+        }
+        _ => false,
+    }
 }
 
 /// Why `CURRENT` does not lead to a version folder.

@@ -9,18 +9,20 @@ mod common;
 
 use std::fs;
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use common::{
     DATASET_FILES, Scenario, csv_with_header, dataset_dir, distinct_row, folder_entries, generate,
     read_table, rerun, sample_row, snapshot, with_field,
 };
 use crime_dataset::{
-    Compression, IndexKind, Manifest, RecordCounts, SCHEMA_VERSION, resolve_current,
+    Compression, IndexKind, Manifest, RecordCounts, SCHEMA_VERSION, is_version_dir_name,
+    resolve_current,
 };
+use crime_generator::cli::local_timestamp;
 use crime_generator::fail::{FailPoint, arm};
-use crime_generator::messages::previous_version_kept;
-use crime_generator::publish::OutputLock;
+use crime_generator::messages::{leftover_kept, previous_version_kept};
+use crime_generator::publish::{OutputLock, version_dir_name};
 use crime_generator::{Abort, Config, RunSummary};
 use foundationdb_tuple::unpack;
 use sha2::{Digest, Sha256};
@@ -79,6 +81,29 @@ fn version_name(output: &Path) -> String {
         .and_then(|name| name.to_str())
         .expect("a version folder name")
         .to_owned()
+}
+
+/// Creates what a run killed before its switch leaves behind: a version folder named `name` that
+/// nothing names, with a partial table.
+fn crashed_version(output: &Path, name: &str) -> PathBuf {
+    let crashed = output.join(name);
+    fs::create_dir_all(&crashed).expect("the fixture can be created");
+    fs::write(crashed.join("primary.sst"), b"partial table").expect("the fixture can be written");
+    crashed
+}
+
+/// Creates folders a user may keep in the output folder whose names start like a version folder
+/// but do not have its shape, each with a file in it.
+fn user_folders_with_the_version_prefix(output: &Path) {
+    for (folder, file) in [
+        ("dataset-backup", "copy.csv"),
+        ("dataset-2024", "notes.txt"),
+        ("dataset-20261012", "report.pdf"),
+    ] {
+        let folder = output.join(folder);
+        fs::create_dir_all(&folder).expect("the fixture can be created");
+        fs::write(folder.join(file), b"mine").expect("the fixture can be written");
+    }
 }
 
 /// The log of an aborted run ends with the cause and then the cancellation line (AC-G9).
@@ -575,6 +600,131 @@ fn a_foreign_file_next_to_a_dataset_blocks_the_overwrite() {
         }
     );
     assert_eq!(snapshot(&config.output), before);
+}
+
+#[test]
+fn folders_that_only_look_like_versions_are_refused_and_never_deleted() {
+    let scenario = Scenario::new(&[distinct_row(1)]);
+    let config = scenario.config("dataset");
+    user_folders_with_the_version_prefix(&config.output);
+    let before = snapshot(&config.output);
+
+    let (result, log) = generate(&config);
+
+    let abort = result.expect_err("a user folder is neither a dataset nor a leftover");
+    assert_eq!(
+        abort,
+        Abort::ForeignContent {
+            dir: config.output.clone(),
+            entry: "dataset-2024".to_owned()
+        }
+    );
+    assert_log_explains(&log, &abort);
+    assert!(!log.contains(LEFTOVERS), "{log}");
+    assert_eq!(snapshot(&config.output), before, "nothing was touched");
+}
+
+#[test]
+fn folders_that_only_look_like_versions_block_an_overwrite_and_are_never_deleted() {
+    let scenario = Scenario::new(&[distinct_row(1)]);
+    let config = scenario.config("dataset");
+    generate_ok(&config);
+    user_folders_with_the_version_prefix(&config.output);
+    let before = snapshot(&config.output);
+
+    let (result, log) = generate(&rerun(&config, "overwrite", true));
+
+    let abort = result.expect_err("a user folder is never deleted, even by an overwrite");
+    assert_eq!(
+        abort,
+        Abort::ForeignContent {
+            dir: config.output.clone(),
+            entry: "dataset-2024".to_owned()
+        }
+    );
+    assert_log_explains(&log, &abort);
+    assert!(!log.contains(LEFTOVERS), "{log}");
+    assert_eq!(snapshot(&config.output), before, "nothing was touched");
+}
+
+#[test]
+fn the_generator_names_version_folders_as_the_dataset_contract_expects() {
+    assert_eq!(
+        version_dir_name("20261012-101500", 4242, 0),
+        "dataset-20261012-101500-4242"
+    );
+    assert_eq!(
+        version_dir_name("20261012-101500", 4242, 3),
+        "dataset-20261012-101500-4242-3"
+    );
+    let timestamp = local_timestamp();
+    for (process_id, attempt) in [(std::process::id(), 0), (1, 1), (u32::MAX, 100)] {
+        let name = version_dir_name(&timestamp, process_id, attempt);
+        assert!(is_version_dir_name(&name), "{name:?} is a version folder");
+    }
+}
+
+#[test]
+fn a_leftover_that_cannot_be_deleted_is_reported_and_kept_for_the_next_run() {
+    let scenario = Scenario::new(&[distinct_row(1)]);
+    let config = scenario.config("dataset");
+    let leftover = "dataset-20200101-000000-999";
+    let crashed = crashed_version(&config.output, leftover);
+
+    let (_, log) = {
+        let _armed = arm(FailPoint::LeftoverRemoval);
+        generate_ok(&config)
+    };
+
+    assert!(!log.contains(LEFTOVERS), "nothing was discarded: {log}");
+    assert_eq!(
+        log.matches(&leftover_kept(&crashed)).count(),
+        1,
+        "the leftover is named once: {log}"
+    );
+    assert!(
+        log.contains("Generación completada"),
+        "the run still publishes: {log}"
+    );
+    let version = version_name(&config.output);
+    assert_ne!(version, leftover);
+    let mut expected = vec!["CURRENT".to_owned(), leftover.to_owned(), version];
+    expected.sort();
+    assert_eq!(folder_entries(&config.output), expected);
+    assert_eq!(
+        fs::read(crashed.join("primary.sst")).expect("the leftover is intact"),
+        b"partial table"
+    );
+    assert_eq!(published_ids(&config.output), [1]);
+
+    let (_, log) = generate_ok(&rerun(&config, "next", true));
+
+    assert_eq!(log.matches(LEFTOVERS).count(), 1, "{log}");
+    assert!(!crashed.exists(), "the next run discards it");
+}
+
+#[test]
+fn only_leftovers_actually_deleted_are_reported_as_discarded() {
+    let scenario = Scenario::new(&[distinct_row(1)]);
+    let config = scenario.config("dataset");
+    // Leftovers are deleted in name order, so the fail point hits the first one.
+    let kept = crashed_version(&config.output, "dataset-20200101-000000-998");
+    let deleted = crashed_version(&config.output, "dataset-20200101-000000-999");
+
+    let (_, log) = {
+        let _armed = arm(FailPoint::LeftoverRemoval);
+        generate_ok(&config)
+    };
+
+    assert_eq!(
+        log.matches(LEFTOVERS).count(),
+        1,
+        "one message per run: {log}"
+    );
+    assert_eq!(log.matches(&leftover_kept(&kept)).count(), 1, "{log}");
+    assert!(!log.contains(&leftover_kept(&deleted)), "{log}");
+    assert!(kept.exists());
+    assert!(!deleted.exists());
 }
 
 #[test]

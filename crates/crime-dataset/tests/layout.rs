@@ -54,13 +54,21 @@ fn the_contract_names_are_stable() {
     assert_eq!(VERSION_DIR_PREFIX, "dataset-");
 }
 
+/// Two version folder names as the generator writes them.
+const VERSION: &str = "dataset-20261012-101500-4242";
+const OTHER_VERSION: &str = "dataset-20261012-101501-4242";
+
 #[test]
-fn version_folder_names_are_the_prefix_and_safe_characters_only() {
+fn version_folder_names_have_exactly_the_shape_the_generator_writes() {
     for valid in [
-        "dataset-20261012-101500-4242",
+        VERSION,
+        OTHER_VERSION,
+        // The number appended when the folder of that second already exists.
         "dataset-20261012-101500-4242-1",
-        "dataset-x",
-        "dataset-ABC-123",
+        "dataset-20261012-101500-4242-100",
+        // Process IDs have any number of digits.
+        "dataset-20261012-101500-7",
+        "dataset-20261012-101500-4294967295",
     ] {
         assert!(is_version_dir_name(valid), "{valid:?} is valid");
     }
@@ -68,17 +76,44 @@ fn version_folder_names_are_the_prefix_and_safe_characters_only() {
         "",
         "dataset-",
         "dataset",
-        "Dataset-1",
-        "other-1",
-        "dataset-1/..",
-        "dataset-1\\x",
-        "dataset-..",
-        "dataset-1.tmp",
-        "dataset-1 2",
-        "dataset-C:x",
-        "../dataset-1",
-        "dataset-1\n",
-        "dataset-ñ",
+        "Dataset-20261012-101500-4242",
+        "other-20261012-101500-4242",
+        // Folders a user may keep next to a dataset: never versions, so never deleted.
+        "dataset-backup",
+        "dataset-2024",
+        "dataset-20261012",
+        "dataset-1",
+        "dataset-x",
+        "dataset-ABC-123",
+        // Missing or extra parts.
+        "dataset-20261012-101500",
+        "dataset-20261012-101500-",
+        "dataset-20261012--4242",
+        "dataset-20261012-101500-4242-",
+        "dataset-20261012-101500-4242-1-2",
+        // Wrong widths for the date or the time.
+        "dataset-2026101-101500-4242",
+        "dataset-202610120-101500-4242",
+        "dataset-20261012-10150-4242",
+        "dataset-20261012-1015000-4242",
+        // Anything but ASCII digits in a numeric part.
+        "dataset-2026101x-101500-4242",
+        "dataset-20261012-10150x-4242",
+        "dataset-20261012-101500-42a2",
+        "dataset-20261012-101500-4242-a",
+        "dataset-20261012-101500-+4242",
+        "dataset-20261012-101500-٤٢",
+        "dataset_20261012-101500-4242",
+        "dataset-20261012_101500-4242",
+        // Paths and decorated names.
+        "dataset-20261012-101500-4242/..",
+        "dataset-20261012-101500-4242\\x",
+        "../dataset-20261012-101500-4242",
+        "dataset-20261012-101500-4242.tmp",
+        "dataset-20261012-101500-4242 ",
+        " dataset-20261012-101500-4242",
+        "dataset-20261012-101500-4242\n",
+        "C:dataset-20261012-101500-4242",
     ] {
         assert!(!is_version_dir_name(invalid), "{invalid:?} is not valid");
     }
@@ -87,12 +122,12 @@ fn version_folder_names_are_the_prefix_and_safe_characters_only() {
 #[test]
 fn current_resolves_to_the_version_folder_it_names() {
     let dir = TestDir::new();
-    let version = dir.version("dataset-20261012-101500-4242");
+    let version = dir.version(VERSION);
 
     for content in [
-        "dataset-20261012-101500-4242\n",
-        "dataset-20261012-101500-4242\r\n",
-        "dataset-20261012-101500-4242",
+        format!("{VERSION}\n"),
+        format!("{VERSION}\r\n"),
+        VERSION.to_owned(),
     ] {
         dir.current(content.as_bytes());
 
@@ -105,7 +140,7 @@ fn current_resolves_to_the_version_folder_it_names() {
 #[test]
 fn a_folder_without_current_holds_no_dataset() {
     let dir = TestDir::new();
-    dir.version("dataset-1");
+    dir.version(VERSION);
 
     let error = resolve_current(dir.path()).expect_err("there is no CURRENT");
 
@@ -115,30 +150,38 @@ fn a_folder_without_current_holds_no_dataset() {
 #[test]
 fn current_must_hold_exactly_one_valid_name() {
     let dir = TestDir::new();
-    dir.version("dataset-1");
-    dir.version("dataset-2");
+    dir.version(VERSION);
+    dir.version(OTHER_VERSION);
+    // A user folder with the version prefix is not a version, even when it exists.
+    dir.version("dataset-backup");
 
-    for content in [
-        &b""[..],
-        b"\n",
-        b"dataset-1\n\n",
-        b"dataset-1\ndataset-2\n",
-        b" dataset-1\n",
-        b"../dataset-1\n",
-        b"dataset-1/../dataset-2\n",
-        b"..\\dataset-1\n",
-        b"C:\\dataset-1\n",
-        b"other\n",
-        b"dataset-\xff\n",
-    ] {
-        dir.current(content);
+    let mut contents: Vec<Vec<u8>> = [
+        String::new(),
+        "\n".to_owned(),
+        format!("{VERSION}\n\n"),
+        format!("{VERSION}\n{OTHER_VERSION}\n"),
+        format!(" {VERSION}\n"),
+        format!("../{VERSION}\n"),
+        format!("{VERSION}/../{OTHER_VERSION}\n"),
+        format!("..\\{VERSION}\n"),
+        format!("C:\\{VERSION}\n"),
+        "other\n".to_owned(),
+        "dataset-backup\n".to_owned(),
+    ]
+    .into_iter()
+    .map(String::into_bytes)
+    .collect();
+    contents.push(b"dataset-\xff\n".to_vec());
+
+    for content in contents {
+        dir.current(&content);
 
         let error = resolve_current(dir.path()).expect_err("an invalid CURRENT");
 
         assert!(
             matches!(error, CurrentError::InvalidName(_)),
             "{:?}: {error:?}",
-            String::from_utf8_lossy(content)
+            String::from_utf8_lossy(&content)
         );
     }
 }
@@ -146,9 +189,9 @@ fn current_must_hold_exactly_one_valid_name() {
 #[test]
 fn current_naming_a_missing_folder_or_a_file_is_refused() {
     let dir = TestDir::new();
-    fs::write(dir.path().join("dataset-file"), b"not a folder").expect("fixture");
+    fs::write(dir.path().join(OTHER_VERSION), b"not a folder").expect("fixture");
 
-    for name in ["dataset-missing", "dataset-file"] {
+    for name in [VERSION, OTHER_VERSION] {
         dir.current(format!("{name}\n").as_bytes());
 
         let error = resolve_current(dir.path()).expect_err("no such version folder");

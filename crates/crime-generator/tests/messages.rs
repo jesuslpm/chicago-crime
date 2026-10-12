@@ -9,7 +9,8 @@ use crime_dataset::RecordCounts;
 use crime_generator::Abort;
 use crime_generator::messages::{
     duplicate_id, empty_csv, generation_cancelled, generation_completed, index_sort_completed,
-    indexes_generated, leftovers_discarded, previous_version_kept, reading_completed, thousands,
+    indexes_generated, leftover_kept, leftovers_discarded, previous_version_kept,
+    reading_completed, thousands,
 };
 
 #[test]
@@ -142,6 +143,11 @@ fn output_folder_conflicts_name_the_folder() {
         previous_version_kept(Path::new("D:/datasets/chicago/dataset-1")),
         "Aviso: no se ha podido eliminar la versión anterior D:/datasets/chicago/dataset-1; se \
          descartará en la próxima generación."
+    );
+    assert_eq!(
+        leftover_kept(Path::new("D:/datasets/chicago/dataset-20200101-000000-999")),
+        "Aviso: no se ha podido eliminar el resto D:/datasets/chicago/dataset-20200101-000000-999; \
+         se reintentará en la próxima generación."
     );
 }
 

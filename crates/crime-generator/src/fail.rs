@@ -13,6 +13,8 @@ use std::io;
 /// A place in the run where a test can inject a failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FailPoint {
+    /// A leftover of an interrupted run is about to be deleted, before the new version exists.
+    LeftoverRemoval,
     /// The new version folder was just created; no table exists yet.
     VersionCreated,
     /// The primary table is being written while the index sort receives entries: both sorts hold
