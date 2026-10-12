@@ -1,0 +1,11 @@
+[package]
+name = "crime-dataset"
+description = "Shared contract of the Chicago crime dataset: record schema, tuple encoding, indexes and manifest."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+foundationdb-tuple.workspace = true
+serde.workspace = true
+serde_json.workspace = true
