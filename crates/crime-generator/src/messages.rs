@@ -75,6 +75,49 @@ pub fn index_count_mismatch(index: &str, entries: u64, valid: u64) -> String {
     )
 }
 
+/// Another run holds the lock of the output folder.
+pub fn output_locked(dir: &Path) -> String {
+    format!(
+        "Otra generación está usando la carpeta de salida {}.",
+        dir.display()
+    )
+}
+
+/// The output folder holds `entry`, which no generation wrote: it is never replaced or deleted.
+pub fn foreign_content(dir: &Path, entry: &str) -> String {
+    format!(
+        "La carpeta de salida {} contiene \"{entry}\", que no forma parte de un conjunto de \
+         datos. Usa una carpeta vacía o una que solo contenga un conjunto generado.",
+        dir.display()
+    )
+}
+
+/// Logged after the message of any abort: the previous dataset, if any, is intact.
+pub fn generation_cancelled() -> String {
+    "Generación cancelada. No se ha modificado el conjunto existente.".to_owned()
+}
+
+// Publication.
+
+pub fn leftovers_discarded() -> String {
+    "Se han descartado restos de una generación interrumpida anterior.".to_owned()
+}
+
+/// The CSV has the header and no rows at all: an empty dataset is published.
+pub fn empty_csv() -> String {
+    "Aviso: el CSV no contiene registros; el conjunto generado está vacío.".to_owned()
+}
+
+/// The new dataset is published, but the folder of the replaced version could not be deleted
+/// (a reader may still hold its files); the next run discards it as a leftover.
+pub fn previous_version_kept(dir: &Path) -> String {
+    format!(
+        "Aviso: no se ha podido eliminar la versión anterior {}; se descartará en la próxima \
+         generación.",
+        dir.display()
+    )
+}
+
 // Rejected rows. `line` is the line of the file where the row starts.
 
 pub fn wrong_column_count(line: u64, expected: usize, found: usize) -> String {

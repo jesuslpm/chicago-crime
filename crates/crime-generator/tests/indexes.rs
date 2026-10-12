@@ -9,8 +9,8 @@ use std::num::NonZeroUsize;
 use std::path::Path;
 
 use common::{
-    Row, Scenario, TABLE_FILES, datetime, distinct_row, folder_entries, generate, read_table,
-    sample_row, with_field,
+    DATASET_FILES, Row, Scenario, dataset_dir, datetime, distinct_row, folder_entries, generate,
+    read_table, sample_row, with_field,
 };
 use crime_dataset::{IndexKind, RecordCounts};
 use crime_generator::Abort;
@@ -141,14 +141,13 @@ fn every_index_has_one_entry_per_valid_record_and_skips_rejected_and_duplicate_r
         .map(|table| (table.kind, table.stats.entries))
         .collect();
     assert_eq!(counts, IndexKind::ALL.map(|kind| (kind, 6)));
+    let dataset = dataset_dir(&config.output);
     for (file, table) in INDEX_FILES.iter().zip(&summary.indexes) {
-        let keys = index_keys(&config.output, file);
+        let keys = index_keys(&dataset, file);
         let mut found = ids(&keys);
         found.sort_unstable();
         assert_eq!(found, VALID_IDS, "{file} holds every valid ID once");
-        let size = fs::metadata(config.output.join(file))
-            .expect("metadata")
-            .len();
+        let size = fs::metadata(dataset.join(file)).expect("metadata").len();
         assert_eq!(table.stats.size_bytes, size, "{file}");
         assert!(
             !keys.iter().any(|(value, _)| {
@@ -177,7 +176,7 @@ fn keys_are_strictly_increasing_and_ids_ascend_within_each_value() {
         summary.index_sort_segments > 1,
         "the index sort used the disk"
     );
-    let output = scenario.dir.path().join("dataset");
+    let output = dataset_dir(&scenario.dir.path().join("dataset"));
 
     for file in INDEX_FILES {
         let raw: Vec<Vec<u8>> = read_table(&output.join(file))
@@ -201,7 +200,7 @@ fn keys_are_strictly_increasing_and_ids_ascend_within_each_value() {
 fn empty_district_and_community_area_are_indexed_as_nil_and_come_first() {
     let scenario = Scenario::new(&fixture_rows());
     generate_fixture(&scenario, "dataset");
-    let output = scenario.dir.path().join("dataset");
+    let output = dataset_dir(&scenario.dir.path().join("dataset"));
 
     let district = index_keys(&output, DISTRICT);
     let nil_districts: Vec<i64> = district
@@ -234,7 +233,7 @@ fn empty_district_and_community_area_are_indexed_as_nil_and_come_first() {
 fn a_shared_case_number_lists_every_id_that_shares_it() {
     let scenario = Scenario::new(&fixture_rows());
     generate_fixture(&scenario, "dataset");
-    let output = scenario.dir.path().join("dataset");
+    let output = dataset_dir(&scenario.dir.path().join("dataset"));
 
     let shared: Vec<i64> = index_keys(&output, CASE_NUMBER)
         .into_iter()
@@ -249,7 +248,7 @@ fn a_shared_case_number_lists_every_id_that_shares_it() {
 fn the_date_index_follows_the_chronological_order_of_the_records() {
     let scenario = Scenario::new(&fixture_rows());
     generate_fixture(&scenario, "dataset");
-    let output = scenario.dir.path().join("dataset");
+    let output = dataset_dir(&scenario.dir.path().join("dataset"));
     let mut chronological: Vec<(i64, i64)> = [
         (5, "07/04/1965 09:15:00 AM"),
         (10, "01/01/2021 12:00:00 AM"),
@@ -279,7 +278,7 @@ fn the_date_index_follows_the_chronological_order_of_the_records() {
 fn index_tables_read_back_with_sstable_and_tuple_unpacking_alone() {
     let scenario = Scenario::new(&fixture_rows());
     generate_fixture(&scenario, "dataset");
-    let output = scenario.dir.path().join("dataset");
+    let output = dataset_dir(&scenario.dir.path().join("dataset"));
     let typed_keys = |file: &str| -> Vec<Vec<u8>> {
         read_table(&output.join(file))
             .into_iter()
@@ -381,7 +380,7 @@ fn the_same_csv_always_produces_byte_identical_index_tables() {
 
     for file in INDEX_FILES {
         let bytes = |config: &crime_generator::Config| {
-            fs::read(config.output.join(file)).expect("the table can be read")
+            fs::read(dataset_dir(&config.output).join(file)).expect("the table can be read")
         };
         assert_eq!(bytes(&first), bytes(&second), "{file}: two identical runs");
         assert_eq!(
@@ -412,13 +411,18 @@ fn every_index_table_exists_and_is_empty_when_every_row_is_rejected() {
             .collect::<Vec<_>>(),
         IndexKind::ALL.map(|kind| (kind, 0))
     );
+    let dataset = dataset_dir(&config.output);
     for file in INDEX_FILES {
         assert!(
-            read_table(&config.output.join(file)).is_empty(),
+            read_table(&dataset.join(file)).is_empty(),
             "{file} exists and is empty"
         );
     }
-    assert_eq!(folder_entries(&config.output), TABLE_FILES);
+    assert_eq!(folder_entries(&dataset), DATASET_FILES);
+    assert!(
+        !log.contains("Aviso: el CSV no contiene registros"),
+        "rejected rows are records: {log}"
+    );
     let expected = "Índices generados: date 0, primary_type 0, district 0, community_area 0, \
                     case_number 0.";
     assert!(log.lines().any(|line| line == expected), "{log}");
@@ -451,7 +455,7 @@ fn temporary_folders_of_both_sorts_are_gone_after_a_successful_run() {
         Vec::<String>::new(),
         "no sort folder or segment is left"
     );
-    assert_eq!(folder_entries(&config.output), TABLE_FILES);
+    assert_eq!(folder_entries(&dataset_dir(&config.output)), DATASET_FILES);
 }
 
 #[test]

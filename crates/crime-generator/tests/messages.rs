@@ -3,11 +3,13 @@
 use std::io;
 use std::path::Path;
 
+use std::path::PathBuf;
+
 use crime_dataset::RecordCounts;
 use crime_generator::Abort;
 use crime_generator::messages::{
-    duplicate_id, generation_completed, index_sort_completed, indexes_generated, reading_completed,
-    thousands,
+    duplicate_id, empty_csv, generation_cancelled, generation_completed, index_sort_completed,
+    indexes_generated, leftovers_discarded, previous_version_kept, reading_completed, thousands,
 };
 
 #[test]
@@ -100,6 +102,46 @@ fn index_build_defects_are_internal_errors() {
         .to_string(),
         "Error interno: el índice date tiene 8.656.903 entradas, pero la tabla principal tiene \
          8.656.904 registros válidos."
+    );
+}
+
+#[test]
+fn publication_messages_match_the_prd() {
+    assert_eq!(
+        generation_cancelled(),
+        "Generación cancelada. No se ha modificado el conjunto existente."
+    );
+    assert_eq!(
+        leftovers_discarded(),
+        "Se han descartado restos de una generación interrumpida anterior."
+    );
+    assert_eq!(
+        empty_csv(),
+        "Aviso: el CSV no contiene registros; el conjunto generado está vacío."
+    );
+}
+
+#[test]
+fn output_folder_conflicts_name_the_folder() {
+    let dir = PathBuf::from("D:/datasets/chicago");
+
+    assert_eq!(
+        Abort::OutputLocked { dir: dir.clone() }.to_string(),
+        "Otra generación está usando la carpeta de salida D:/datasets/chicago."
+    );
+    assert_eq!(
+        Abort::ForeignContent {
+            dir,
+            entry: "notas.txt".to_owned()
+        }
+        .to_string(),
+        "La carpeta de salida D:/datasets/chicago contiene \"notas.txt\", que no forma parte de \
+         un conjunto de datos. Usa una carpeta vacía o una que solo contenga un conjunto generado."
+    );
+    assert_eq!(
+        previous_version_kept(Path::new("D:/datasets/chicago/dataset-1")),
+        "Aviso: no se ha podido eliminar la versión anterior D:/datasets/chicago/dataset-1; se \
+         descartará en la próxima generación."
     );
 }
 

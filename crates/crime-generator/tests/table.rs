@@ -93,6 +93,125 @@ fn keys_out_of_order_across_many_blocks_are_still_refused() {
     assert_eq!(read_table(&path).len(), 1_000);
 }
 
+/// A destination that accepts `limit` bytes and then fails every write with `kind`, like a disk
+/// that fills up.
+struct FailingWriter {
+    written: usize,
+    limit: usize,
+    kind: io::ErrorKind,
+}
+
+impl FailingWriter {
+    fn full_after(limit: usize) -> Self {
+        Self {
+            written: 0,
+            limit,
+            kind: io::ErrorKind::StorageFull,
+        }
+    }
+}
+
+impl io::Write for FailingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.written + buf.len() > self.limit {
+            return Err(io::Error::from(self.kind));
+        }
+        self.written += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn assert_io_error(result: Result<impl std::fmt::Debug, TableError>, kind: io::ErrorKind) {
+    match result {
+        Err(TableError::Io(error)) => assert_eq!(error.kind(), kind, "{error}"),
+        other => panic!("expected an I/O error of kind {kind:?}, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_write_failure_while_adding_keeps_its_kind_and_every_later_call_fails() {
+    let mut writer = TableWriter::from_writer(FailingWriter::full_after(0), Compression::None);
+    let value = vec![b'v'; 64 * 1024];
+
+    // Blocks go through a write buffer, so the destination only fails once the buffer is full.
+    let mut index = 0u32;
+    let failure = loop {
+        match writer.add(&index.to_be_bytes(), &value) {
+            Ok(()) => index += 1,
+            Err(error) => break error,
+        }
+        assert!(index < 1_000, "the full destination must fail an add");
+    };
+
+    assert_io_error(Err::<(), _>(failure), io::ErrorKind::StorageFull);
+    assert_io_error(
+        writer.add(&(index + 1).to_be_bytes(), &value),
+        io::ErrorKind::Other,
+    );
+    assert_io_error(writer.finish(), io::ErrorKind::Other);
+}
+
+#[test]
+fn a_full_disk_at_the_last_write_is_reported_by_finish() {
+    let mut writer = TableWriter::from_writer(FailingWriter::full_after(100), Compression::Snappy);
+    for key in [b"a", b"b", b"c"] {
+        writer
+            .add(key, b"small value")
+            .expect("small entries stay in the buffer");
+    }
+
+    assert_io_error(writer.finish(), io::ErrorKind::StorageFull);
+}
+
+#[test]
+fn a_table_written_to_any_destination_has_the_same_bytes_as_its_file() {
+    let dir = tempfile::tempdir().expect("a temporary directory can be created");
+    let (path, mut file_writer) = new_writer(&dir);
+    let shared = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut memory_writer =
+        TableWriter::from_writer(SharedBuffer(shared.clone()), Compression::Snappy);
+    for index in 0..500u32 {
+        let value = format!("value {index}");
+        file_writer
+            .add(&index.to_be_bytes(), value.as_bytes())
+            .expect("added");
+        memory_writer
+            .add(&index.to_be_bytes(), value.as_bytes())
+            .expect("added");
+    }
+
+    let file_stats = file_writer
+        .finish()
+        .expect("the file table can be finished");
+    let memory_stats = memory_writer
+        .finish()
+        .expect("the memory table can be finished");
+
+    assert_eq!(file_stats, memory_stats);
+    assert_eq!(
+        *shared.borrow(),
+        fs::read(&path).expect("the table can be read")
+    );
+}
+
+/// An in-memory destination the test can still read after the writer took it.
+struct SharedBuffer(std::rc::Rc<std::cell::RefCell<Vec<u8>>>);
+
+impl io::Write for SharedBuffer {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[test]
 fn an_existing_file_is_never_overwritten() {
     let dir = tempfile::tempdir().expect("a temporary directory can be created");

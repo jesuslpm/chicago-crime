@@ -87,9 +87,9 @@ fn writes_the_primary_table_and_logs_rejections_next_to_the_output_folder() {
     }
     assert!(log.contains("SHA-256"), "{log}");
     assert_eq!(
-        common::folder_entries(&output),
-        common::TABLE_FILES,
-        "the primary table and the five index tables are published"
+        common::folder_entries(&common::dataset_dir(&output)),
+        common::DATASET_FILES,
+        "the primary table, the five index tables and the manifest are published"
     );
 }
 
@@ -99,21 +99,37 @@ fn an_existing_dataset_exits_with_failure_and_is_kept() {
     let input = dir.path().join("crimes.csv");
     fs::write(&input, csv_with_header(&[row_with_id(1)])).expect("the fixture can be written");
     let output = dir.path().join("dataset");
-    fs::create_dir(&output).expect("the output folder can be created");
-    fs::write(output.join("primary.sst"), b"previous").expect("the fixture can be written");
+    let logs = dir.path().join("logs");
+    fs::create_dir(&logs).expect("the log folder can be created");
+    let first = generator(&[&input, &output, dir.path()]);
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let published = common::snapshot(&output);
 
-    let result = generator(&[&input, &output, dir.path()]);
+    let result = Command::new(env!("CARGO_BIN_EXE_crime-generator"))
+        .arg("--input")
+        .arg(&input)
+        .arg("--output")
+        .arg(&output)
+        .arg("--temp-dir")
+        .arg(dir.path())
+        .arg("--log")
+        .arg(logs.join("second.log"))
+        .output()
+        .expect("the generator can be started");
 
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(!result.status.success(), "{stderr}");
-    assert!(
-        stderr.contains("La carpeta de salida ya contiene un conjunto de datos."),
-        "{stderr}"
-    );
-    assert_eq!(
-        fs::read(output.join("primary.sst")).expect("the table can be read"),
-        b"previous"
-    );
+    for expected in [
+        "La carpeta de salida ya contiene un conjunto de datos.",
+        "Generación cancelada. No se ha modificado el conjunto existente.",
+    ] {
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+    assert_eq!(common::snapshot(&output), published, "nothing changed");
 }
 
 #[test]
@@ -133,7 +149,16 @@ fn header_mismatch_exits_with_failure_and_explains_it_in_the_log() {
     assert!(!result.status.success());
     assert!(stderr.contains(message), "{stderr}");
     let log = fs::read_to_string(default_log(dir.path(), "dataset")).expect("log");
-    assert!(log.contains(message), "{log}");
+    let lines: Vec<&str> = log.lines().collect();
+    assert_eq!(
+        lines,
+        [
+            message,
+            "Generación cancelada. No se ha modificado el conjunto existente."
+        ],
+        "the log explains the cause and that nothing changed (AC-G9)"
+    );
+    assert!(!output.exists(), "a folder this run created is removed");
 }
 
 #[test]

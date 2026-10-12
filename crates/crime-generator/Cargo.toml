@@ -14,6 +14,14 @@ sha2.workspace = true
 sstable.workspace = true
 tempfile.workspace = true
 
+[features]
+# Deterministic failure injection for the tests (see `src/fail.rs`). The dev-dependency below turns
+# it on for every test target of this crate, so `cargo test` runs the failure tests by default;
+# ordinary builds never include it.
+fail-points = []
+
 [dev-dependencies]
+# This crate itself, with the fail points enabled for its own tests.
+crime-generator = { path = ".", features = ["fail-points"] }
 # The independent read-back tests unpack tuples without the dataset crate.
 foundationdb-tuple.workspace = true

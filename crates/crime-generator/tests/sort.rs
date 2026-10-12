@@ -196,6 +196,57 @@ fn dropping_an_unfinished_sort_removes_the_segments() {
 }
 
 #[test]
+fn a_corrupt_segment_in_the_middle_of_the_merge_yields_one_error_and_then_ends() {
+    let dir = tempfile::tempdir().expect("a temporary directory can be created");
+    let size = NonZeroUsize::new(2).expect("positive");
+    let mut sort =
+        ExternalSort::new(dir.path(), size, PrimaryEntry::compare).expect("the sort can start");
+    // Segments of two: [1, 2], [3, 4], [5, 6].
+    for id in 1..=6 {
+        sort.push(entry(id, 1)).expect("the entry can be pushed");
+    }
+    let names = folder_entries(dir.path());
+    let sort_dir = dir.path().join(
+        names
+            .iter()
+            .find(|name| name.starts_with(SORT_DIR_PREFIX))
+            .expect("the sort folder"),
+    );
+    let segments = folder_entries(&sort_dir);
+    assert_eq!(segments.len(), 3, "{segments:?}");
+    // Three stray bytes after the last entry of the second segment: an entry cut short.
+    let mut second = std::fs::OpenOptions::new()
+        .append(true)
+        .open(sort_dir.join(&segments[1]))
+        .expect("the segment can be opened");
+    io::Write::write_all(&mut second, &[1, 2, 3]).expect("the segment can be corrupted");
+    drop(second);
+
+    let mut sorted = sort
+        .finish()
+        .expect("the first entry of every segment is intact");
+    let mut ids = Vec::new();
+    let error = loop {
+        match sorted.next() {
+            Some(Ok(entry)) => ids.push(entry.id),
+            Some(Err(error)) => break error,
+            None => panic!("the corrupt segment must be reported; read {ids:?}"),
+        }
+    };
+
+    assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(
+        ids,
+        [1, 2, 3],
+        "entries before the corruption come in order"
+    );
+    assert!(sorted.next().is_none(), "the stream ends after the error");
+    assert!(sorted.next().is_none(), "and stays ended");
+    sorted.close().expect("the sort folder can be removed");
+    assert_eq!(folder_entries(dir.path()), Vec::<String>::new());
+}
+
+#[test]
 fn encoded_entries_decode_to_themselves() {
     let entries = [
         entry(i64::MIN, 0),

@@ -68,6 +68,9 @@ pub struct TableWriter {
     broken: bool,
     last_key: Option<Vec<u8>>,
     entries: u64,
+    /// A second handle on the table file, to sync it once the builder has written and flushed
+    /// everything: the builder owns the destination and drops it when it finishes.
+    sync: Option<File>,
 }
 
 impl TableWriter {
@@ -78,9 +81,20 @@ impl TableWriter {
             .create_new(true)
             .open(path)
             .map_err(TableError::Io)?;
+        let sync = file.try_clone().map_err(TableError::Io)?;
+        Ok(Self::new(Box::new(file), Some(sync), compression))
+    }
+
+    /// A table written to any destination, such as a test double. [`TableWriter::finish`]
+    /// flushes it; only a table made by [`TableWriter::create`] is also synced to disk.
+    pub fn from_writer(destination: impl Write + 'static, compression: Compression) -> Self {
+        Self::new(Box::new(destination), None, compression)
+    }
+
+    fn new(destination: Box<dyn Write>, sync: Option<File>, compression: Compression) -> Self {
         let failure = Rc::default();
         let destination = WriteAll {
-            inner: BufWriter::with_capacity(WRITE_BUFFER_BYTES, file),
+            inner: BufWriter::with_capacity(WRITE_BUFFER_BYTES, destination),
             failure: Rc::clone(&failure),
         };
         let options = Options {
@@ -90,13 +104,14 @@ impl TableWriter {
             },
             ..Options::default()
         };
-        Ok(Self {
+        Self {
             builder: TableBuilder::new_no_filter(options, destination),
             failure,
             broken: false,
             last_key: None,
             entries: 0,
-        })
+            sync,
+        }
     }
 
     /// Adds one entry. A key that is not strictly greater than the previous one is refused and
@@ -128,25 +143,31 @@ impl TableWriter {
         Ok(())
     }
 
-    /// Writes the index and the footer and flushes the file.
+    /// Writes the index and the footer, flushes the file and syncs it to disk, so that a failure
+    /// of the last writes (a full disk, for example) is reported here and never after the table
+    /// is published.
     pub fn finish(self) -> Result<TableStats, TableError> {
         let Self {
             builder,
             failure,
             broken,
             entries,
+            sync,
             ..
         } = self;
         if broken {
             return Err(already_failed());
         }
-        match builder.finish() {
-            Ok(size_bytes) => Ok(TableStats {
-                entries,
-                size_bytes: size_bytes as u64,
-            }),
-            Err(status) => Err(original_error(&failure, status)),
+        let size_bytes = builder
+            .finish()
+            .map_err(|status| original_error(&failure, status))?;
+        if let Some(file) = sync {
+            file.sync_all().map_err(TableError::Io)?;
         }
+        Ok(TableStats {
+            entries,
+            size_bytes: size_bytes as u64,
+        })
     }
 }
 
@@ -167,7 +188,7 @@ fn original_error(failure: &RefCell<Option<io::Error>>, status: Status) -> Table
 /// Destination of the table builder: every `write` writes the whole buffer or fails, and the
 /// original error is kept for [`TableWriter`], because the builder turns it into a `Status`.
 struct WriteAll {
-    inner: BufWriter<File>,
+    inner: BufWriter<Box<dyn Write>>,
     failure: Rc<RefCell<Option<io::Error>>>,
 }
 

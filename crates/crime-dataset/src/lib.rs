@@ -7,7 +7,9 @@
 //! - [`CivilDateTime`], the naive civil date and time codec (decision D3);
 //! - the primary table layout: [`primary_key`], [`encode_value`] and [`decode_value`] (decision D4);
 //! - the five secondary indexes, [`IndexKind`], and their [`index_key`] layout (decision D2);
-//! - dataset file names and the [`Manifest`] model.
+//! - dataset file names and the [`Manifest`] model;
+//! - the layout of the output folder: version folders and the [`CURRENT_FILE_NAME`] file that
+//!   names the active one, read with [`resolve_current`].
 //!
 //! Keys and values use the FoundationDB tuple format only (no FoundationDB database), because its
 //! byte order preserves the order of integers, text and `Nil`.
@@ -15,12 +17,16 @@
 mod datetime;
 mod encoding;
 mod index;
+mod layout;
 mod manifest;
 mod record;
 
 pub use datetime::{CivilDateTime, DateTimeError};
 pub use encoding::{DecodeError, VALUE_FIELD_COUNT, decode_value, encode_value, primary_key};
 pub use index::{IndexKind, index_key};
+pub use layout::{
+    CURRENT_FILE_NAME, CurrentError, VERSION_DIR_PREFIX, is_version_dir_name, resolve_current,
+};
 pub use manifest::{
     Compression, INDEX_FILE_PREFIX, IndexInfo, MANIFEST_FILE_NAME, Manifest, PRIMARY_FILE_NAME,
     RecordCounts, SCHEMA_VERSION, SourceInfo, TABLE_FILE_EXTENSION, TableInfo,

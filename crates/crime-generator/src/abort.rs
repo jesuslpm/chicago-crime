@@ -24,6 +24,10 @@ pub enum Abort {
     },
     /// The output folder already holds a dataset and overwriting was not allowed.
     DatasetExists,
+    /// Another generation holds the lock of the output folder.
+    OutputLocked { dir: PathBuf },
+    /// The output folder holds `entry`, which is not part of a dataset (the first one, by name).
+    ForeignContent { dir: PathBuf, entry: String },
     /// The output folder cannot be created or written.
     OutputUnwritable { dir: PathBuf },
     /// A folder ran out of space while the run was writing to it.
@@ -83,6 +87,8 @@ impl fmt::Display for Abort {
             } => messages::header_mismatch(*column, expected, found),
             Abort::DatasetExists => messages::dataset_exists(),
             Abort::OutputUnwritable { dir } => messages::output_unwritable(dir),
+            Abort::OutputLocked { dir } => messages::output_locked(dir),
+            Abort::ForeignContent { dir, entry } => messages::foreign_content(dir, entry),
             Abort::InsufficientSpace { dir } => messages::insufficient_space(dir),
             Abort::UnorderedKeys { file } => messages::unordered_keys(file),
             Abort::UndecodableRecord { id } => messages::undecodable_record(*id),

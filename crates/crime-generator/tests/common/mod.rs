@@ -21,13 +21,14 @@ use tempfile::TempDir;
 /// One CSV row as raw field bytes.
 pub type Row = Vec<Vec<u8>>;
 
-/// Every table file of a dataset, sorted like [`folder_entries`] lists them.
-pub const TABLE_FILES: [&str; 6] = [
+/// Every file of a published version folder, sorted like [`folder_entries`] lists them.
+pub const DATASET_FILES: [&str; 7] = [
     "index-case_number.sst",
     "index-community_area.sst",
     "index-date.sst",
     "index-district.sst",
     "index-primary_type.sst",
+    "manifest.json",
     "primary.sst",
 ];
 
@@ -232,6 +233,21 @@ impl Scenario {
     }
 }
 
+/// The same run with another log file, `<name>.log` next to the original one, and the given
+/// overwrite option: what a second generation into the same output folder looks like.
+pub fn rerun(config: &Config, name: &str, overwrite: bool) -> Config {
+    let log = config
+        .log
+        .parent()
+        .expect("the log has a folder")
+        .join(format!("{name}.log"));
+    Config {
+        log,
+        overwrite,
+        ..config.clone()
+    }
+}
+
 /// Runs a generation with a log that is not echoed to the console; returns the result and the
 /// log content.
 pub fn generate(config: &Config) -> (Result<RunSummary, Abort>, String) {
@@ -251,6 +267,45 @@ pub fn read_table(path: &Path) -> Vec<(Vec<u8>, Vec<u8>)> {
     while let Some(entry) = SSIterator::next(&mut entries) {
         all.push(entry);
     }
+    all
+}
+
+/// The published version folder of `output`, found by reading `CURRENT` directly, without the
+/// dataset crate: `CURRENT` holds the folder name and a line feed.
+pub fn dataset_dir(output: &Path) -> PathBuf {
+    let current = fs::read_to_string(output.join("CURRENT"))
+        .unwrap_or_else(|error| panic!("{} has no CURRENT: {error}", output.display()));
+    let name = current
+        .strip_suffix('\n')
+        .unwrap_or_else(|| panic!("CURRENT ends with a line feed: {current:?}"));
+    output.join(name)
+}
+
+/// Every file and folder under `dir`, as relative paths with the content of each file (`None` for
+/// folders), sorted: comparing two snapshots proves that nothing changed, byte for byte.
+pub fn snapshot(dir: &Path) -> Vec<(String, Option<Vec<u8>>)> {
+    fn walk(root: &Path, dir: &Path, all: &mut Vec<(String, Option<Vec<u8>>)>) {
+        for entry in fs::read_dir(dir).expect("the folder can be listed") {
+            let path = entry.expect("the entry can be read").path();
+            let relative = path
+                .strip_prefix(root)
+                .expect("inside the root")
+                .to_string_lossy()
+                .into_owned();
+            if path.is_dir() {
+                all.push((relative, None));
+                walk(root, &path, all);
+            } else {
+                all.push((
+                    relative,
+                    Some(fs::read(&path).expect("the file can be read")),
+                ));
+            }
+        }
+    }
+    let mut all = Vec::new();
+    walk(dir, dir, &mut all);
+    all.sort();
     all
 }
 

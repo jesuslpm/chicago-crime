@@ -213,6 +213,7 @@ dependencies = [
  "chrono",
  "clap",
  "crime-dataset",
+ "crime-generator",
  "csv",
  "foundationdb-tuple",
  "sha2",

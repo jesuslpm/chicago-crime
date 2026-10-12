@@ -8,11 +8,10 @@ use std::fs;
 use std::num::NonZeroUsize;
 
 use common::{
-    Scenario, TABLE_FILES, distinct_record, distinct_row, folder_entries, generate, plain_csv_line,
-    read_table, row_with_id, sample_row, with_field,
+    DATASET_FILES, Scenario, dataset_dir, distinct_record, distinct_row, folder_entries, generate,
+    plain_csv_line, read_table, row_with_id, sample_row, with_field,
 };
 use crime_dataset::{Compression, PRIMARY_FILE_NAME, RecordCounts, decode_value, primary_key};
-use crime_generator::Abort;
 use foundationdb_tuple::{Element, unpack};
 
 /// IDs in no particular order, far from sorted.
@@ -24,8 +23,8 @@ fn segment_size(size: usize) -> NonZeroUsize {
 
 /// Asserts that the primary table holds exactly `ids`, in ascending order, each with the record of
 /// its input row.
-fn assert_primary_holds(scenario_output: &std::path::Path, ids: &[i64]) {
-    let entries = read_table(&scenario_output.join(PRIMARY_FILE_NAME));
+fn assert_primary_holds(output: &std::path::Path, ids: &[i64]) {
+    let entries = read_table(&dataset_dir(output).join(PRIMARY_FILE_NAME));
     let mut expected = ids.to_vec();
     expected.sort_unstable();
 
@@ -89,7 +88,7 @@ fn the_table_reads_back_with_sstable_and_tuple_unpacking_alone() {
     let (result, log) = generate(&config);
     result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
 
-    let entries = read_table(&config.output.join("primary.sst"));
+    let entries = read_table(&dataset_dir(&config.output).join("primary.sst"));
     let ids: Vec<i64> = entries
         .iter()
         .map(|(key, _)| {
@@ -169,7 +168,7 @@ fn duplicates_in_different_segments_keep_the_first_row_and_log_the_rest() {
     );
     assert_eq!(summary.primary.entries, 6);
 
-    let entries = read_table(&config.output.join(PRIMARY_FILE_NAME));
+    let entries = read_table(&dataset_dir(&config.output).join(PRIMARY_FILE_NAME));
     let kept: Vec<(i64, String)> = entries
         .iter()
         .map(|(_, value)| {
@@ -233,8 +232,8 @@ fn snappy_tables_are_smaller_than_uncompressed_ones_and_both_read_back() {
 
     let snappy_summary = snappy_result.unwrap_or_else(|abort| panic!("{abort}\n{snappy_log}"));
     let plain_summary = plain_result.unwrap_or_else(|abort| panic!("{abort}\n{plain_log}"));
-    let snappy_path = snappy.output.join(PRIMARY_FILE_NAME);
-    let plain_path = plain.output.join(PRIMARY_FILE_NAME);
+    let snappy_path = dataset_dir(&snappy.output).join(PRIMARY_FILE_NAME);
+    let plain_path = dataset_dir(&plain.output).join(PRIMARY_FILE_NAME);
     let snappy_entries = read_table(&snappy_path);
     assert_eq!(snappy_entries.len(), 3_000);
     assert_eq!(
@@ -273,7 +272,8 @@ fn the_same_csv_always_produces_a_byte_identical_primary_table() {
     }
 
     let bytes = |config: &crime_generator::Config| {
-        fs::read(config.output.join(PRIMARY_FILE_NAME)).expect("the table can be read")
+        fs::read(dataset_dir(&config.output).join(PRIMARY_FILE_NAME))
+            .expect("the table can be read")
     };
     assert_eq!(bytes(&first), bytes(&second), "two identical runs");
     assert_eq!(
@@ -283,8 +283,10 @@ fn the_same_csv_always_produces_a_byte_identical_primary_table() {
     );
 }
 
+// Refusing and replacing an existing dataset (AC-G8) is covered in `publish.rs`.
+
 #[test]
-fn sort_segments_and_staging_files_are_gone_after_a_successful_run() {
+fn sort_segments_and_unpublished_folders_are_gone_after_a_successful_run() {
     let rows: Vec<_> = (1..=20).rev().map(distinct_row).collect();
     let scenario = Scenario::new(&rows);
     let config = crime_generator::Config {
@@ -301,49 +303,18 @@ fn sort_segments_and_staging_files_are_gone_after_a_successful_run() {
         Vec::<String>::new(),
         "no sort folder or segment is left"
     );
-    assert_eq!(folder_entries(&config.output), TABLE_FILES);
-}
-
-#[test]
-fn an_existing_dataset_is_kept_without_the_overwrite_option() {
-    let scenario = Scenario::new(&[distinct_row(1)]);
-    let config = scenario.config("dataset");
-    fs::create_dir(&config.output).expect("the output folder can be created");
-    let existing = config.output.join(PRIMARY_FILE_NAME);
-    fs::write(&existing, b"previous dataset").expect("the fixture can be written");
-
-    let (result, log) = generate(&config);
-
-    let abort = result.expect_err("an existing dataset needs the overwrite option");
-    assert_eq!(abort, Abort::DatasetExists);
-    let message = "La carpeta de salida ya contiene un conjunto de datos. Usa la opción de \
-                   sobrescritura para reemplazarlo.";
-    assert_eq!(abort.to_string(), message);
+    let version = dataset_dir(&config.output);
+    let version_name = version
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a version folder name")
+        .to_owned();
     assert_eq!(
-        fs::read(&existing).expect("the table can be read"),
-        b"previous dataset"
+        folder_entries(&config.output),
+        ["CURRENT".to_owned(), version_name],
+        "only CURRENT and the published version"
     );
-    assert_eq!(folder_entries(&config.output), [PRIMARY_FILE_NAME]);
-    assert_eq!(folder_entries(&scenario.temp_dir), Vec::<String>::new());
-    assert!(!log.contains("Lectura completada"), "no row is read: {log}");
-}
-
-#[test]
-fn an_existing_dataset_is_replaced_with_the_overwrite_option() {
-    let scenario = Scenario::new(&[distinct_row(8), distinct_row(4)]);
-    let config = crime_generator::Config {
-        overwrite: true,
-        ..scenario.config("dataset")
-    };
-    fs::create_dir(&config.output).expect("the output folder can be created");
-    fs::write(config.output.join(PRIMARY_FILE_NAME), b"previous dataset")
-        .expect("the fixture can be written");
-
-    let (result, log) = generate(&config);
-
-    result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
-    assert_primary_holds(&config.output, &[4, 8]);
-    assert_eq!(folder_entries(&config.output), TABLE_FILES);
+    assert_eq!(folder_entries(&version), DATASET_FILES);
 }
 
 #[test]
@@ -362,5 +333,5 @@ fn a_csv_without_valid_rows_produces_an_empty_readable_table() {
         }
     );
     assert_eq!(summary.primary.entries, 0);
-    assert!(read_table(&config.output.join(PRIMARY_FILE_NAME)).is_empty());
+    assert!(read_table(&dataset_dir(&config.output).join(PRIMARY_FILE_NAME)).is_empty());
 }
