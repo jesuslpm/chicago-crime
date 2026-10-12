@@ -37,7 +37,8 @@ pub struct Rejection {
     /// Line of the file where the row starts (the header is line 1).
     pub line: u64,
     pub reason: RejectReason,
-    /// The original row re-serialized as one CSV line, for the log.
+    /// The original row re-serialized as one CSV record, for the log. Line breaks inside quoted
+    /// fields are kept here; [`RunLog`](crate::log::RunLog) escapes them when it writes the entry.
     pub raw: String,
 }
 

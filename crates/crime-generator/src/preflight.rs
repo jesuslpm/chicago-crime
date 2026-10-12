@@ -8,7 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::Abort;
 use crate::log::RunLog;
 
-/// Creates the run log; without it rejections could not be recorded.
+/// Creates the run log as a new file; without it rejections could not be recorded. An existing
+/// file at `path` is refused and left untouched.
 pub fn create_log(path: &Path, echo: bool) -> Result<RunLog, Abort> {
     RunLog::create(path, echo).map_err(|_| Abort::LogUnwritable {
         path: path.to_path_buf(),

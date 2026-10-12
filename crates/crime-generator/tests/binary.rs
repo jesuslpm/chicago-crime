@@ -151,6 +151,45 @@ fn unwritable_log_exits_with_failure() {
 }
 
 #[test]
+fn log_at_the_input_path_is_refused_and_the_input_is_kept() {
+    let dir = tempfile::tempdir().expect("a temporary directory can be created");
+    let input = dir.path().join("crimes.csv");
+    let bytes = csv_with_header(&[row_with_id(1), row_with_id(2)]);
+    fs::write(&input, &bytes).expect("the fixture can be written");
+
+    let result = Command::new(env!("CARGO_BIN_EXE_crime-generator"))
+        .arg("--input")
+        .arg(&input)
+        .arg("--output")
+        .arg(dir.path().join("dataset"))
+        .arg("--temp-dir")
+        .arg(dir.path())
+        .arg("--log")
+        .arg(&input)
+        .output()
+        .expect("the generator can be started");
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        !result.status.success(),
+        "exit {:?}: {stderr}",
+        result.status
+    );
+    assert!(
+        stderr.contains(&format!(
+            "No se puede escribir el log en {}.",
+            input.display()
+        )),
+        "{stderr}"
+    );
+    assert_eq!(
+        fs::read(&input).expect("the input can be read"),
+        bytes,
+        "the input must be unchanged"
+    );
+}
+
+#[test]
 fn missing_options_exit_with_a_usage_error() {
     let result = Command::new(env!("CARGO_BIN_EXE_crime-generator"))
         .output()

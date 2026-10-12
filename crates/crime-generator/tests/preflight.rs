@@ -99,6 +99,25 @@ fn log_in_a_missing_folder_cannot_be_written() {
 }
 
 #[test]
+fn existing_file_at_the_log_path_is_refused_and_left_untouched() {
+    let dir = temp_dir();
+    let path = dir.path().join("run.log");
+    fs::write(&path, b"previous run\n").expect("the fixture can be written");
+
+    let abort = create_log(&path, false).expect_err("the log must be a new file");
+
+    assert_eq!(
+        abort.to_string(),
+        format!("No se puede escribir el log en {}.", path.display())
+    );
+    assert_eq!(
+        fs::read(&path).expect("the file can be read"),
+        b"previous run\n",
+        "the existing file must be unchanged"
+    );
+}
+
+#[test]
 fn log_is_created_and_receives_lines() {
     let dir = temp_dir();
     let path = dir.path().join("run.log");

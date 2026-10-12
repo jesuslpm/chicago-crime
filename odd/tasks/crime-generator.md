@@ -80,6 +80,11 @@ relevant deterministic test before implementing GREEN.
   validation into a record or a rejection (line, column, reason, raw content), per-run log file (default next
   to the output folder) mirrored to the console, SHA-256 while streaming.
   Tests: one fixture per rejection type, header mismatch, each preflight failure.
+- [x] **T2a — Fix from the T2 review: the run log never destroys data**. Route: delegated writer. Added after RDD
+  advisory `R3-log-truncates-arbitrary-path`: `--log` pointing at the input CSV truncated the source. The log
+  must be created exclusively and refuse an existing file. Also fold in `R3-multiline-raw-breaks-log-lines`
+  (keep each rejection's raw content on one physical log line) and `R3-midstream-io-and-log-failure-untested`
+  (test a mid-stream read error).
 - [ ] **T3 — External sort, duplicates and primary SSTable**. Route: delegated writer.
   Sort by `(id, line)`, duplicate detection in the merged stream, primary SSTable writer with Snappy or none
   and pre-`add` order validation.
@@ -113,7 +118,8 @@ AC-G1..AC-G10 of the child PRD. Mapping: AC-G5/G8/G9 → T2, T5, T6 tests; AC-G7
 | Task | Commit | Checks | RDD | Notes |
 |---|---|---|---|---|
 | T1 | `ab6e21d` (+ `c6eba90` chore: project PRD skill, user-approved so the RDD candidate has no untracked files) | fmt ok · clippy -D warnings ok · test 27/27 ok (RED 27/27 `todo!()` first; parent re-ran 27/27) | medium → granted → **approved**, acknowledged (lineage `review-b037a5d15672c977`, 1 lens: reliability). Reviewed boundary → `c6eba90`. | Delegated writer. `foundationdb-tuple` 0.11.0 with `default-features = false` depends only on `memchr` (pure Rust). ~1,217 lines (626 code, 566 tests): six contract areas, above the heuristic by nature. Files: `primary.sst`, `index-<name>.sst`, `manifest.json`. |
-| T2 | (this commit; hash recorded in T3) | fmt ok · clippy ok · test 77/77 workspace (RED 46/46 `todo!()`; GREEN 45/46 then a CRLF line-number fix; parent re-ran 77/77) · full CSV release run: 8,656,904 valid / 0 rejected, 13.5 s, SHA-256 `5cb5fa41…ae35d` over 2,406,401,982 bytes (matches `sha256sum`) | pending assess | Delegated writer. ~1,060 code + ~1,150 tests. The csv crate's `position().line()` lags after CRLF and blank lines, so the start line is derived from the record end. BOM stripped before parsing. Exit codes so far: 0 ok, 1 abort, 2 usage (T6 finalizes them). Rejection log line: `<mensaje> Contenido original: <fila CSV>`. |
+| T2 | `6806f4c` | fmt ok · clippy ok · test 77/77 workspace (RED 46/46 `todo!()`; GREEN 45/46 then a CRLF line-number fix; parent re-ran 77/77) · full CSV release run: 8,656,904 valid / 0 rejected, 13.5 s, SHA-256 `5cb5fa41…ae35d` over 2,406,401,982 bytes (matches `sha256sum`) | medium → granted → **approved**, acknowledged (lineage `review-1d20f6160cc09491`). Reviewed boundary → `6806f4c`. Three advisory findings were turned into T2a. |
+| T2a | (this commit; hash recorded in T3) | fmt ok · clippy ok · test 82/82 (RED: `--log`=`--input` truncated the CSV, an existing log was overwritten, a multi-line entry spanned 3 and then 2 lines; the mid-stream read error was already handled and is now pinned by a test; parent re-ran 82/82) | pending assess | Delegated writer. The log is opened with `create_new`, so it refuses any existing file. `RunLog::line` escapes CR/LF in one place, which keeps every entry on one physical line. Known edges: `--log`=`--input` with a missing input reports a header mismatch; two runs in the same second with the default log name make the second one abort, which is safe. | Delegated writer. ~1,060 code + ~1,150 tests. The csv crate's `position().line()` lags after CRLF and blank lines, so the start line is derived from the record end. BOM stripped before parsing. Exit codes so far: 0 ok, 1 abort, 2 usage (T6 finalizes them). Rejection log line: `<mensaje> Contenido original: <fila CSV>`. |
 
 Notes carried to T2 (done in T2): reject non-finite Latitude/Longitude (`NaN`/`inf` parse as `f64`); map empty optional fields to `None` (the decoder accepts `Some("")`).
 
@@ -123,4 +129,5 @@ Advisory RDD findings (non-blocking, later work):
 
 ## Next step
 
-T3 — External sort, duplicates and primary SSTable.
+T3 — External sort, duplicates and primary SSTable. Standing user instruction (2026-10-12): finish without
+asking, always grant RDD review, merge into `main` after full verification.
