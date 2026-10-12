@@ -8,6 +8,7 @@ use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::{ArgAction, Parser};
 use crime_dataset::Compression;
 
+use crate::index::DEFAULT_INDEX_SEGMENT_SIZE;
 use crate::messages;
 use crate::sort::DEFAULT_SEGMENT_SIZE;
 
@@ -73,6 +74,11 @@ pub struct Args {
     #[arg(long, value_name = "N", hide = true)]
     pub segment_size: Option<NonZeroUsize>,
 
+    // Entries the index sort keeps in memory before writing a segment to disk. Hidden for the
+    // same reason as `segment_size`.
+    #[arg(long, value_name = "N", hide = true)]
+    pub index_segment_size: Option<NonZeroUsize>,
+
     #[arg(short, long, action = ArgAction::Help, help = "Muestra esta ayuda.")]
     help: Option<bool>,
 }
@@ -119,8 +125,10 @@ pub struct Config {
     /// Whether an existing dataset in `output` may be replaced.
     pub overwrite: bool,
     pub compression: Compression,
-    /// Entries held in memory per sort segment.
+    /// Entries held in memory per segment of the primary sort.
     pub segment_size: NonZeroUsize,
+    /// Entries held in memory per segment of the index sort.
+    pub index_segment_size: NonZeroUsize,
 }
 
 impl Config {
@@ -141,6 +149,9 @@ impl Config {
                 Compression::Snappy
             },
             segment_size: args.segment_size.unwrap_or(DEFAULT_SEGMENT_SIZE),
+            index_segment_size: args
+                .index_segment_size
+                .unwrap_or(DEFAULT_INDEX_SEGMENT_SIZE),
         }
     }
 }

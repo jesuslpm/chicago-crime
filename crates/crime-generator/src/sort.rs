@@ -146,6 +146,43 @@ fn segment_path(dir: &Path, index: usize) -> std::path::PathBuf {
     dir.join(format!("segment-{index:06}"))
 }
 
+/// Reads the fixed-size start of the next item of a segment into `header`: `false` when the
+/// segment was already at its end, `InvalidData` when it ends inside the header.
+pub(crate) fn read_item_start(reader: &mut impl Read, header: &mut [u8]) -> io::Result<bool> {
+    let mut filled = 0;
+    while filled < header.len() {
+        match reader.read(&mut header[filled..]) {
+            Ok(0) if filled == 0 => return Ok(false),
+            Ok(0) => return Err(truncated_item()),
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(true)
+}
+
+/// Reads the rest of an item whose start was read: the end of the segment here is
+/// `InvalidData`, because the item is incomplete.
+pub(crate) fn read_item_rest(reader: &mut impl Read, rest: &mut [u8]) -> io::Result<()> {
+    reader.read_exact(rest).map_err(|error| {
+        if error.kind() == io::ErrorKind::UnexpectedEof {
+            truncated_item()
+        } else {
+            error
+        }
+    })
+}
+
+/// A segment that ends in the middle of an item, or holds an item that cannot exist.
+pub(crate) fn corrupt_item(reason: &'static str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, reason)
+}
+
+fn truncated_item() -> io::Error {
+    corrupt_item("a sort segment ends in the middle of an entry")
+}
+
 /// The merged, sorted stream. Its folder is deleted by [`Sorted::close`] or on drop.
 pub struct Sorted<T: Sortable> {
     // Declared before `dir` so it is dropped first: the segment files close before the folder

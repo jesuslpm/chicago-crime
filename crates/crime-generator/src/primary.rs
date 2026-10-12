@@ -10,7 +10,7 @@ use csv::ByteRecord;
 
 use crate::ingest::ValidRow;
 use crate::messages;
-use crate::sort::Sortable;
+use crate::sort::{Sortable, read_item_rest, read_item_start};
 use crate::validation::to_csv_line;
 
 /// Bytes of an encoded entry before its value: ID, line and value length.
@@ -61,7 +61,7 @@ impl Sortable for PrimaryEntry {
     /// A segment that ends in the middle of an entry is reported as `InvalidData`.
     fn decode<R: Read>(reader: &mut R) -> io::Result<Option<Self>> {
         let mut header = [0; ENTRY_HEADER_LEN];
-        if !read_header(reader, &mut header)? {
+        if !read_item_start(reader, &mut header)? {
             return Ok(None);
         }
         let (id, rest) = header.split_at(8);
@@ -70,37 +70,9 @@ impl Sortable for PrimaryEntry {
         let line = u64::from_le_bytes(line.try_into().expect("8 bytes"));
         let length = u32::from_le_bytes(length.try_into().expect("4 bytes"));
         let mut value = vec![0; length as usize];
-        reader.read_exact(&mut value).map_err(|error| {
-            if error.kind() == io::ErrorKind::UnexpectedEof {
-                truncated()
-            } else {
-                error
-            }
-        })?;
+        read_item_rest(reader, &mut value)?;
         Ok(Some(Self { id, line, value }))
     }
-}
-
-/// Fills `header`; `false` when the reader was already at its end.
-fn read_header(reader: &mut impl Read, header: &mut [u8]) -> io::Result<bool> {
-    let mut filled = 0;
-    while filled < header.len() {
-        match reader.read(&mut header[filled..]) {
-            Ok(0) if filled == 0 => return Ok(false),
-            Ok(0) => return Err(truncated()),
-            Ok(read) => filled += read,
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(true)
-}
-
-fn truncated() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        "a sort segment ends in the middle of an entry",
-    )
 }
 
 /// What the duplicate rule made of one entry of the merged stream.

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crime_dataset::{CivilDateTime, Compression, CrimeRecord, HEADER};
 use crime_generator::cli::Config;
+use crime_generator::index::DEFAULT_INDEX_SEGMENT_SIZE;
 use crime_generator::ingest::{CsvIngest, RowOutcome};
 use crime_generator::preflight::create_log;
 use crime_generator::sort::DEFAULT_SEGMENT_SIZE;
@@ -19,6 +20,16 @@ use tempfile::TempDir;
 
 /// One CSV row as raw field bytes.
 pub type Row = Vec<Vec<u8>>;
+
+/// Every table file of a dataset, sorted like [`folder_entries`] lists them.
+pub const TABLE_FILES: [&str; 6] = [
+    "index-case_number.sst",
+    "index-community_area.sst",
+    "index-date.sst",
+    "index-district.sst",
+    "index-primary_type.sst",
+    "primary.sst",
+];
 
 /// The first data row of the reference CSV.
 pub const SAMPLE_ROW: [&str; 22] = [
@@ -216,6 +227,7 @@ impl Scenario {
             overwrite: false,
             compression: Compression::Snappy,
             segment_size: DEFAULT_SEGMENT_SIZE,
+            index_segment_size: DEFAULT_INDEX_SEGMENT_SIZE,
         }
     }
 }

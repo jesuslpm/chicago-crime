@@ -56,6 +56,25 @@ pub fn unordered_keys(file: &Path) -> String {
     )
 }
 
+/// A value of the primary table could not be decoded to build its index entries: a defect of
+/// the generator.
+pub fn undecodable_record(id: i64) -> String {
+    format!(
+        "Error interno: el registro con ID {id} de la tabla principal no se puede decodificar \
+         para generar los índices."
+    )
+}
+
+/// An index does not hold one entry per valid record: a defect of the generator.
+pub fn index_count_mismatch(index: &str, entries: u64, valid: u64) -> String {
+    format!(
+        "Error interno: el índice {index} tiene {} entradas, pero la tabla principal tiene {} \
+         registros válidos.",
+        thousands(entries),
+        thousands(valid)
+    )
+}
+
 // Rejected rows. `line` is the line of the file where the row starts.
 
 pub fn wrong_column_count(line: u64, expected: usize, found: usize) -> String {
@@ -130,6 +149,19 @@ pub fn source_fingerprint(source: &SourceInfo) -> String {
 
 pub fn sort_completed(segments: usize) -> String {
     format!("Ordenación completada. Segmentos temporales en disco: {segments}.")
+}
+
+pub fn index_sort_completed(segments: usize) -> String {
+    format!("Ordenación de los índices completada. Segmentos temporales en disco: {segments}.")
+}
+
+/// Entries per index, as `(index name, entries)` in index order.
+pub fn indexes_generated(counts: &[(&str, u64)]) -> String {
+    let counts: Vec<String> = counts
+        .iter()
+        .map(|(index, entries)| format!("{index} {}", thousands(*entries)))
+        .collect();
+    format!("Índices generados: {}.", counts.join(", "))
 }
 
 /// Final count: duplicates are included in the rejected records.

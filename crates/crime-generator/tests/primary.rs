@@ -8,8 +8,8 @@ use std::fs;
 use std::num::NonZeroUsize;
 
 use common::{
-    Scenario, distinct_record, distinct_row, folder_entries, generate, plain_csv_line, read_table,
-    row_with_id, sample_row, with_field,
+    Scenario, TABLE_FILES, distinct_record, distinct_row, folder_entries, generate, plain_csv_line,
+    read_table, row_with_id, sample_row, with_field,
 };
 use crime_dataset::{Compression, PRIMARY_FILE_NAME, RecordCounts, decode_value, primary_key};
 use crime_generator::Abort;
@@ -301,7 +301,7 @@ fn sort_segments_and_staging_files_are_gone_after_a_successful_run() {
         Vec::<String>::new(),
         "no sort folder or segment is left"
     );
-    assert_eq!(folder_entries(&config.output), [PRIMARY_FILE_NAME]);
+    assert_eq!(folder_entries(&config.output), TABLE_FILES);
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn an_existing_dataset_is_replaced_with_the_overwrite_option() {
 
     result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
     assert_primary_holds(&config.output, &[4, 8]);
-    assert_eq!(folder_entries(&config.output), [PRIMARY_FILE_NAME]);
+    assert_eq!(folder_entries(&config.output), TABLE_FILES);
 }
 
 #[test]

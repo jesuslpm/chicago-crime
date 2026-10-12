@@ -30,6 +30,15 @@ pub enum Abort {
     InsufficientSpace { dir: PathBuf },
     /// A table received keys out of order: a defect of the generator, never of the data.
     UnorderedKeys { file: PathBuf },
+    /// A primary value could not be decoded to build its index entries: a defect of the
+    /// generator, because every value was encoded by the same run.
+    UndecodableRecord { id: i64 },
+    /// An index does not hold one entry per valid record: a defect of the generator.
+    IndexCountMismatch {
+        index: &'static str,
+        entries: u64,
+        valid: u64,
+    },
 }
 
 impl Abort {
@@ -76,6 +85,12 @@ impl fmt::Display for Abort {
             Abort::OutputUnwritable { dir } => messages::output_unwritable(dir),
             Abort::InsufficientSpace { dir } => messages::insufficient_space(dir),
             Abort::UnorderedKeys { file } => messages::unordered_keys(file),
+            Abort::UndecodableRecord { id } => messages::undecodable_record(*id),
+            Abort::IndexCountMismatch {
+                index,
+                entries,
+                valid,
+            } => messages::index_count_mismatch(index, *entries, *valid),
         };
         f.write_str(&message)
     }

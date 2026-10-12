@@ -5,7 +5,10 @@ use std::path::Path;
 
 use crime_dataset::RecordCounts;
 use crime_generator::Abort;
-use crime_generator::messages::{duplicate_id, generation_completed, reading_completed, thousands};
+use crime_generator::messages::{
+    duplicate_id, generation_completed, index_sort_completed, indexes_generated, reading_completed,
+    thousands,
+};
 
 #[test]
 fn counts_use_spanish_thousands_separators() {
@@ -53,6 +56,50 @@ fn generation_summary_matches_the_prd_example() {
     assert_eq!(
         generation_completed(counts),
         "Generación completada: 8.656.900 registros válidos, 4 rechazados (ver log)."
+    );
+}
+
+#[test]
+fn index_summary_lists_every_index_with_its_entries() {
+    let counts = [
+        ("date", 8_656_904),
+        ("primary_type", 8_656_904),
+        ("district", 8_656_904),
+        ("community_area", 8_656_904),
+        ("case_number", 8_656_904),
+    ];
+
+    assert_eq!(
+        indexes_generated(&counts),
+        "Índices generados: date 8.656.904, primary_type 8.656.904, district 8.656.904, \
+         community_area 8.656.904, case_number 8.656.904."
+    );
+}
+
+#[test]
+fn index_sort_reports_its_segments() {
+    assert_eq!(
+        index_sort_completed(44),
+        "Ordenación de los índices completada. Segmentos temporales en disco: 44."
+    );
+}
+
+#[test]
+fn index_build_defects_are_internal_errors() {
+    assert_eq!(
+        Abort::UndecodableRecord { id: 14_348_063 }.to_string(),
+        "Error interno: el registro con ID 14348063 de la tabla principal no se puede \
+         decodificar para generar los índices."
+    );
+    assert_eq!(
+        Abort::IndexCountMismatch {
+            index: "date",
+            entries: 8_656_903,
+            valid: 8_656_904
+        }
+        .to_string(),
+        "Error interno: el índice date tiene 8.656.903 entradas, pero la tabla principal tiene \
+         8.656.904 registros válidos."
     );
 }
 

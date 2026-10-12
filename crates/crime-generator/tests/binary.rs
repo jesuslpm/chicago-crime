@@ -71,9 +71,11 @@ fn writes_the_primary_table_and_logs_rejections_next_to_the_output_folder() {
     let rejection = "Fila 3 omitida, columna \"Date\": \"tomorrow\" no es una fecha válida \
                      (formato MM/DD/AAAA hh:mm:ss AM/PM).";
     let reading = "Lectura completada: 2 registros válidos, 1 rechazados.";
+    let indexes = "Índices generados: date 2, primary_type 2, district 2, community_area 2, \
+                   case_number 2.";
     let summary = "Generación completada: 2 registros válidos, 1 rechazados (ver log).";
     let log = fs::read_to_string(default_log(dir.path(), "dataset")).expect("log");
-    for expected in [rejection, reading, summary] {
+    for expected in [rejection, reading, indexes, summary] {
         assert!(
             log.contains(expected),
             "log should contain {expected:?}: {log}"
@@ -84,9 +86,10 @@ fn writes_the_primary_table_and_logs_rejections_next_to_the_output_folder() {
         );
     }
     assert!(log.contains("SHA-256"), "{log}");
-    assert!(
-        output.join("primary.sst").is_file(),
-        "the primary table is published"
+    assert_eq!(
+        common::folder_entries(&output),
+        common::TABLE_FILES,
+        "the primary table and the five index tables are published"
     );
 }
 
