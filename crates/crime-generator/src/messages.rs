@@ -6,8 +6,11 @@
 
 use std::fmt::Display;
 use std::path::Path;
+use std::time::Duration;
 
 use crime_dataset::{RecordCounts, SourceInfo};
+
+use crate::memory;
 
 // Run aborts.
 
@@ -95,6 +98,20 @@ pub fn foreign_content(dir: &Path, entry: &str) -> String {
 /// Logged after the message of any abort: the previous dataset, if any, is intact.
 pub fn generation_cancelled() -> String {
     "Generación cancelada. No se ha modificado el conjunto existente.".to_owned()
+}
+
+/// The operator pressed Ctrl+C. It is the only line of the abort: it already says that nothing
+/// changed, so [`generation_cancelled`] does not follow it.
+pub fn operator_cancelled() -> String {
+    "Generación cancelada por el operador. No se ha modificado el conjunto existente.".to_owned()
+}
+
+/// The Ctrl+C handler could not be installed: Ctrl+C then ends the process at once, which keeps
+/// the published dataset safe but leaves the temporary files of the run behind.
+pub fn ctrl_c_unavailable() -> String {
+    "Aviso: no se ha podido activar la cancelación con Ctrl+C; si se interrumpe, el proceso \
+     terminará sin limpiar los temporales."
+        .to_owned()
 }
 
 // Publication.
@@ -224,6 +241,61 @@ pub fn generation_completed(counts: RecordCounts) -> String {
     )
 }
 
+// Memory and the final summary.
+
+/// The peak private committed memory went over the limit; logged once per run. The peak is in
+/// whole MiB, as in the PRD example, rounded up so that a peak over the limit never reads as the
+/// limit itself.
+pub fn memory_limit_exceeded(peak_bytes: u64, limit_mib: u64) -> String {
+    format!(
+        "Aviso: el pico de memoria privada comprometida ({} MiB) supera el límite de {} MiB.",
+        thousands(peak_bytes.div_ceil(memory::MIB)),
+        thousands(limit_mib)
+    )
+}
+
+/// Summary: how long the run took.
+pub fn run_duration(elapsed: Duration) -> String {
+    format!("Duración: {}.", format_duration(elapsed))
+}
+
+/// Summary: the peak private committed memory and the limit, or that the operating system does
+/// not report it.
+pub fn peak_memory(peak_bytes: Option<u64>, limit_mib: u64) -> String {
+    const LABEL: &str = "Pico de memoria privada comprometida";
+    let Some(peak_bytes) = peak_bytes else {
+        return format!("{LABEL}: no disponible en este sistema.");
+    };
+    let limit = thousands(limit_mib);
+    if peak_bytes > memory::limit_bytes(limit_mib) {
+        format!(
+            "{LABEL}: {} (supera el límite de {limit} MiB).",
+            mebibytes(peak_bytes)
+        )
+    } else {
+        format!("{LABEL}: {} (límite: {limit} MiB).", mebibytes(peak_bytes))
+    }
+}
+
+/// Summary: the version folder that `CURRENT` now names.
+pub fn dataset_published(dir: &Path) -> String {
+    format!("Conjunto de datos publicado en {}.", dir.display())
+}
+
+/// Summary: one published file, by name, with its size.
+pub fn published_file(name: &str, size_bytes: u64) -> String {
+    format!(
+        "Archivo {name}: {} bytes ({}).",
+        thousands(size_bytes),
+        mebibytes(size_bytes)
+    )
+}
+
+/// Summary: where the log of the run is (child flow, step 5).
+pub fn log_location(path: &Path) -> String {
+    format!("Log de la ejecución: {}.", path.display())
+}
+
 // Command line.
 
 pub fn missing_options(options: &[String]) -> String {
@@ -244,6 +316,32 @@ pub fn invalid_arguments() -> String {
 
 fn help_hint() -> &'static str {
     " Usa --help para ver las opciones."
+}
+
+/// A duration in seconds with one decimal, with minutes and hours when they apply:
+/// `3,5 s`, `1 min 3,5 s`, `1 h 2 min 3,4 s`. Rounded to the nearest tenth of a second.
+pub fn format_duration(elapsed: Duration) -> String {
+    const TENTHS_PER_MINUTE: u128 = 600;
+    const TENTHS_PER_HOUR: u128 = 60 * TENTHS_PER_MINUTE;
+    let tenths = (elapsed.as_millis() + 50) / 100;
+    let (hours, rest) = (tenths / TENTHS_PER_HOUR, tenths % TENTHS_PER_HOUR);
+    let (minutes, rest) = (rest / TENTHS_PER_MINUTE, rest % TENTHS_PER_MINUTE);
+    let seconds = format!("{},{} s", rest / 10, rest % 10);
+    match (hours, minutes) {
+        (0, 0) => seconds,
+        (0, minutes) => format!("{minutes} min {seconds}"),
+        (hours, minutes) => format!("{hours} h {minutes} min {seconds}"),
+    }
+}
+
+/// A size in MiB with one decimal, a decimal comma and thousands separators: `865,4 MiB`,
+/// `1.024,0 MiB`. Rounded up to the next tenth, so a figure never looks smaller than the bytes it
+/// stands for and a peak over the limit never reads as the limit itself.
+pub fn mebibytes(bytes: u64) -> String {
+    let tenths = (u128::from(bytes) * 10).div_ceil(u128::from(memory::MIB));
+    // At most `u64::MAX * 10 / MIB`, which fits a `u64`.
+    let tenths = u64::try_from(tenths).unwrap_or(u64::MAX);
+    format!("{},{} MiB", thousands(tenths / 10), tenths % 10)
 }
 
 /// Formats a count with Spanish thousands separators: `8656904` becomes `8.656.904`.

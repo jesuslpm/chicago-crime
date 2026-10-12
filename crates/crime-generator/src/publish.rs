@@ -18,8 +18,8 @@
 //!    either the previous version or the new one, both complete. Only then is the previous
 //!    version folder deleted; if that fails, the next run discards it as a leftover.
 //!
-//! An abort before the rename deletes the new version folder when it is dropped, so `CURRENT` and
-//! the previous version stay exactly as they were. A process killed before the rename leaves an
+//! An abort before the rename, a cancellation by the operator included, deletes the new version
+//! folder when it is dropped, so `CURRENT` and the previous version stay exactly as they were. A process killed before the rename leaves an
 //! unreferenced version folder that the next run deletes. Durability against power loss is not
 //! required (parent flow A, step 8), so the output folder itself is never synced.
 
@@ -33,6 +33,7 @@ use crime_dataset::{
 };
 
 use crate::Abort;
+use crate::cancel::CancelFlag;
 use crate::cli::local_timestamp;
 use crate::fail::{self, FailPoint};
 use crate::log::RunLog;
@@ -215,23 +216,25 @@ impl OutputFolder {
         }
     }
 
-    /// Publishes `version`, whose tables are complete and synced, with its `manifest`, and
-    /// returns its folder (see the module documentation for the steps).
+    /// Publishes `version`, whose tables are complete and synced, with its `manifest` (see the
+    /// module documentation for the steps).
     ///
-    /// Every failure before `CURRENT` is replaced leaves `CURRENT` untouched, and `version` is
-    /// deleted when it drops. Once `CURRENT` is replaced the run has succeeded: the previous
-    /// version folder is deleted if possible, and a failure there is only logged, best effort.
+    /// Every failure before `CURRENT` is replaced, including a cancellation raised in `cancel`,
+    /// leaves `CURRENT` untouched, and `version` is deleted when it drops. Once `CURRENT` is
+    /// replaced the run has succeeded: the previous version folder is deleted if possible, and a
+    /// failure there is only logged, best effort.
     pub fn publish(
         mut self,
         mut version: NewVersion,
         manifest: &Manifest,
         log: &mut RunLog,
-    ) -> Result<PathBuf, Abort> {
+        cancel: &CancelFlag,
+    ) -> Result<Published, Abort> {
         let unwritable = |error: io::Error| Abort::output_io(&self.dir, &error);
         let mut json = manifest.to_json();
         json.push('\n');
         write_synced(&version.dir.join(MANIFEST_FILE_NAME), json.as_bytes()).map_err(unwritable)?;
-        self.switch_current(&version.name).map_err(unwritable)?;
+        self.switch_current(&version.name, cancel)?;
         version.published = true;
         self.published = true;
 
@@ -243,17 +246,24 @@ impl OutputFolder {
                 let _ = log.line(&messages::previous_version_kept(&previous));
             }
         }
-        Ok(version.dir.clone())
+        Ok(Published {
+            dir: version.dir.clone(),
+            manifest_size_bytes: json.len() as u64,
+        })
     }
 
     /// Points `CURRENT` at the version folder `name`: the new content is written and synced
     /// under a temporary name and renamed over `CURRENT`, which replaces it in one step on the
-    /// same volume. On failure the temporary file is removed and `CURRENT` is unchanged.
-    fn switch_current(&self, name: &str) -> io::Result<()> {
+    /// same volume. The cancellation flag is checked one last time right before the rename, the
+    /// commit point. On failure the temporary file is removed and `CURRENT` is unchanged.
+    fn switch_current(&self, name: &str, cancel: &CancelFlag) -> Result<(), Abort> {
+        let unwritable = |error: io::Error| Abort::output_io(&self.dir, &error);
         let temp = self.dir.join(CURRENT_TEMP_FILE_NAME);
         let switched = write_synced(&temp, format!("{name}\n").as_bytes())
             .and_then(|()| fail::check(FailPoint::BeforeSwitch))
-            .and_then(|()| fs::rename(&temp, self.dir.join(CURRENT_FILE_NAME)));
+            .map_err(unwritable)
+            .and_then(|()| cancel.check(FailPoint::CancelBeforeSwitch))
+            .and_then(|()| fs::rename(&temp, self.dir.join(CURRENT_FILE_NAME)).map_err(unwritable));
         if switched.is_err() {
             let _ = fs::remove_file(&temp);
         }
@@ -270,6 +280,15 @@ impl Drop for OutputFolder {
             let _ = fs::remove_dir(&self.dir);
         }
     }
+}
+
+/// A version that `CURRENT` now names (see [`OutputFolder::publish`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Published {
+    /// The version folder.
+    pub dir: PathBuf,
+    /// Size of the manifest file written into it.
+    pub manifest_size_bytes: u64,
 }
 
 /// Name of a new version folder: `dataset-<timestamp>-<process id>` for the first `attempt` (0)

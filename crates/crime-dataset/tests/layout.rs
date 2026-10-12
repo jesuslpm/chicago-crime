@@ -103,6 +103,12 @@ fn version_folder_names_have_exactly_the_shape_the_generator_writes() {
         "dataset-20261012-101500-4242-a",
         "dataset-20261012-101500-+4242",
         "dataset-20261012-101500-٤٢",
+        // The generator never writes a zero or a leading zero in the process ID or the attempt.
+        "dataset-20261012-101500-0",
+        "dataset-20261012-101500-04242",
+        "dataset-20261012-101500-4242-0",
+        "dataset-20261012-101500-4242-007",
+        "dataset-20261012-101500-4242-01",
         "dataset_20261012-101500-4242",
         "dataset-20261012_101500-4242",
         // Paths and decorated names.

@@ -30,8 +30,8 @@ pub const VERSION_DIR_PREFIX: &str = "dataset-";
 /// Whether `name` is a valid version folder name, exactly as the generator writes it:
 /// [`VERSION_DIR_PREFIX`], the date (`YYYYMMDD`, 8 digits), the time (`HHMMSS`, 6 digits), the
 /// process ID and, when the generator had to try another name, an attempt number, all separated
-/// by hyphens. The process ID and the attempt number have at least one digit, and every digit is
-/// an ASCII one.
+/// by hyphens. Every digit is an ASCII one. The process ID and the attempt number are positive
+/// numbers written without leading zeros (`[1-9][0-9]*`), as the generator formats them.
 ///
 /// Anything else is not a version folder, even when it starts with the prefix: a user folder such
 /// as `dataset-backup` or `dataset-2024` is never mistaken for a version, so a generator never
@@ -42,12 +42,13 @@ pub fn is_version_dir_name(name: &str) -> bool {
         return false;
     };
     let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let positive = |part: &str| digits(part) && !part.starts_with('0');
     let timestamp =
         |date: &str, time: &str| date.len() == 8 && time.len() == 6 && digits(date) && digits(time);
     match rest.split('-').collect::<Vec<_>>()[..] {
-        [date, time, process_id] => timestamp(date, time) && digits(process_id),
+        [date, time, process_id] => timestamp(date, time) && positive(process_id),
         [date, time, process_id, attempt] => {
-            timestamp(date, time) && digits(process_id) && digits(attempt)
+            timestamp(date, time) && positive(process_id) && positive(attempt)
         }
         _ => false,
     }

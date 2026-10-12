@@ -4,7 +4,12 @@
 //! nothing. With the `fail-points` feature, which only this crate's own tests enable (through a
 //! dev-dependency of the crate on itself), a test can [`arm`] one point on its own thread; the next
 //! time the run reaches that point on that thread, `check` returns an I/O error once, exactly as a
-//! real failure there would, and the point is disarmed.
+//! real failure there would, and the point is disarmed. [`arm_after`] lets the run pass the point
+//! a number of times first.
+//!
+//! The `Cancel...` points are the places where the run checks its cancellation flag: there an
+//! armed point raises the flag instead, exactly as a Ctrl+C at that moment would (see
+//! [`CancelFlag`](crate::cancel::CancelFlag)).
 //!
 //! Points are armed per thread, so tests running in parallel never see each other's failures.
 
@@ -26,18 +31,32 @@ pub enum FailPoint {
     BeforeSwitch,
     /// The new version is published; the previous version folder is about to be deleted.
     PreviousVersionRemoval,
+    /// Cancellation check: a row of the CSV was just read; the primary sort is receiving entries.
+    CancelInRows,
+    /// Cancellation check: the next entry of the primary merge is about to be written, while the
+    /// index sort receives entries.
+    CancelInPrimaryMerge,
+    /// Cancellation check: the next entry of the index merge is about to be written.
+    CancelInIndexWrite,
+    /// Cancellation check: `CURRENT.tmp` names the new version and is synced; it is about to
+    /// replace `CURRENT`. The last moment a cancellation can stop the run.
+    CancelBeforeSwitch,
 }
 
-/// Fails once if a test armed `point` on this thread.
+/// Fails once if a test armed `point` on this thread and the run has passed it as many times as
+/// the test asked.
 #[cfg(feature = "fail-points")]
 pub(crate) fn check(point: FailPoint) -> io::Result<()> {
-    let fired = ARMED.with(|armed| {
-        if armed.get() == Some(point) {
+    let fired = ARMED.with(|armed| match armed.get() {
+        Some((armed_point, 0)) if armed_point == point => {
             armed.set(None);
             true
-        } else {
+        }
+        Some((armed_point, passes)) if armed_point == point => {
+            armed.set(Some((armed_point, passes - 1)));
             false
         }
+        _ => false,
     });
     if fired {
         Err(io::Error::other(format!("injected failure at {point:?}")))
@@ -55,13 +74,21 @@ pub(crate) fn check(_point: FailPoint) -> io::Result<()> {
 
 #[cfg(feature = "fail-points")]
 thread_local! {
-    static ARMED: std::cell::Cell<Option<FailPoint>> = const { std::cell::Cell::new(None) };
+    /// The armed point and how many more times the run passes it before it fires.
+    static ARMED: std::cell::Cell<Option<(FailPoint, u32)>> = const { std::cell::Cell::new(None) };
 }
 
 /// Arms `point` on the current thread until it fires once or the returned guard is dropped.
 #[cfg(feature = "fail-points")]
 pub fn arm(point: FailPoint) -> Armed {
-    ARMED.with(|armed| armed.set(Some(point)));
+    arm_after(point, 0)
+}
+
+/// Arms `point` on the current thread so that the run passes it `passes` times and fails the
+/// next time, unless the returned guard is dropped first.
+#[cfg(feature = "fail-points")]
+pub fn arm_after(point: FailPoint, passes: u32) -> Armed {
+    ARMED.with(|armed| armed.set(Some((point, passes))));
     Armed { _private: () }
 }
 

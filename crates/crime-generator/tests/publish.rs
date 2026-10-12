@@ -12,8 +12,8 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use common::{
-    DATASET_FILES, Scenario, csv_with_header, dataset_dir, distinct_row, folder_entries, generate,
-    read_table, rerun, sample_row, snapshot, with_field,
+    DATASET_FILES, Scenario, dataset_dir, distinct_row, folder_entries, generate, generate_ok,
+    published_ids, read_table, rerun, sample_row, snapshot, with_field,
 };
 use crime_dataset::{
     Compression, IndexKind, Manifest, RecordCounts, SCHEMA_VERSION, is_version_dir_name,
@@ -23,8 +23,7 @@ use crime_generator::cli::local_timestamp;
 use crime_generator::fail::{FailPoint, arm};
 use crime_generator::messages::{leftover_kept, previous_version_kept};
 use crime_generator::publish::{OutputLock, version_dir_name};
-use crime_generator::{Abort, Config, RunSummary};
-use foundationdb_tuple::unpack;
+use crime_generator::{Abort, Config};
 use sha2::{Digest, Sha256};
 
 const DATASET_EXISTS: &str = "La carpeta de salida ya contiene un conjunto de datos. Usa la \
@@ -42,30 +41,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 fn segment_size(size: usize) -> NonZeroUsize {
     NonZeroUsize::new(size).expect("a positive segment size")
-}
-
-/// Generates `config` and panics with the log if the run aborts.
-fn generate_ok(config: &Config) -> (RunSummary, String) {
-    let (result, log) = generate(config);
-    let summary = result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
-    (summary, log)
-}
-
-/// Replaces the input CSV with the header and one distinct row per ID.
-fn rewrite_input(scenario: &Scenario, ids: &[i64]) {
-    let rows: Vec<_> = ids.iter().map(|&id| distinct_row(id)).collect();
-    fs::write(&scenario.input, csv_with_header(&rows)).expect("the input can be rewritten");
-}
-
-/// IDs of the published primary table, read with `sstable` and tuple unpacking alone.
-fn published_ids(output: &Path) -> Vec<i64> {
-    read_table(&dataset_dir(output).join("primary.sst"))
-        .iter()
-        .map(|(key, _)| {
-            let (id,): (i64,) = unpack(key).expect("the key is a packed 1-tuple");
-            id
-        })
-        .collect()
 }
 
 fn published_manifest(output: &Path) -> Manifest {
@@ -155,6 +130,8 @@ fn the_first_run_publishes_current_and_one_version_folder_with_the_tables_and_th
     let manifest = published_manifest(&config.output);
     let input = fs::read(&scenario.input).expect("the input can be read");
     let size = |file: &str| fs::metadata(dataset.join(file)).expect("metadata").len();
+    assert_eq!(summary.manifest_size_bytes, size("manifest.json"));
+    assert_eq!(summary.log_path, config.log);
     assert_eq!(manifest.schema_version, SCHEMA_VERSION);
     chrono::DateTime::parse_from_rfc3339(&manifest.generated_at)
         .unwrap_or_else(|error| panic!("{:?} is ISO 8601: {error}", manifest.generated_at));
@@ -226,7 +203,7 @@ fn a_second_run_without_overwrite_is_refused_before_reading_rows_and_changes_not
     let config = scenario.config("dataset");
     generate_ok(&config);
     let published = snapshot(&config.output);
-    rewrite_input(&scenario, &[7, 8, 9]);
+    scenario.rewrite_input(&[7, 8, 9]);
 
     let (result, log) = generate(&rerun(&config, "second", false));
 
@@ -252,7 +229,7 @@ fn overwrite_publishes_a_new_version_and_removes_the_previous_one() {
     let config = scenario.config("dataset");
     generate_ok(&config);
     let previous = version_name(&config.output);
-    rewrite_input(&scenario, &[20, 10]);
+    scenario.rewrite_input(&[20, 10]);
 
     let (summary, log) = generate_ok(&rerun(&config, "second", true));
 
@@ -298,7 +275,7 @@ fn fail_a_replacement_at(point: FailPoint) -> String {
     };
     generate_ok(&config);
     let published = snapshot(&config.output);
-    rewrite_input(&scenario, &[11, 12, 13, 14, 15, 16]);
+    scenario.rewrite_input(&[11, 12, 13, 14, 15, 16]);
 
     let (result, log) = {
         let _armed = arm(point);

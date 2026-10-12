@@ -1,7 +1,7 @@
 //! Command line options and the [`Config`] they resolve to. Help and errors are in Spanish.
 
 use std::ffi::OsString;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
 
 use clap::error::{ContextKind, ContextValue, ErrorKind};
@@ -9,11 +9,22 @@ use clap::{ArgAction, Parser};
 use crime_dataset::Compression;
 
 use crate::index::DEFAULT_INDEX_SEGMENT_SIZE;
+use crate::memory::DEFAULT_MEMORY_LIMIT_MIB;
 use crate::messages;
 use crate::sort::DEFAULT_SEGMENT_SIZE;
 
 /// Fallback folder name for the default log when the output path has none (a drive root).
 const FALLBACK_OUTPUT_NAME: &str = "dataset";
+
+/// The exit codes of [`crate::exit_code`], explained at the end of the help (decision G3).
+const EXIT_CODES_HELP: &str = "\
+Códigos de salida:
+  0    La generación ha terminado y el conjunto se ha publicado, aunque haya registros
+       rechazados o un aviso de memoria.
+  1    La generación se ha cancelado por un error; el conjunto existente no se ha modificado.
+  2    Las opciones no son válidas; no se ha hecho nada.
+  130  El operador ha cancelado la generación con Ctrl+C; el conjunto existente no se ha
+       modificado.";
 
 /// Command line options as typed by the operator.
 #[derive(Debug, Parser)]
@@ -22,7 +33,9 @@ const FALLBACK_OUTPUT_NAME: &str = "dataset";
     about = "Genera el conjunto de datos de delitos de Chicago (SSTables y manifiesto) a partir \
              del CSV.",
     override_usage = "crime-generator --input <ARCHIVO> --output <CARPETA> [opciones]",
-    help_template = "{about}\n\nUso: {usage}\n\nOpciones:\n{options}\n",
+    // `{options}` and `{after-help}` already bring the line breaks that separate them.
+    help_template = "{about}\n\nUso: {usage}\n\nOpciones:\n{options}{after-help}\n",
+    after_help = EXIT_CODES_HELP,
     disable_help_flag = true
 )]
 pub struct Args {
@@ -79,6 +92,11 @@ pub struct Args {
     #[arg(long, value_name = "N", hide = true)]
     pub index_segment_size: Option<NonZeroUsize>,
 
+    // Peak private committed memory, in MiB, above which the run logs a warning; 512 by default
+    // (parent PRD, "Restricción principal"). Hidden: it exists so that tests can exceed it.
+    #[arg(long, value_name = "MIB", hide = true)]
+    pub memory_limit_mib: Option<NonZeroU64>,
+
     #[arg(short, long, action = ArgAction::Help, help = "Muestra esta ayuda.")]
     help: Option<bool>,
 }
@@ -129,6 +147,8 @@ pub struct Config {
     pub segment_size: NonZeroUsize,
     /// Entries held in memory per segment of the index sort.
     pub index_segment_size: NonZeroUsize,
+    /// Peak private committed memory, in MiB, above which the run logs a warning.
+    pub memory_limit_mib: NonZeroU64,
 }
 
 impl Config {
@@ -152,6 +172,7 @@ impl Config {
             index_segment_size: args
                 .index_segment_size
                 .unwrap_or(DEFAULT_INDEX_SEGMENT_SIZE),
+            memory_limit_mib: args.memory_limit_mib.unwrap_or(DEFAULT_MEMORY_LIMIT_MIB),
         }
     }
 }

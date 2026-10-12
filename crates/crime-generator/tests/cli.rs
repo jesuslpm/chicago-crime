@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crime_dataset::Compression;
 use crime_generator::cli::{Config, Parsed, default_log_path, local_timestamp, parse};
+use crime_generator::exit_code;
 
 fn config_from(args: &[&str]) -> Config {
     let argv = std::iter::once("crime-generator").chain(args.iter().copied());
@@ -29,6 +30,31 @@ fn defaults_use_the_system_temp_dir_snappy_and_a_log_next_to_the_output() {
     assert_eq!(config.compression, Compression::Snappy);
     assert_eq!(config.segment_size.get(), 250_000);
     assert_eq!(config.index_segment_size.get(), 1_000_000);
+    assert_eq!(config.memory_limit_mib.get(), 512);
+}
+
+#[test]
+fn the_hidden_memory_limit_option_is_honoured_and_refuses_zero() {
+    let config = config_from(&[
+        "--input",
+        "in.csv",
+        "--output",
+        "out",
+        "--memory-limit-mib",
+        "1",
+    ]);
+    assert_eq!(config.memory_limit_mib.get(), 1);
+
+    let parsed = parse([
+        "crime-generator",
+        "--input",
+        "in.csv",
+        "--output",
+        "out",
+        "--memory-limit-mib",
+        "0",
+    ]);
+    assert!(matches!(parsed, Parsed::Invalid(_)), "{parsed:?}");
 }
 
 #[test]
@@ -153,4 +179,34 @@ fn help_is_in_spanish() {
         !text.contains("segment-size"),
         "tuning options stay hidden: {text}"
     );
+    assert!(
+        !text.contains("memory-limit"),
+        "the test option stays hidden: {text}"
+    );
+}
+
+#[test]
+fn help_lists_every_exit_code() {
+    let Parsed::Help(text) = parse(["crime-generator", "--help"]) else {
+        panic!("--help shows the help");
+    };
+
+    let section = text
+        .split_once("Códigos de salida:\n")
+        .map(|(_, section)| section)
+        .unwrap_or_else(|| panic!("an exit code section: {text}"));
+    for code in [
+        exit_code::COMPLETED,
+        exit_code::ABORTED,
+        exit_code::USAGE,
+        exit_code::CANCELLED,
+    ] {
+        assert!(
+            section
+                .lines()
+                .any(|line| line.trim_start().starts_with(&format!("{code} "))),
+            "code {code} is explained: {text}"
+        );
+    }
+    assert!(section.contains("Ctrl+C"), "{text}");
 }

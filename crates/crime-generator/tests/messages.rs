@@ -2,15 +2,18 @@
 
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use std::path::PathBuf;
 
 use crime_dataset::RecordCounts;
 use crime_generator::Abort;
+use crime_generator::memory::MIB;
 use crime_generator::messages::{
-    duplicate_id, empty_csv, generation_cancelled, generation_completed, index_sort_completed,
-    indexes_generated, leftover_kept, leftovers_discarded, previous_version_kept,
-    reading_completed, thousands,
+    dataset_published, duplicate_id, empty_csv, format_duration, generation_cancelled,
+    generation_completed, index_sort_completed, indexes_generated, leftover_kept,
+    leftovers_discarded, log_location, mebibytes, memory_limit_exceeded, operator_cancelled,
+    peak_memory, previous_version_kept, published_file, reading_completed, run_duration, thousands,
 };
 
 #[test]
@@ -119,6 +122,114 @@ fn publication_messages_match_the_prd() {
     assert_eq!(
         empty_csv(),
         "Aviso: el CSV no contiene registros; el conjunto generado está vacío."
+    );
+}
+
+#[test]
+fn an_operator_cancellation_says_so_and_that_nothing_changed() {
+    assert_eq!(
+        operator_cancelled(),
+        "Generación cancelada por el operador. No se ha modificado el conjunto existente."
+    );
+    assert_eq!(Abort::Cancelled.to_string(), operator_cancelled());
+}
+
+#[test]
+fn the_memory_warning_matches_the_prd_and_rounds_the_peak_up() {
+    assert_eq!(
+        memory_limit_exceeded(580 * MIB, 512),
+        "Aviso: el pico de memoria privada comprometida (580 MiB) supera el límite de 512 MiB."
+    );
+    // Rounded up: a peak over the limit never prints as the limit itself.
+    assert_eq!(
+        memory_limit_exceeded(512 * MIB + 1, 512),
+        "Aviso: el pico de memoria privada comprometida (513 MiB) supera el límite de 512 MiB."
+    );
+    assert_eq!(
+        memory_limit_exceeded(2_048 * MIB, 1),
+        "Aviso: el pico de memoria privada comprometida (2.048 MiB) supera el límite de 1 MiB."
+    );
+}
+
+#[test]
+fn sizes_in_mib_have_one_decimal_rounded_up() {
+    let cases = [
+        (0, "0,0 MiB"),
+        (1, "0,1 MiB"),
+        (MIB, "1,0 MiB"),
+        (MIB + 1, "1,1 MiB"),
+        (3 * MIB / 2, "1,5 MiB"),
+        (1_024 * MIB, "1.024,0 MiB"),
+        (907_345_123, "865,4 MiB"),
+    ];
+    for (bytes, expected) in cases {
+        assert_eq!(mebibytes(bytes), expected, "{bytes} bytes");
+    }
+}
+
+#[test]
+fn durations_are_written_in_hours_minutes_and_seconds_with_one_decimal() {
+    let cases = [
+        (0, "0,0 s"),
+        (1_234, "1,2 s"),
+        (59_940, "59,9 s"),
+        (59_960, "1 min 0,0 s"),
+        (63_500, "1 min 3,5 s"),
+        (3_723_400, "1 h 2 min 3,4 s"),
+    ];
+    for (millis, expected) in cases {
+        assert_eq!(
+            format_duration(Duration::from_millis(millis)),
+            expected,
+            "{millis} ms"
+        );
+    }
+    assert_eq!(
+        run_duration(Duration::from_millis(63_500)),
+        "Duración: 1 min 3,5 s."
+    );
+}
+
+#[test]
+fn the_peak_memory_line_shows_the_limit_and_whether_it_was_exceeded() {
+    assert_eq!(
+        peak_memory(Some(100 * MIB), 512),
+        "Pico de memoria privada comprometida: 100,0 MiB (límite: 512 MiB)."
+    );
+    assert_eq!(
+        peak_memory(Some(512 * MIB), 512),
+        "Pico de memoria privada comprometida: 512,0 MiB (límite: 512 MiB).",
+        "reaching the limit is not exceeding it"
+    );
+    assert_eq!(
+        peak_memory(Some(512 * MIB + 1), 512),
+        "Pico de memoria privada comprometida: 512,1 MiB (supera el límite de 512 MiB)."
+    );
+    assert_eq!(
+        peak_memory(None, 512),
+        "Pico de memoria privada comprometida: no disponible en este sistema."
+    );
+}
+
+#[test]
+fn the_summary_names_the_dataset_folder_every_file_with_its_size_and_the_log() {
+    assert_eq!(
+        dataset_published(Path::new(
+            "D:/datasets/chicago/dataset-20261012-101500-4242"
+        )),
+        "Conjunto de datos publicado en D:/datasets/chicago/dataset-20261012-101500-4242."
+    );
+    assert_eq!(
+        published_file("primary.sst", 907_345_123),
+        "Archivo primary.sst: 907.345.123 bytes (865,4 MiB)."
+    );
+    assert_eq!(
+        published_file("manifest.json", 1_234),
+        "Archivo manifest.json: 1.234 bytes (0,1 MiB)."
+    );
+    assert_eq!(
+        log_location(Path::new("D:/datasets/chicago-20261012-101500.log")),
+        "Log de la ejecución: D:/datasets/chicago-20261012-101500.log."
     );
 }
 

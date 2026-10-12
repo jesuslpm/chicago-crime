@@ -43,6 +43,9 @@ pub enum Abort {
         entries: u64,
         valid: u64,
     },
+    /// The operator cancelled the run with Ctrl+C (see [`CancelFlag`](crate::cancel::CancelFlag)).
+    /// Its message already says that the existing dataset is intact.
+    Cancelled,
 }
 
 impl Abort {
@@ -97,6 +100,7 @@ impl fmt::Display for Abort {
                 entries,
                 valid,
             } => messages::index_count_mismatch(index, *entries, *valid),
+            Abort::Cancelled => messages::operator_cancelled(),
         };
         f.write_str(&message)
     }

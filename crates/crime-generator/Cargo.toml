@@ -10,9 +10,16 @@ chrono.workspace = true
 clap.workspace = true
 crime-dataset.workspace = true
 csv.workspace = true
+# Ctrl+C only raises the cancellation flag (see `src/cancel.rs`). On Windows it depends on
+# `windows-sys` alone.
+ctrlc.workspace = true
 sha2.workspace = true
 sstable.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# The peak private committed bytes of the process (see `src/memory.rs`).
+windows-sys.workspace = true
 
 [features]
 # Deterministic failure injection for the tests (see `src/fail.rs`). The dev-dependency below turns

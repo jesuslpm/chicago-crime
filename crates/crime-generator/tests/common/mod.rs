@@ -9,12 +9,15 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use crime_dataset::{CivilDateTime, Compression, CrimeRecord, HEADER};
+use crime_generator::cancel::CancelFlag;
 use crime_generator::cli::Config;
 use crime_generator::index::DEFAULT_INDEX_SEGMENT_SIZE;
 use crime_generator::ingest::{CsvIngest, RowOutcome};
+use crime_generator::memory::DEFAULT_MEMORY_LIMIT_MIB;
 use crime_generator::preflight::create_log;
 use crime_generator::sort::DEFAULT_SEGMENT_SIZE;
 use crime_generator::{Abort, RunSummary};
+use foundationdb_tuple::unpack;
 use sstable::{Options, SSIterator, Table};
 use tempfile::TempDir;
 
@@ -229,7 +232,14 @@ impl Scenario {
             compression: Compression::Snappy,
             segment_size: DEFAULT_SEGMENT_SIZE,
             index_segment_size: DEFAULT_INDEX_SEGMENT_SIZE,
+            memory_limit_mib: DEFAULT_MEMORY_LIMIT_MIB,
         }
+    }
+
+    /// Replaces the input CSV with the header and one [`distinct_row`] per ID.
+    pub fn rewrite_input(&self, ids: &[i64]) {
+        let rows: Vec<_> = ids.iter().map(|&id| distinct_row(id)).collect();
+        fs::write(&self.input, csv_with_header(&rows)).expect("the input can be rewritten");
     }
 }
 
@@ -251,11 +261,34 @@ pub fn rerun(config: &Config, name: &str, overwrite: bool) -> Config {
 /// Runs a generation with a log that is not echoed to the console; returns the result and the
 /// log content.
 pub fn generate(config: &Config) -> (Result<RunSummary, Abort>, String) {
+    generate_with(config, &CancelFlag::new())
+}
+
+/// [`generate`] with the given cancellation flag.
+pub fn generate_with(config: &Config, cancel: &CancelFlag) -> (Result<RunSummary, Abort>, String) {
     let mut log = create_log(&config.log, false).expect("the log can be created");
-    let result = crime_generator::generate(config, &mut log);
+    let result = crime_generator::generate(config, &mut log, cancel);
     drop(log);
     let content = fs::read_to_string(&config.log).expect("the log can be read");
     (result, content)
+}
+
+/// Generates `config` and panics with the log if the run aborts.
+pub fn generate_ok(config: &Config) -> (RunSummary, String) {
+    let (result, log) = generate(config);
+    let summary = result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
+    (summary, log)
+}
+
+/// IDs of the published primary table, read with `sstable` and tuple unpacking alone.
+pub fn published_ids(output: &Path) -> Vec<i64> {
+    read_table(&dataset_dir(output).join("primary.sst"))
+        .iter()
+        .map(|(key, _)| {
+            let (id,): (i64,) = unpack(key).expect("the key is a packed 1-tuple");
+            id
+        })
+        .collect()
 }
 
 /// Every key and value of a table in file order, read with the `sstable` reader alone.
