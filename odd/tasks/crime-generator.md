@@ -75,7 +75,7 @@ relevant deterministic test before implementing GREEN.
   key layout, Location reconstruction, manifest model with schema version 1.
   Tests: round-trips, key byte order equals numeric ID order, `Nil` sorts first, leading zeros preserved,
   DST-gap date accepted, invalid dates rejected.
-- [ ] **T2 — CSV ingestion, validation and run log** (`crime-generator`). Route: delegated writer.
+- [x] **T2 — CSV ingestion, validation and run log** (`crime-generator`). Route: delegated writer.
   CLI (input, output, temp dir, log, overwrite, no-compression), preflight checks, header validation, row
   validation into a record or a rejection (line, column, reason, raw content), per-run log file (default next
   to the output folder) mirrored to the console, SHA-256 while streaming.
@@ -112,10 +112,15 @@ AC-G1..AC-G10 of the child PRD. Mapping: AC-G5/G8/G9 → T2, T5, T6 tests; AC-G7
 
 | Task | Commit | Checks | RDD | Notes |
 |---|---|---|---|---|
-| T1 | (this commit; hash recorded in T2) | fmt ok · clippy -D warnings ok · test 27/27 ok (RED 27/27 `todo!()` first) | pending assess | Delegated writer. `foundationdb-tuple` 0.11.0 with `default-features = false` depends only on `memchr` (pure Rust). ~1,217 lines (626 code, 566 tests): six contract areas, above the heuristic by nature. Files: `primary.sst`, `index-<name>.sst`, `manifest.json`. |
+| T1 | `ab6e21d` (+ `c6eba90` chore: project PRD skill, user-approved so the RDD candidate has no untracked files) | fmt ok · clippy -D warnings ok · test 27/27 ok (RED 27/27 `todo!()` first; parent re-ran 27/27) | medium → granted → **approved**, acknowledged (lineage `review-b037a5d15672c977`, 1 lens: reliability). Reviewed boundary → `c6eba90`. | Delegated writer. `foundationdb-tuple` 0.11.0 with `default-features = false` depends only on `memchr` (pure Rust). ~1,217 lines (626 code, 566 tests): six contract areas, above the heuristic by nature. Files: `primary.sst`, `index-<name>.sst`, `manifest.json`. |
+| T2 | (this commit; hash recorded in T3) | fmt ok · clippy ok · test 77/77 workspace (RED 46/46 `todo!()`; GREEN 45/46 then a CRLF line-number fix; parent re-ran 77/77) · full CSV release run: 8,656,904 valid / 0 rejected, 13.5 s, SHA-256 `5cb5fa41…ae35d` over 2,406,401,982 bytes (matches `sha256sum`) | pending assess | Delegated writer. ~1,060 code + ~1,150 tests. The csv crate's `position().line()` lags after CRLF and blank lines, so the start line is derived from the record end. BOM stripped before parsing. Exit codes so far: 0 ok, 1 abort, 2 usage (T6 finalizes them). Rejection log line: `<mensaje> Contenido original: <fila CSV>`. |
 
-Notes carried to T2: reject non-finite Latitude/Longitude (`NaN`/`inf` parse as `f64`); map empty optional fields to `None` (the decoder accepts `Some("")`).
+Notes carried to T2 (done in T2): reject non-finite Latitude/Longitude (`NaN`/`inf` parse as `f64`); map empty optional fields to `None` (the decoder accepts `Some("")`).
+
+Advisory RDD findings (non-blocking, later work):
+- `R3-manifest-schema-version-unchecked` (WARNING): `Manifest::from_json` accepts any `schema_version`. The query app must reject an unknown version; it is tracked for the query change.
+- `R3-decoder-accepts-empty-and-nonfinite` (SUGGESTION): the decoder accepts `Some("")` and non-finite doubles. The writer side is fixed in T2; tightening the decoder side is tracked for the query change.
 
 ## Next step
 
-T2 — CSV ingestion, validation and run log.
+T3 — External sort, duplicates and primary SSTable.
