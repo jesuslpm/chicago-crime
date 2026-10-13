@@ -16,8 +16,7 @@ use common::{
     published_ids, read_table, rerun, sample_row, snapshot, with_field,
 };
 use crime_dataset::{
-    Compression, IndexKind, Manifest, RecordCounts, SCHEMA_VERSION, is_version_dir_name,
-    resolve_current,
+    Compression, IndexKind, Manifest, RecordCounts, is_version_dir_name, resolve_current,
 };
 use crime_generator::cli::local_timestamp;
 use crime_generator::fail::{FailPoint, arm};
@@ -132,7 +131,7 @@ fn the_first_run_publishes_current_and_one_version_folder_with_the_tables_and_th
     let size = |file: &str| fs::metadata(dataset.join(file)).expect("metadata").len();
     assert_eq!(summary.manifest_size_bytes, size("manifest.json"));
     assert_eq!(summary.log_path, config.log);
-    assert_eq!(manifest.schema_version, SCHEMA_VERSION);
+    assert_eq!(manifest.schema_version, 2);
     chrono::DateTime::parse_from_rfc3339(&manifest.generated_at)
         .unwrap_or_else(|error| panic!("{:?} is ISO 8601: {error}", manifest.generated_at));
     assert_eq!(manifest.source.file_name, "crimes.csv");

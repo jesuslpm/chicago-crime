@@ -3,11 +3,11 @@ mod common;
 use std::collections::HashSet;
 
 use common::{datetime, sample_record};
-use crime_dataset::{INDEX_FILE_PREFIX, IndexKind, TABLE_FILE_EXTENSION, index_key};
+use crime_dataset::{INDEX_FILE_PREFIX, IndexKind, TABLE_FILE_EXTENSION, index_key, index_text};
 use foundationdb_tuple::pack;
 
 #[test]
-fn keys_pack_the_indexed_value_then_the_id() {
+fn keys_pack_the_indexed_value_then_the_id_with_text_values_in_lowercase() {
     let record = sample_record();
     let id = record.id;
 
@@ -17,7 +17,7 @@ fn keys_pack_the_indexed_value_then_the_id() {
     );
     assert_eq!(
         index_key(IndexKind::PrimaryType, &record),
-        pack(&("ARSON", id))
+        pack(&("arson", id))
     );
     assert_eq!(index_key(IndexKind::District, &record), pack(&("003", id)));
     assert_eq!(
@@ -26,8 +26,38 @@ fn keys_pack_the_indexed_value_then_the_id() {
     );
     assert_eq!(
         index_key(IndexKind::CaseNumber, &record),
-        pack(&("JK438266", id))
+        pack(&("jk438266", id))
     );
+}
+
+#[test]
+fn mixed_case_text_values_are_indexed_in_lowercase() {
+    let mut record = sample_record();
+    record.primary_type = "Theft".to_owned();
+    record.district = Some("01A".to_owned());
+    record.case_number = "jA123".to_owned();
+    let id = record.id;
+
+    assert_eq!(
+        index_key(IndexKind::PrimaryType, &record),
+        pack(&("theft", id))
+    );
+    assert_eq!(index_key(IndexKind::District, &record), pack(&("01a", id)));
+    assert_eq!(
+        index_key(IndexKind::CaseNumber, &record),
+        pack(&("ja123", id))
+    );
+}
+
+#[test]
+fn index_text_lowercases_and_never_pads_or_strips_codes() {
+    assert_eq!(index_text("THEFT"), "theft");
+    assert_eq!(index_text("Theft"), "theft");
+    assert_eq!(index_text("jA123"), "ja123");
+    assert_eq!(index_text("008"), "008");
+    assert_eq!(index_text("8"), "8");
+    assert_eq!(index_text("08B"), "08b");
+    assert_eq!(index_text(""), "");
 }
 
 #[test]

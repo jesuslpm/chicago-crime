@@ -3,7 +3,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Version of the dataset layout described by this crate.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// Version 2 stores the values of the text indexes (primary type, district and case number) in
+/// lowercase (decision C1); version 1 stored them as the CSV has them. The primary table is the
+/// same in both: every field exactly as the CSV has it.
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// File name of the manifest inside the dataset folder.
 pub const MANIFEST_FILE_NAME: &str = "manifest.json";

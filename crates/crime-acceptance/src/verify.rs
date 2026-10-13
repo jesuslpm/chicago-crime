@@ -3,17 +3,18 @@
 //! | Criterion | What it proves |
 //! |---|---|
 //! | `LAYOUT` | `CURRENT` names a version folder that holds exactly the seven dataset files. |
-//! | `MANIFEST-SCHEMA` | The manifest is JSON with schema version 1, a known compression and the five indexes. |
+//! | `MANIFEST-SCHEMA` | The manifest is JSON with schema version 2, a known compression and the five indexes. |
 //! | `CSV` | The CSV has the expected header and every row can be read. |
 //! | `MANIFEST-SOURCE` | The manifest names the CSV by file name, size and SHA-256, all computed here again. |
 //! | `MANIFEST-TABLES` | The manifest's entry counts and file sizes equal the tables on disk. |
 //! | `AC-G1` | The primary table has one entry per valid record, keys strictly increasing. |
-//! | `AC-G3` | Every stored record equals its CSV row field by field. |
+//! | `AC-G3` | Every stored record equals its CSV row field by field: the primary table keeps the CSV text as is. |
 //! | `AC-G3-SAMPLE` | The parent's AC3 sample: first and last ID, one without coordinates, one without Ward. A category the CSV lacks is skipped, unless `--reference`. |
 //! | `AC-G3-DST` | Rows in the spring-forward hour are stored exactly as published (parent AC12). SKIP when the CSV has none, unless `--reference`. |
-//! | `AC-G4-<index>` | Each index table equals, entry by entry, the keys rebuilt from the CSV. |
-//! | `AC-G4-THEFT`, `AC-G4-COMMUNITY-NIL` | The parent's AC4 and AC5 counts. |
+//! | `AC-G4-<index>` | Each index table equals, entry by entry, the keys rebuilt from the CSV, text values in lowercase. |
+//! | `AC-G4-THEFT`, `AC-G4-COMMUNITY-NIL` | The parent's AC4 and AC5 counts (THEFT is the index value `theft`). |
 //! | `AC-G4-SHARED-CASES` | Every shared case number lists every ID that shares it (parent AC8). |
+//! | `AC-C18-LOWERCASE` | Every value of the text indexes (primary type, district, case number) is its own lowercase form (query app AC-C18). |
 //!
 //! The CSV is read once, while its SHA-256 is computed. A row is compared with the stored record
 //! of its ID the first time that ID appears, as the generator keeps the first occurrence
@@ -64,7 +65,10 @@ pub struct Options {
     pub reference: bool,
 }
 
-const SCHEMA_VERSION: u64 = 1;
+/// Schema version 2 stores the text index values in lowercase (query app decision C1).
+const SCHEMA_VERSION: u64 = 2;
+/// The primary type THEFT as the primary type index holds it.
+const THEFT: &str = "theft";
 const COMPRESSIONS: [&str; 2] = ["snappy", "none"];
 /// Mismatches listed under a failed check.
 const MAX_EXAMPLES: usize = 5;
@@ -150,6 +154,7 @@ pub fn verify(
         theft_check(&index_scans, &scan, options),
         community_nil_check(&index_scans, &scan, options),
         shared_cases_check(&index_scans, expected_shared, options),
+        lowercase_check(&index_scans),
     ]);
     report
 }
@@ -536,7 +541,7 @@ impl CsvScan {
                 None => self.untypable[position] += 1,
             }
         }
-        if fields[column::PRIMARY_TYPE] == "THEFT" {
+        if fields[column::PRIMARY_TYPE].to_lowercase() == THEFT {
             self.theft_rows += 1;
         }
         if fields[column::COMMUNITY_AREA].is_empty() {
@@ -787,6 +792,10 @@ struct IndexScan {
     first_difference: Option<String>,
     nil_values: u64,
     theft_values: u64,
+    /// Keys whose value is text, and those whose text is not its own lowercase form.
+    text_values: u64,
+    not_lowercase: u64,
+    not_lowercase_example: Option<String>,
     /// Only for the case number index.
     shared: Option<Result<BTreeMap<String, Vec<i64>>, String>>,
 }
@@ -826,7 +835,17 @@ fn scan_index(spec: &IndexSpec, path: &Path, expected: &[Vec<u8>]) -> IndexScan 
         }
         match indexes::decode_key(key) {
             Some((Element::Nil, _)) => scan.nil_values += 1,
-            Some((Element::String(text), _)) if text == "THEFT" => scan.theft_values += 1,
+            Some((Element::String(text), id)) => {
+                scan.text_values += 1;
+                if text == THEFT {
+                    scan.theft_values += 1;
+                }
+                if text.to_lowercase() != text {
+                    scan.not_lowercase += 1;
+                    scan.not_lowercase_example
+                        .get_or_insert_with(|| format!("({text:?}, {id})"));
+                }
+            }
             Some(_) => {}
             None => scan.undecodable_keys += 1,
         }
@@ -1002,6 +1021,47 @@ fn shared_cases_check(
             thousands(numbers),
             thousands(ids),
             thousands(repeats)
+        ),
+    )
+    .with_details(details)
+}
+
+// --- AC-C18 ---
+
+/// The text indexes hold their values in lowercase (query app AC-C18, decision C1); that the
+/// primary table keeps the CSV text as is is proven field by field by `AC-G3`.
+fn lowercase_check(index_scans: &[IndexScan]) -> Check {
+    let mut details = Vec::new();
+    let mut names = Vec::new();
+    let mut checked = 0;
+    let mut not_lowercase = 0;
+    for (spec, scan) in INDEXES.iter().zip(index_scans) {
+        if !spec.value.is_text() {
+            continue;
+        }
+        names.push(spec.name);
+        if let Some(error) = &scan.error {
+            details.push(format!("{}: {error}", spec.name));
+            continue;
+        }
+        checked += scan.text_values;
+        not_lowercase += scan.not_lowercase;
+        if let Some(example) = &scan.not_lowercase_example {
+            details.push(format!(
+                "{}: {} values not in lowercase, e.g. {example}",
+                spec.name,
+                thousands(scan.not_lowercase)
+            ));
+        }
+    }
+    Check::new(
+        "AC-C18-LOWERCASE",
+        details.is_empty(),
+        format!(
+            "{} text values in the {} indexes, {} not in lowercase",
+            thousands(checked),
+            names.join(", "),
+            thousands(not_lowercase)
         ),
     )
     .with_details(details)

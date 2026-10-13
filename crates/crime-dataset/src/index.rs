@@ -56,17 +56,30 @@ impl IndexKind {
     }
 }
 
+/// The index form of a text value (decision C1): the text in lowercase.
+///
+/// The generator stores the primary type, district and case number indexes in this form, and the
+/// query app converts every searched value with this same function before it uses an index, so
+/// that `theft`, `Theft` and `THEFT` find the same entries. Lowercasing never pads or strips
+/// anything: codes keep their leading zeros (`008` stays `008`, `8` stays `8`). The primary table
+/// is not affected: it keeps every field exactly as the CSV has it.
+pub fn index_text(value: &str) -> String {
+    value.to_lowercase()
+}
+
 /// Index table key: the packed tuple `(value, id)`, with `Nil` as the value when the field is empty.
 ///
-/// `Nil` sorts before every value, and entries that share a value sort by ascending ID. Index
-/// entries have an empty value; the key carries everything.
+/// Text values (primary type, district and case number) are stored in their [`index_text`] form,
+/// lowercase (decision C1); dates and community areas are stored as their numbers. `Nil` sorts
+/// before every value, and entries that share a value sort by ascending ID. Index entries have
+/// an empty value; the key carries everything.
 pub fn index_key(kind: IndexKind, record: &CrimeRecord) -> Vec<u8> {
     let id = record.id;
     match kind {
         IndexKind::Date => pack(&(record.date.seconds(), id)),
-        IndexKind::PrimaryType => pack(&(record.primary_type.as_str(), id)),
-        IndexKind::District => pack(&(record.district.as_deref(), id)),
+        IndexKind::PrimaryType => pack(&(index_text(&record.primary_type), id)),
+        IndexKind::District => pack(&(record.district.as_deref().map(index_text), id)),
         IndexKind::CommunityArea => pack(&(record.community_area, id)),
-        IndexKind::CaseNumber => pack(&(record.case_number.as_str(), id)),
+        IndexKind::CaseNumber => pack(&(index_text(&record.case_number), id)),
     }
 }

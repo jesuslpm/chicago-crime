@@ -1,5 +1,6 @@
 //! Generation of the secondary index tables (decision D2): one entry per valid record in every
-//! index, `Nil` for empty values, IDs ascending within a value, determinism (G5) and cleanup.
+//! index, `Nil` for empty values, text values in lowercase (decision C1), IDs ascending within a
+//! value, determinism (G5) and cleanup.
 
 mod common;
 
@@ -12,7 +13,7 @@ use common::{
     DATASET_FILES, Row, Scenario, dataset_dir, datetime, distinct_row, folder_entries, generate,
     read_table, sample_row, with_field,
 };
-use crime_dataset::{IndexKind, RecordCounts};
+use crime_dataset::{IndexKind, RecordCounts, decode_value};
 use crime_generator::Abort;
 use crime_generator::index::{IndexTable, check_index_counts};
 use crime_generator::table::TableStats;
@@ -152,8 +153,8 @@ fn every_index_has_one_entry_per_valid_record_and_skips_rejected_and_duplicate_r
         assert!(
             !keys.iter().any(|(value, _)| {
                 [
-                    text("DUPLICATE"),
-                    text("REJECTED"),
+                    text("duplicate"),
+                    text("rejected"),
                     text("999"),
                     text("555"),
                 ]
@@ -237,7 +238,7 @@ fn a_shared_case_number_lists_every_id_that_shares_it() {
 
     let shared: Vec<i64> = index_keys(&output, CASE_NUMBER)
         .into_iter()
-        .filter(|(value, _)| *value == text("SHARED1"))
+        .filter(|(value, _)| *value == text("shared1"))
         .map(|(_, id)| id)
         .collect();
 
@@ -309,12 +310,12 @@ fn index_tables_read_back_with_sstable_and_tuple_unpacking_alone() {
     assert_eq!(
         primary_type,
         owned(&[
-            ("ARSON", 50),
-            ("BATTERY", 5),
-            ("BATTERY", 10),
-            ("THEFT", 20),
-            ("THEFT", 30),
-            ("THEFT", 40),
+            ("arson", 50),
+            ("battery", 5),
+            ("battery", 10),
+            ("theft", 20),
+            ("theft", 30),
+            ("theft", 40),
         ])
     );
     assert_eq!(
@@ -342,13 +343,60 @@ fn index_tables_read_back_with_sstable_and_tuple_unpacking_alone() {
     assert_eq!(
         case_number,
         owned(&[
-            ("JC10", 10),
-            ("JC40", 40),
-            ("JC5", 5),
-            ("SHARED1", 20),
-            ("SHARED1", 30),
-            ("SHARED1", 50),
+            ("jc10", 10),
+            ("jc40", 40),
+            ("jc5", 5),
+            ("shared1", 20),
+            ("shared1", 30),
+            ("shared1", 50),
         ])
+    );
+}
+
+#[test]
+fn text_indexes_hold_lowercase_values_while_the_primary_table_keeps_the_csv_text() {
+    let scenario = Scenario::new(&[
+        row(7, "03/15/2020 10:00:00 AM", "Theft", "01A", "", "jA123"),
+        row(8, "03/15/2020 10:00:00 AM", "THEFT", "008", "8", "JA123"),
+    ]);
+    let config = scenario.config("dataset");
+    let (result, log) = generate(&config);
+    result.unwrap_or_else(|abort| panic!("{abort}\n{log}"));
+    let output = dataset_dir(&config.output);
+
+    assert_eq!(
+        index_keys(&output, PRIMARY_TYPE),
+        [(text("theft"), 7), (text("theft"), 8)]
+    );
+    assert_eq!(
+        index_keys(&output, DISTRICT),
+        [(text("008"), 8), (text("01a"), 7)]
+    );
+    assert_eq!(
+        index_keys(&output, CASE_NUMBER),
+        [(text("ja123"), 7), (text("ja123"), 8)]
+    );
+    let stored: Vec<(String, Option<String>, String)> = read_table(&output.join("primary.sst"))
+        .into_iter()
+        .map(|(_, value)| {
+            let record = decode_value(&value).expect("every value decodes");
+            (record.primary_type, record.district, record.case_number)
+        })
+        .collect();
+    assert_eq!(
+        stored,
+        [
+            (
+                "Theft".to_owned(),
+                Some("01A".to_owned()),
+                "jA123".to_owned()
+            ),
+            (
+                "THEFT".to_owned(),
+                Some("008".to_owned()),
+                "JA123".to_owned()
+            ),
+        ]
     );
 }
 

@@ -66,7 +66,7 @@ const SAMPLE_ROW: [&str; 22] = [
 ];
 
 /// Every criterion the verifier reports, in order.
-const CRITERIA: [&str; 17] = [
+const CRITERIA: [&str; 18] = [
     "LAYOUT",
     "MANIFEST-SCHEMA",
     "CSV",
@@ -84,6 +84,7 @@ const CRITERIA: [&str; 17] = [
     "AC-G4-THEFT",
     "AC-G4-COMMUNITY-NIL",
     "AC-G4-SHARED-CASES",
+    "AC-C18-LOWERCASE",
 ];
 
 /// The sample row with some columns replaced, by name.
@@ -99,16 +100,16 @@ fn row(changes: &[(&str, &str)]) -> Vec<String> {
     fields
 }
 
-/// Five rows out of ID order: a theft without Ward or community area, a row without coordinates
-/// that shares its case number with it, a row in the spring-forward hour without a district, and
-/// another theft that shares its case number with that one.
+/// Five rows out of ID order: a theft written `Theft` without Ward or community area, a row
+/// without coordinates that shares its case number with it, a row in the spring-forward hour
+/// without a district, and another theft whose case number is that one's in lowercase.
 fn fixture_rows() -> Vec<Vec<String>> {
     vec![
         row(&[]),
         row(&[
             ("ID", "634"),
             ("Case Number", "JA100"),
-            ("Primary Type", "THEFT"),
+            ("Primary Type", "Theft"),
             ("Ward", ""),
             ("Community Area", ""),
         ]),
@@ -131,7 +132,7 @@ fn fixture_rows() -> Vec<Vec<String>> {
         ]),
         row(&[
             ("ID", "5000"),
-            ("Case Number", "JA200"),
+            ("Case Number", "ja200"),
             ("Primary Type", "THEFT"),
             ("Updated On", "11/01/2015 01:30:00 AM"),
             ("Latitude", "41.7"),
@@ -326,6 +327,65 @@ fn a_missing_index_entry_fails_that_index_only() {
     for criterion in ["AC-G1", "AC-G3", "AC-G4-date", "AC-G4-case_number"] {
         assert!(check(&report, criterion).passed(), "{}", report.render());
     }
+}
+
+#[test]
+fn an_uppercase_value_in_a_text_index_fails_the_lowercase_check() {
+    let fixture = Fixture::new();
+    let primary_type = fixture.version().join("index-primary_type.sst");
+    let mut uppercased: Vec<(Vec<u8>, Vec<u8>)> = read_table(&primary_type)
+        .into_iter()
+        .map(|(key, value)| {
+            let (text, id): (String, i64) = unpack(&key).expect("a (text, id) key");
+            (pack(&(text.to_uppercase(), id)), value)
+        })
+        .collect();
+    // Uppercasing can reorder keys; a table must stay sorted to be written at all.
+    uppercased.sort();
+    write_table(&primary_type, &uppercased);
+
+    let report = fixture.verify();
+
+    // The rewritten table no longer has the size that the manifest records.
+    assert_eq!(
+        failed(&report),
+        [
+            "MANIFEST-TABLES",
+            "AC-G4-primary_type",
+            "AC-G4-THEFT",
+            "AC-C18-LOWERCASE"
+        ],
+        "{}",
+        report.render()
+    );
+    let lowercase = check(&report, "AC-C18-LOWERCASE");
+    assert!(
+        lowercase.details.join("\n").contains("primary_type: 5"),
+        "{}",
+        report.render()
+    );
+    assert!(check(&report, "AC-G3").passed(), "{}", report.render());
+}
+
+#[test]
+fn a_dataset_with_schema_version_1_fails_the_manifest_schema() {
+    let fixture = Fixture::new();
+    let manifest = fixture.version().join("manifest.json");
+    let text = fs::read_to_string(&manifest).expect("the manifest can be read");
+    let old = text.replace("\"schema_version\": 2", "\"schema_version\": 1");
+    assert_ne!(old, text, "the generator writes schema version 2");
+    fs::write(&manifest, old).expect("the manifest can be replaced");
+
+    let report = fixture.verify();
+
+    assert_eq!(failed(&report), ["MANIFEST-SCHEMA"], "{}", report.render());
+    assert!(
+        check(&report, "MANIFEST-SCHEMA")
+            .details
+            .contains(&"the schema version must be 2".to_owned()),
+        "{}",
+        report.render()
+    );
 }
 
 #[test]

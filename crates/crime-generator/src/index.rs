@@ -1,7 +1,8 @@
 //! The stream of the secondary indexes (decision D2): every accepted record yields one
 //! [`IndexEntry`] per index, and all of them go through one external sort ordered by
 //! `(index ordinal, key)`, so the merged stream holds each index table in key order, one index
-//! after the other.
+//! after the other. Keys come from the dataset contract's `index_key`, so the values of the text
+//! indexes are lowercase (decision C1) while the primary table keeps the CSV text.
 //!
 //! Index keys end with the ID, and IDs are unique once duplicates are skipped, so no two entries
 //! are equal: the order is total and the tables do not depend on the segment size (decision G5).

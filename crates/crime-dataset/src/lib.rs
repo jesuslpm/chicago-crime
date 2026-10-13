@@ -6,7 +6,9 @@
 //! - the expected CSV [`HEADER`] and the typed [`CrimeRecord`];
 //! - [`CivilDateTime`], the naive civil date and time codec (decision D3);
 //! - the primary table layout: [`primary_key`], [`encode_value`] and [`decode_value`] (decision D4);
-//! - the five secondary indexes, [`IndexKind`], and their [`index_key`] layout (decision D2);
+//! - the five secondary indexes, [`IndexKind`], and their [`index_key`] layout (decision D2),
+//!   whose text values are stored in the lowercase [`index_text`] form (decision C1), while the
+//!   primary table keeps every text field exactly as the CSV has it;
 //! - dataset file names and the [`Manifest`] model;
 //! - the layout of the output folder: version folders and the [`CURRENT_FILE_NAME`] file that
 //!   names the active one, read with [`resolve_current`].
@@ -23,7 +25,7 @@ mod record;
 
 pub use datetime::{CivilDateTime, DateTimeError};
 pub use encoding::{DecodeError, VALUE_FIELD_COUNT, decode_value, encode_value, primary_key};
-pub use index::{IndexKind, index_key};
+pub use index::{IndexKind, index_key, index_text};
 pub use layout::{
     CURRENT_FILE_NAME, CurrentError, VERSION_DIR_PREFIX, is_version_dir_name, resolve_current,
 };

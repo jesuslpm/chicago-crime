@@ -51,9 +51,9 @@ fn manifest_json_uses_the_documented_field_names() {
     manifest.compression = Compression::None;
     let json: Value = serde_json::from_str(&manifest.to_json()).expect("valid JSON");
 
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
     assert_eq!(MANIFEST_FILE_NAME, "manifest.json");
-    assert_eq!(json["schema_version"], json!(1));
+    assert_eq!(json["schema_version"], json!(2));
     assert_eq!(json["generated_at"], json!("2026-10-12T10:15:00+02:00"));
     assert_eq!(json["source"]["file_name"], json!("chicago-crime-data.csv"));
     assert_eq!(json["source"]["size_bytes"], json!(2_345_678_901_u64));

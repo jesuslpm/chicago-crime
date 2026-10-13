@@ -107,14 +107,18 @@ about 65–75 seconds and writes about 1.1 GB.
 <output folder>/
     CURRENT                               name of the active version folder
     dataset-<YYYYMMDD>-<HHMMSS>-<pid>/    the active version
-        primary.sst                       key (id); value: the stored fields in CSV order
+        primary.sst                       key (id); value: the stored fields in CSV order, as in the CSV
         index-date.sst                    one table per index; key (value or Nil, id)
         index-primary_type.sst
         index-district.sst
         index-community_area.sst
         index-case_number.sst
-        manifest.json                     schema version, source CSV with SHA-256, counts, tables
+        manifest.json                     schema version (2), source CSV with SHA-256, counts, tables
 ```
+
+The text indexes (primary type, district and case number) hold their values in lowercase, so a
+lookup does not depend on how the CSV writes them; the primary table keeps every field exactly as
+the CSV has it. Lowercasing never pads or strips codes: `008` stays `008`.
 
 A run builds a complete new version folder and then switches `CURRENT` in one step. A reader therefore
 always finds a complete dataset. A failed, cancelled or killed run never changes the published one,
@@ -132,7 +136,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-accep
 ```
 
 The independent verifier can also run on its own. It reads the dataset without any generator code,
-compares every CSV row with the primary table, and rebuilds every index from the CSV:
+compares every CSV row with the primary table, rebuilds every index from the CSV and checks that the
+text indexes are in lowercase:
 
 ```powershell
 target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset D:\datasets\chicago

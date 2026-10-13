@@ -1,9 +1,10 @@
 //! The five secondary indexes of the parent PRD (decision D2), rebuilt from the CSV alone.
 //!
 //! Every index table holds one entry per accepted record, with the key `pack((value, id))` and an
-//! empty value; an empty CSV field is indexed as `Nil`, which sorts before every value. A table is
-//! correct when its keys are exactly the keys rebuilt here from the CSV rows, sorted byte by byte
-//! as the LevelDB table format orders them.
+//! empty value; an empty CSV field is indexed as `Nil`, which sorts before every value. Text
+//! values are indexed in lowercase (query app decision C1, schema version 2), lowercased here
+//! with the standard library alone. A table is correct when its keys are exactly the keys rebuilt
+//! here from the CSV rows, sorted byte by byte as the LevelDB table format orders them.
 
 use std::collections::BTreeMap;
 
@@ -16,9 +17,9 @@ use crate::civil;
 pub enum KeyValue {
     /// Seconds of the naive civil clock of a date column.
     Date,
-    /// The text as is; the column is mandatory.
+    /// The text in lowercase; the column is mandatory.
     Text,
-    /// The text, or `Nil` when the field is empty.
+    /// The text in lowercase, or `Nil` when the field is empty.
     OptionalText,
     /// The integer, or `Nil` when the field is empty.
     OptionalInt,
@@ -77,13 +78,20 @@ pub fn expected_key(spec: &IndexSpec, fields: &[&str], id: i64) -> Option<Vec<u8
     let optional = (!text.is_empty()).then_some(text);
     Some(match spec.value {
         KeyValue::Date => pack(&(civil::parse_civil(text)?, id)),
-        KeyValue::Text => pack(&(text, id)),
-        KeyValue::OptionalText => pack(&(optional, id)),
+        KeyValue::Text => pack(&(text.to_lowercase(), id)),
+        KeyValue::OptionalText => pack(&(optional.map(str::to_lowercase), id)),
         KeyValue::OptionalInt => {
             let value = optional.map(str::parse::<i64>).transpose().ok()?;
             pack(&(value, id))
         }
     })
+}
+
+impl KeyValue {
+    /// Whether the indexed values are text, which the index holds in lowercase.
+    pub fn is_text(self) -> bool {
+        matches!(self, KeyValue::Text | KeyValue::OptionalText)
+    }
 }
 
 /// The indexed value and the ID of an index key, or `None` unless the key is a tuple of exactly
@@ -178,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn keys_pack_the_indexed_value_and_the_id() {
+    fn keys_pack_the_indexed_value_and_the_id_with_text_values_in_lowercase() {
         let fields = row("JK438266", "10/03/2026 12:00:00 AM", "ARSON", "003", "42");
         let id = 14_348_063;
 
@@ -188,7 +196,7 @@ mod tests {
         );
         assert_eq!(
             expected_key(spec("primary_type"), &fields, id),
-            Some(pack(&("ARSON", id)))
+            Some(pack(&("arson", id)))
         );
         assert_eq!(
             expected_key(spec("district"), &fields, id),
@@ -200,7 +208,31 @@ mod tests {
         );
         assert_eq!(
             expected_key(spec("case_number"), &fields, id),
-            Some(pack(&("JK438266", id)))
+            Some(pack(&("jk438266", id)))
+        );
+    }
+
+    #[test]
+    fn mixed_case_text_is_expected_in_lowercase_and_codes_keep_their_zeros() {
+        let fields = row("jA123", "10/03/2026 12:00:00 AM", "Theft", "01A", "8");
+        let id = 7;
+
+        assert_eq!(
+            expected_key(spec("primary_type"), &fields, id),
+            Some(pack(&("theft", id)))
+        );
+        assert_eq!(
+            expected_key(spec("district"), &fields, id),
+            Some(pack(&("01a", id)))
+        );
+        assert_eq!(
+            expected_key(spec("case_number"), &fields, id),
+            Some(pack(&("ja123", id)))
+        );
+        let zeros = row("JC1", "10/03/2026 12:00:00 AM", "THEFT", "008", "8");
+        assert_eq!(
+            expected_key(spec("district"), &zeros, id),
+            Some(pack(&("008", id)))
         );
     }
 
