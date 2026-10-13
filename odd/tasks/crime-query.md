@@ -111,7 +111,7 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 — C1: lowercase text indexes, `index_text`, schema 2 in `crime-dataset`, generator tests, verifier (lowercase keys, schema 2) | S1 | delegated writer | pending | — |
+| T1 — C1: lowercase text indexes, `index_text`, schema 2 in `crime-dataset`, generator tests, verifier (lowercase keys, schema 2) | S1 | delegated writer | **done**: 236/236; verifier S1 PASS; RDD approved `review-9f2da850bb2a217a` | `c8db165` |
 | T2 — `crime-query` dataset layer: snapshot open with retries, manifest + schema check, error-tracking reader, record get, index streams (ID-ascending per value, date range), membership probe, case-number existence | S2, S5 (access), S9 | delegated writer | pending | — |
 | T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | pending | — |
 | T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer | pending | — |
@@ -143,3 +143,20 @@ consent always granted (standing user instruction); at feature close review what
   planner). Baseline: `main` 4c74bfe, 230 tests green, RDD on (global). No `git push` will be run at all.
   `sstable` 0.11.1 reader facts: `TableIterator::advance` swallows block read errors and jumps to the next
   block; `seek` past the end resets the iterator; `Table::get` returns errors.
+- **L3 (16:50–17:00, T1)**: writer delivered S1 (`c8db165`): `index_text` = `to_lowercase` in `crime-dataset`,
+  `index_key` lowercases primary type, district and case number, `SCHEMA_VERSION` 2; generator tests updated plus a
+  mixed-case test (index lowercase, primary keeps CSV text); verifier lowercases expected keys, expects schema 2 and
+  adds `AC-C18-LOWERCASE`. RED observed first (index keys held `ARSON`/`Theft`, manifest 1 vs 2, 18 criteria
+  expected). fmt/clippy clean, 236/236 (parent re-ran 236/236). Native assess: medium, `under_budget` (521 lines);
+  raised by the parent with `--escalate-item 1` (persisted index format change) → `review_due` high. Pending for T6:
+  the acceptance script does not yet map `AC-C18-LOWERCASE` to a result row.
+- **L4 (17:00–17:20, T1 verification)**: independent verifier (scratch clones under the system temp dir): S1 PASS, no
+  blockers. Mixed-case fixture → index values lowercase (`theft`, `00a`, `ja123`, `jé900`), codes keep zeros (`008` ≠
+  `8`), primary keeps the CSV text; manifest schema 2; verifier 18/18 PASS; baseline dataset fails the new verifier
+  (7/18); `primary.sst`, `index-date.sst`, `index-community_area.sst` byte-identical baseline vs T1. Advisories (not
+  caused by T1): decimals with trailing zeros (`41.80`) are stored typed, so AC-G3 cannot match their text (D4, baseline
+  behavior); case numbers that differ only in case now group together (consequence of C1). RDD on a clean worktree at
+  `c8db165` (the shared tree had T2's untracked files): lenses risk + reliability, consent granted (standing
+  instruction) → **approved**, acknowledged (lineage `review-9f2da850bb2a217a`, authority burned). Reviewed boundary
+  → `c8db165`. Suggestions: `R3-001` (empty-dataset behavior of `AC-C18-LOWERCASE` untested), `R3-002` (no non-ASCII
+  `index_text` test where lowercase changes byte length) — accepted as advisory, folded into T6.

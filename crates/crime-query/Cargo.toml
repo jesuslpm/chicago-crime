@@ -1,0 +1,19 @@
+[package]
+name = "crime-query"
+description = "Query app of the Chicago crime dataset: answers indexed queries over a published dataset."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+crime-dataset.workspace = true
+# Index keys are packed tuples `(value, id)`: the query app builds and decodes them itself.
+foundationdb-tuple.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sstable.workspace = true
+
+[dev-dependencies]
+# Only to build small datasets for the tests; the query app itself never uses the generator.
+crime-generator = { path = "../crime-generator" }
+tempfile.workspace = true

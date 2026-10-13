@@ -252,6 +252,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "crime-query"
+version = "0.1.0"
+dependencies = [
+ "crime-dataset",
+ "crime-generator",
+ "foundationdb-tuple",
+ "serde",
+ "serde_json",
+ "sstable",
+ "tempfile",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
