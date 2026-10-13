@@ -151,10 +151,20 @@ pub fn datetime(text: &str) -> CivilDateTime {
         .unwrap_or_else(|error| panic!("{text:?} should parse: {error:?}"))
 }
 
-/// The CSV text of `rows` under the expected header, every field quoted like the source.
+/// The CSV text of `rows` under the expected header, written like the source: every non-empty
+/// field quoted (a `"` inside doubled), every empty field left bare, `\n` after each line.
 pub fn csv_text(rows: &[Row]) -> String {
     let line = |fields: &[String]| {
-        let quoted: Vec<String> = fields.iter().map(|field| format!("\"{field}\"")).collect();
+        let quoted: Vec<String> = fields
+            .iter()
+            .map(|field| {
+                if field.is_empty() {
+                    String::new()
+                } else {
+                    format!("\"{}\"", field.replace('"', "\"\""))
+                }
+            })
+            .collect();
         quoted.join(",") + "\n"
     };
     let header: Row = HEADER.iter().map(|&name| name.to_owned()).collect();

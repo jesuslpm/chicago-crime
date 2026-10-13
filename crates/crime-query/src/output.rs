@@ -1,8 +1,9 @@
 //! The records of a result in the analyst's format (decision C4), written one at a time as the
 //! execution yields them: nothing here holds more than the record being written (decision C7).
 //!
-//! - **CSV**: the 22 source columns under the source header, every field quoted and every line
-//!   ended by `\n`, like the source file. Text is written as stored (the CSV text as is), dates
+//! - **CSV**: the 22 source columns under the source header, written like the source file:
+//!   every non-empty field quoted (a `"` inside doubled), every empty field left bare (`,,`) and
+//!   every line ended by `\n`, so a record comes out as its source line byte for byte. Text is written as stored (the CSV text as is), dates
 //!   in the source text `MM/DD/YYYY hh:mm:ss AM|PM`, booleans `true`/`false`, `Location`
 //!   rebuilt from the coordinates and "sin valor" as an empty field.
 //! - **JSON**: one object, `{"query": …, "dataset": …, "results": [ … ]}`, with the interpreted
@@ -58,7 +59,7 @@ pub struct RecordWriter<W: Write> {
 
 enum Sink<W: Write> {
     Table(W),
-    Csv(Box<csv::Writer<W>>),
+    Csv(W),
     Json(W),
 }
 
@@ -89,12 +90,8 @@ impl<W: Write> RecordWriter<W> {
                 Sink::Table(out)
             }
             Format::Csv => {
-                let mut writer = csv::WriterBuilder::new()
-                    .quote_style(csv::QuoteStyle::Always)
-                    .terminator(csv::Terminator::Any(b'\n'))
-                    .from_writer(out);
-                writer.write_record(HEADER).map_err(csv_error)?;
-                Sink::Csv(Box::new(writer))
+                write_csv_line(&mut out, HEADER.iter().copied())?;
+                Sink::Csv(out)
             }
             Format::Json => {
                 let info = DatasetInfo {
@@ -116,9 +113,7 @@ impl<W: Write> RecordWriter<W> {
     pub fn write(&mut self, record: &CrimeRecord) -> io::Result<()> {
         match &mut self.sink {
             Sink::Table(out) => write_table_row(out, text_fields(record))?,
-            Sink::Csv(writer) => writer
-                .write_record(text_fields(record).iter().map(|field| field.as_bytes()))
-                .map_err(csv_error)?,
+            Sink::Csv(out) => write_csv_line(out, text_fields(record).iter().map(AsRef::as_ref))?,
             Sink::Json(out) => {
                 out.write_all(if self.written == 0 { b"\n" } else { b",\n" })?;
                 serde_json::to_writer(&mut *out, &JsonRecord::new(record))?;
@@ -132,7 +127,7 @@ impl<W: Write> RecordWriter<W> {
     pub fn finish(self) -> io::Result<W> {
         let mut out = match self.sink {
             Sink::Table(out) => out,
-            Sink::Csv(writer) => writer.into_inner().map_err(|error| error.into_error())?,
+            Sink::Csv(out) => out,
             Sink::Json(mut out) => {
                 out.write_all(if self.written == 0 {
                     b"]}\n"
@@ -147,15 +142,27 @@ impl<W: Write> RecordWriter<W> {
     }
 }
 
-/// The I/O error inside a CSV error, so that a closed pipe is still recognized as one.
-fn csv_error(error: csv::Error) -> io::Error {
-    if matches!(error.kind(), csv::ErrorKind::Io(_)) {
-        match error.into_kind() {
-            csv::ErrorKind::Io(error) => return error,
-            _ => unreachable!("the kind was just checked"),
+/// One CSV line written like the source file: each non-empty field between quotes with any
+/// quote inside doubled, each empty field bare, `,` between fields and `\n` at the end.
+fn write_csv_line<'a>(
+    out: &mut impl Write,
+    fields: impl IntoIterator<Item = &'a str>,
+) -> io::Result<()> {
+    for (position, field) in fields.into_iter().enumerate() {
+        if position > 0 {
+            out.write_all(b",")?;
+        }
+        if !field.is_empty() {
+            out.write_all(b"\"")?;
+            if field.contains('"') {
+                out.write_all(field.replace('"', "\"\"").as_bytes())?;
+            } else {
+                out.write_all(field.as_bytes())?;
+            }
+            out.write_all(b"\"")?;
         }
     }
-    io::Error::other(error)
+    out.write_all(b"\n")
 }
 
 /// One table row: every value padded to its column, never cut; the last one is not padded.

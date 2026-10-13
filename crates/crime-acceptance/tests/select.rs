@@ -108,11 +108,18 @@ fn fixture_rows() -> Vec<Vec<String>> {
     ]
 }
 
-/// One CSV line with every field quoted, as the source writes it.
+/// One CSV line as the source writes it: every non-empty field quoted (a quote inside doubled),
+/// every empty field bare (`,,`).
 fn csv_line(fields: &[String], terminator: &str) -> String {
     let quoted: Vec<String> = fields
         .iter()
-        .map(|field| format!("\"{}\"", field.replace('"', "\"\"")))
+        .map(|field| {
+            if field.is_empty() {
+                String::new()
+            } else {
+                format!("\"{}\"", field.replace('"', "\"\""))
+            }
+        })
         .collect();
     format!("{}{terminator}", quoted.join(","))
 }

@@ -8,7 +8,7 @@ sorting under a fixed memory budget, and product-driven development.
 | Application | Status | What it does |
 |---|---|---|
 | Generator (`crime-generator`) | Done and verified | Reads the CSV once and publishes a primary table keyed by ID, five secondary indexes and a manifest, with a peak memory of about 93 MiB (limit 512 MiB). |
-| Query app (`crime-query`) | Planned | Answers lookups by ID, case number, indexed values and date ranges. |
+| Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory. |
 
 ## Get the dataset
 
@@ -44,10 +44,12 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
   their reasons, explicit out-of-scope items and acceptance criteria. The project skill in
   [`.claude/skills/prd`](.claude/skills/prd/SKILL.md) holds the template.
   - [Parent PRD](docs/prd/chicago-crime/chicago-crime.prd.en.md) ([Spanish original](docs/prd/chicago-crime/chicago-crime.prd.md)): the generator and the query app.
-  - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): this delivery, acceptance criteria AC-G1 to AC-G10.
+  - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): the generator, acceptance criteria AC-G1 to AC-G10.
+  - [Query app PRD](docs/prd/chicago-crime/consultor.prd.md) (Spanish): the query app, acceptance criteria AC-C1 to AC-C18.
 - **ODD (Organic Driven Development).** The PRD becomes a feature document with an objective,
   implementation decisions and a task checklist. That document is the single place for progress and
-  evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md). Each task:
+  evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md) and
+  [`odd/tasks/crime-query.md`](odd/tasks/crime-query.md). Each task:
   - explores the code first;
   - writes a failing test before the implementation (RED → GREEN);
   - closes with one Conventional Commit on the feature branch;
@@ -125,6 +127,74 @@ always finds a complete dataset. A failed, cancelled or killed run never changes
 and the next run cleans up whatever an interrupted run left behind. The same CSV always produces
 byte-identical tables.
 
+The current format is **schema 2**. A dataset published by an older generator (schema 1, whose text
+indexes are not in lowercase) is refused by the query app: regenerate it.
+
+## Run the query app
+
+Each run answers one query and ends. Point `--dataset` at the generator's output folder, the one that
+holds `CURRENT`; the query app reads the active version and never writes to that folder.
+
+```powershell
+# How many thefts in district 008?
+target\release\crime-query.exe --dataset D:\datasets\chicago --where "Primary Type=THEFT" --where District=008 --count
+
+# Arrests for theft in August 2019, as CSV in a file
+target\release\crime-query.exe --dataset D:\datasets\chicago --where "Primary Type=theft" --range Date=2019-08-01..2019-08-31 --where Arrest=true --format csv --output thefts.csv
+
+# Two records by ID, as JSON
+target\release\crime-query.exe --dataset D:\datasets\chicago --where ID=634 --where ID=14348063 --format json
+```
+
+| Option | Meaning |
+|---|---|
+| `--dataset <CARPETA>` | The generator's output folder. Required. |
+| `--where <CAMPO=VALOR>` | An equality condition. Repeatable. |
+| `--range <Date=DESDE..HASTA>` | An inclusive date range; either end may be left out (`Date=2020-01-01..`, `Date=..2020-01-31`). Repeatable; every range must hold. |
+| `--limit <N>` | Return at most N records (N > 0). Any N records of the result, not necessarily the same ones each time. |
+| `--count` | Print only the number of results. It cannot be combined with `--format`. |
+| `--format table\|csv\|json` | Output format; `table` by default. |
+| `--output <ARCHIVO>` | Write the CSV or JSON results to this file instead of the standard output. An existing file is overwritten without asking. Not available with `table` or `--count`. |
+| `-h`, `--help` | Show the help. |
+
+**Conditions.** `CAMPO` is a CSV column name in any case (`"Primary Type"`, `district`). Every
+condition must hold (AND); repeating `--where` on the same field gives alternatives (OR):
+`--where District=008 --where District=009`. Each query needs at least one condition on an indexed
+field: `ID`, `Case Number`, `Date` (with `--range` or `--where`), `Primary Type`, `District` or
+`Community Area`. Any other stored field, except the long texts `Block` and `Description` and the
+derived `Location`, can be used as a filter on top of an indexed condition.
+
+- `CAMPO=` with nothing after the `=` asks for records without a value (only optional fields).
+- Text is compared ignoring case: `theft`, `Theft` and `THEFT` are the same. Results show the text
+  exactly as the CSV has it.
+- Codes keep their leading zeros and are never padded: `District=8` does not find `008`.
+- Arrest and Domestic accept `true`, `false`, `sí`, `si` or `no`.
+- Dates are `AAAA-MM-DD [hh:mm]` in Chicago civil time, as published. A range start without a time
+  begins at 00:00:00; an end without a time takes the whole day, and with a time the whole minute.
+  `--where Date=2019-08-15` is that whole day.
+
+**Output.** CSV and JSON hold every stored field in CSV order, with `Location` rebuilt. The CSV is
+written like the source (same header, non-empty fields quoted, empty fields bare, `\n` line ends), so
+each record comes out as its source line byte for byte. JSON also holds the query as interpreted (dates resolved to exact
+seconds, the limit) and the dataset version it read. The results go to the standard output;
+warnings, errors and the closing line with the number of results, the time, the indexes used and the
+filters applied go to the standard error, so the results can be redirected or piped as they are. **The
+order of the results is not guaranteed** and may change between runs. A rejected, failed or cancelled
+query never leaves a half-written output file: with `--output` the file is replaced only once every
+result is written. On the standard output, results are written as they are found, so if the dataset
+becomes unreadable in the middle of a query, the results already written stay there; the exit code 1
+and the error message on the standard error flag the output as incomplete.
+
+Memory does not grow with the result: counting all 1.8 million thefts uses about as much as counting
+a rare type. The command line and the messages are in Spanish.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | The query ran, even with no results. |
+| 1 | The query was rejected because of the dataset or its conditions, or it aborted. |
+| 2 | The command line is not valid; nothing was queried. |
+| 130 | Cancelled with Ctrl+C; no half-written output file is left. |
+
 ## Verify
 
 [`scripts/acceptance/run-acceptance.ps1`](scripts/acceptance/run-acceptance.ps1) checks AC-G1 to AC-G10
@@ -134,6 +204,27 @@ free disk.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir D:\acceptance
 ```
+
+[`scripts/acceptance/run-query-acceptance.ps1`](scripts/acceptance/run-query-acceptance.ps1) checks
+the query app's AC-C1 to AC-C18 on the reference CSV: it generates the dataset, runs every criterion
+through the binary, compares every count with an independent filtering of the CSV and writes
+`query-acceptance-report.md`. It needs about 5 GB of free disk.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir D:\query-acceptance
+```
+
+Measured on the reference machine (2026-10-13, all 58 checks of the 18 criteria passed, about 6½
+minutes including the generation and the verifier):
+
+| Measure | Result |
+|---|---|
+| Lookup of one ID, whole process | 39–51 ms (limit 1 s) |
+| Count of `THEFT` (1,838,502) / `District=008` on top | 0.4 s / 0.6 s |
+| Count of a month (24,505), with `THEFT` and `Arrest=true` (514) | 0.01 s / 0.2 s |
+| Peak private memory: count of `THEFT` / of a rare type (24) / CSV file of every theft | 14.5 / 7.5 / 16.6 MiB |
+| Ctrl+C during a CSV file output | exit 130 in 0.05 s, no file left |
+| New version published while a query on the old one runs | the query returns exactly the old version's 1,000,000 rows |
 
 The independent verifier can also run on its own. It reads the dataset without any generator code,
 compares every CSV row with the primary table, rebuilds every index from the CSV and checks that the
@@ -145,13 +236,22 @@ target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset D:\da
 
 Add `--reference` to also require the exact figures of the reference extract.
 
+Its `select` mode filters the CSV directly, without any query app code, and is the independent side
+of the query app's acceptance: it prints the number of matching rows and can write their IDs or the
+rows themselves, in the same CSV form as `crime-query --format csv`:
+
+```powershell
+target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where "Primary Type=THEFT" --where District=008
+```
+
 ## Repository layout
 
 | Path | Contents |
 |---|---|
 | `crates/crime-dataset` | Library with the dataset contract: record schema, tuple encoding, indexes, layout, manifest. |
 | `crates/crime-generator` | The generator. |
-| `crates/crime-acceptance` | Independent verifier of a published dataset. |
-| `scripts/acceptance` | Acceptance script for the reference CSV. |
+| `crates/crime-query` | The query app. |
+| `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
+| `scripts/acceptance` | Acceptance scripts for the reference CSV (generator and query app). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |

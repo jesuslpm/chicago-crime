@@ -421,6 +421,9 @@ $g4 = Get-VerdictResult @('AC-G4-date', 'AC-G4-primary_type', 'AC-G4-district', 
 Add-Result 'AC-G4' $g4.Passed $g4.Evidence
 $manifest = Get-VerdictResult @('LAYOUT', 'MANIFEST-SCHEMA', 'CSV', 'MANIFEST-SOURCE', 'MANIFEST-TABLES')
 Add-Result 'Manifest' $manifest.Passed $manifest.Evidence
+# Schema 2 (query app PRD, decision C1): the text indexes hold their values in lowercase.
+$lowercase = Get-VerdictResult @('AC-C18-LOWERCASE')
+Add-Result 'Lowercase text indexes (query app AC-C18)' $lowercase.Passed $lowercase.Evidence
 Add-Section (@(
         '## Independent verifier on Run A'
         ''

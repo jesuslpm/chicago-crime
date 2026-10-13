@@ -115,10 +115,11 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 | T2 — `crime-query` dataset layer: snapshot open with retries, manifest + schema check, error-tracking reader, record get, index streams (ID-ascending per value, date range), membership probe, case-number existence | S2, S5 (access), S9 | delegated writer | **done**: 269/269; native assess high; verifier PASS; RDD approved `review-a365970a61ce8d44` | `7a752e3` |
 | T2a — Fixes from the T2 verification and review: `TrackedFile` verifies the masked CRC32C of every table block it reads (blocks are read as content + type byte + CRC in one `read_at`) so a corrupt block becomes a `ReadError` instead of a silently short stream (`R4-001`, verifier advisory 1); the AC-C12 snapshot test asserts the old version folder is gone before reading through open handles (`R3-001`); a test where `CURRENT` moves to a new version between open attempts and a later attempt succeeds (`R3-002`) | S2 | delegated writer (parallel with T4, disjoint files) | **done**: committed tree 347/347, clippy, fmt (worktree check) | `c67f70d` |
 | T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | **done**: 337/337 (parent re-ran + binary spot checks); assess medium `under_budget` (2,656 lines) → pending in the slice | `005e565` |
-| T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer (parallel with T2a) | **done**: 373/373 (parent re-ran); assess high (1,741 lines) → verified and reviewed with T5 as one slice | `04b604a` |
-| T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | **done**: committed tree 389/389, clippy, fmt (worktree check); slice T4+T5 assess high (3,140 lines) → verifier running | `f65a997` |
-| T6a — `crime-acceptance select` (independent CSV filtering: counts, ID lists, source rows) + T1 review suggestions `R3-001` (empty-dataset lowercase check pinned) and `R3-002` (non-ASCII `index_text` test) | S10 (tooling), S1 | delegated writer (parallel with T5, disjoint files) | in progress | — |
-| T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | pending | — |
+| T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer (parallel with T2a) | **done**: 373/373 (parent re-ran); assess high (1,741 lines) → verified and reviewed with T5 as one slice | `04b604a` (verified and reviewed with T5) |
+| T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | **done**: committed tree 389/389, clippy, fmt (worktree check); slice T4+T5 high (3,140 lines); verifier PASS; RDD approved `review-29c8f4b5a6db639b` | `f65a997` |
+| T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b, which owns `crime-query` now) | pending | — |
+| T6a — `crime-acceptance select` (independent CSV filtering: counts, ID lists, source rows) + T1 review suggestions `R3-001` (empty-dataset lowercase check pinned) and `R3-002` (non-ASCII `index_text` test) | S10 (tooling), S1 | delegated writer (parallel with T5, disjoint files) | **done**: 418/418 (parent re-ran); assess medium `under_budget` (1,429) → pending for the closing slice | `9a47432` |
+| T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | in progress | — |
 
 Forecast: ~3,500 authored changed lines. RDD: on (global). After each commit run
 `gentle-ai review assess --committed-only` against the last reviewed boundary (first boundary `4c74bfe`);
@@ -231,3 +232,24 @@ consent always granted (standing user instruction); at feature close review what
   no.` + `--where` help). Table output prints header + separator even with 0 results. 15 new tests (RED: 7/8 output
   tests without stdout, file tests not compiling); the broken-pipe test caught the stats line printed after a closed
   pipe. No real Ctrl+C binary test yet (T6b). Committed tree checked in a worktree: 389/389, clippy, fmt.
+- **L12 (19:35–19:50, T6a)**: writer delivered `9a47432`: `crime-acceptance select` re-implements the condition
+  semantics from the PRD (no query code); on the reference CSV `Primary Type=theft` → 1838502 and `Community Area=` →
+  613720 (AC-C2/AC-C3 figures) in ~22 s per pass; `--rows-out` is byte-identical to the source rows. `select` is looser
+  than the query app on purpose (accepts any column, ranges on Updated On; it is an oracle, not a product). R3-001: the
+  lowercase check passes with 0 values on an empty dataset (pinned). R3-002: non-ASCII lowercase with a byte-length
+  change (`İ`, `ẞ`) pinned on both sides. RED: 18/18 unit + 6/6 binary tests against a stub. T6b launched (work dir
+  `target/query-acceptance`); the T4+T5 verifier is still running.
+- **L13 (19:50–20:30, T4+T5 verification)**: independent verifier on `f65a997` (base `c67f70d`): S4 (T4/T5 messages),
+  S5, S6, S7, S8 (real Ctrl+C → 130 in file, stdout and count modes), S9 **PASS**, no blockers. 390 random + 51 fixed + 35
+  edge oracle queries (Python, PRD semantics): 0 mismatches over ~2.5M compared rows; AC-C8 across 0…7,868 results; limit
+  exact; output file atomic (damaged primary → exit 1, old content kept, no temp left); broken pipe → `0 0` in 75 ms;
+  peak private 2.4–13.3 MB on 2M rows whatever the result; ID lookup 23 ms; 33 invalid command lines identical to T3
+  except the deliberate boolean message. Advisories: A1 empty CSV fields written `""` while the source writes `,,`
+  (deviation from our "quoted like the source" decision) → sent to the T6b writer as a product fix (+ `select
+  --rows-out`); A2 rows already on stdout stay there after a mid-run read error (exit 1 + message flag it; inherent to
+  streaming, C7) → documented in the README; A3 `08` community area stored as `8` (D4 typed storage, out of domain);
+  A4 the date-driven plan scans the whole range even for one ID (accepted consequence of C10 without a cost model; T6b
+  times it); A5 stats time excludes the open (logged decision). RDD on a clean worktree at `f65a997`, lenses reliability
+  + resilience + readability, consent granted → **approved**, acknowledged (lineage `review-29c8f4b5a6db639b`). Boundary
+  → `f65a997`. `R4-001`, `R3-002`, `R2-003`, `R2-004`, `R2-005` → T5a. `R2-001` (task table stale at that commit) fixed
+  here; `R2-002`/`R3-001` (sí/si/no unproven) are already proven by T3's acceptance tests and the T3+T2a verifier.

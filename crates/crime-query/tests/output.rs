@@ -248,6 +248,32 @@ fn csv_lines_are_the_source_lines() {
     assert_eq!(lines, expected_lines, "byte for byte, '\\n' ended:\n{csv}");
 }
 
+/// The reference CSV quotes every non-empty field and leaves empty ones bare (`,,`): a record
+/// without Location Description, District, Ward, Community Area or coordinates, and a field with
+/// a quote inside, come out as the source lines byte for byte.
+#[test]
+fn csv_lines_leave_empty_fields_bare_like_the_source() {
+    let mut rows = detail_rows();
+    rows[1][6] = "SAID \"HELLO\", LEFT".to_owned();
+    let fixture = Fixture::with_rows(&rows);
+    let (csv, _) = records(
+        &fixture.output(),
+        &["--where", "ID=1", "--where", "ID=2"],
+        "csv",
+    );
+    let expected = csv_text(&expected_rows(&rows, &[1, 2]));
+    assert!(
+        expected.contains(",,,,"),
+        "the expected text has bare empty fields: {expected}"
+    );
+    let mut lines: Vec<&str> = csv.split_inclusive('\n').collect();
+    let mut expected_lines: Vec<&str> = expected.split_inclusive('\n').collect();
+    assert_eq!(lines.remove(0), expected_lines.remove(0), "the header line");
+    lines.sort_unstable();
+    expected_lines.sort_unstable();
+    assert_eq!(lines, expected_lines, "byte for byte:\n{csv}");
+}
+
 /// A record with every optional field empty, mixed case text with a comma and a time that does
 /// not exist in Chicago (the spring-forward gap), and one with coordinates and mixed case codes.
 fn detail_rows() -> Vec<Row> {

@@ -29,10 +29,10 @@
 use std::ffi::OsString;
 use std::fmt::Display;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
-use csv::{ByteRecord, Position, QuoteStyle, Reader, ReaderBuilder, Terminator, WriterBuilder};
+use csv::{ByteRecord, Position, Reader, ReaderBuilder};
 
 use crate::civil;
 use crate::fields::HEADER;
@@ -48,8 +48,8 @@ pub const USAGE: &str = "usage: crime-acceptance select --csv <file> [--where FI
   --range FIELD=FROM..TO  inclusive range on Date or Updated On, each end AAAA-MM-DD [hh:mm] or
                           empty; several ranges are AND
   --ids-out <file>        write the matching IDs, one per line, ascending
-  --rows-out <file>       write the header and the matching rows as CSV, ascending by ID, every
-                          field quoted, with the line terminator of the source
+  --rows-out <file>       write the header and the matching rows, ascending by ID, each copied
+                          byte for byte from the source (quotes and line terminator included)
 
 The number of matching rows goes to the standard output; rows read and skipped to the standard
 error. Exit code 0 on success, 1 when a file cannot be read or written, 2 when the command line
@@ -367,9 +367,8 @@ pub fn run(request: &Request) -> Result<Summary, String> {
         })?;
     }
     if let Some(out) = &request.rows_out {
-        let terminator = source_terminator(path).map_err(|error| unreadable(&error))?;
         write_out(out, |writer| {
-            write_rows(writer, terminator, &found, &mut reader, &unreadable)
+            write_rows(writer, path, &found, &mut reader, &unreadable)
         })?;
     }
     Ok(summary)
@@ -389,31 +388,32 @@ fn data_row(record: &ByteRecord) -> Option<(i64, Vec<&str>)> {
     Some((id, fields))
 }
 
-/// The line terminator of the header line: CRLF or LF.
-fn source_terminator(path: &Path) -> std::io::Result<Terminator> {
+/// The header line of the source, with its line terminator (CRLF or LF), as raw bytes.
+fn source_header_line(path: &Path) -> std::io::Result<Vec<u8>> {
     let mut line = Vec::new();
     BufReader::new(File::open(path)?).read_until(b'\n', &mut line)?;
-    Ok(if line.ends_with(b"\r\n") {
-        Terminator::CRLF
-    } else {
-        Terminator::Any(b'\n')
-    })
+    Ok(line)
 }
 
-/// The header and every row at `found`, read again from the source, quoted like the source.
+/// The header line and every row at `found`, copied byte for byte from the source, each row
+/// ended by the header's line terminator (the source uses one terminator throughout).
 fn write_rows(
     writer: &mut BufWriter<File>,
-    terminator: Terminator,
+    path: &Path,
     found: &[(i64, Position)],
     reader: &mut Reader<BufReader<File>>,
     unreadable: &dyn Fn(&dyn Display) -> String,
 ) -> Result<(), String> {
-    let mut csv = WriterBuilder::new()
-        .quote_style(QuoteStyle::Always)
-        .terminator(terminator)
-        .from_writer(writer);
-    csv.write_record(HEADER).map_err(|e| e.to_string())?;
+    let header = source_header_line(path).map_err(|error| unreadable(&error))?;
+    let terminator: &[u8] = if header.ends_with(b"\r\n") {
+        b"\r\n"
+    } else {
+        b"\n"
+    };
+    writer.write_all(&header).map_err(|e| e.to_string())?;
+    let mut source = File::open(path).map_err(|error| unreadable(&error))?;
     let mut record = ByteRecord::new();
+    let mut bytes = Vec::new();
     for (id, position) in found {
         reader
             .seek(position.clone())
@@ -424,9 +424,28 @@ fn write_rows(
         {
             return Err(unreadable(&format!("the row of ID {id} is gone")));
         }
-        csv.write_byte_record(&record).map_err(|e| e.to_string())?;
+        let (start, end) = (position.byte(), reader.position().byte());
+        let length = usize::try_from(end - start).map_err(|error| unreadable(&error))?;
+        bytes.resize(length, 0);
+        source
+            .seek(SeekFrom::Start(start))
+            .and_then(|_| source.read_exact(&mut bytes))
+            .map_err(|error| unreadable(&error))?;
+        // The span can hold the end of the previous terminator (the reader stops a record
+        // after `\r` of a CRLF) and not all of its own: the row itself never starts or ends
+        // with CR or LF, because a quoted field ends with its quote.
+        let is_break = |byte: &u8| *byte == b'\r' || *byte == b'\n';
+        let first = bytes.iter().position(|byte| !is_break(byte)).unwrap_or(0);
+        let last = bytes
+            .iter()
+            .rposition(|byte| !is_break(byte))
+            .map_or(0, |at| at + 1);
+        writer
+            .write_all(&bytes[first..last.max(first)])
+            .and_then(|()| writer.write_all(terminator))
+            .map_err(|e| e.to_string())?;
     }
-    csv.flush().map_err(|e| e.to_string())
+    Ok(())
 }
 
 /// Creates `out`, writes it with `write` and flushes it; any failure names the file.
