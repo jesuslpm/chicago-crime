@@ -175,7 +175,9 @@ derived `Location`, can be used as a filter on top of an indexed condition.
 
 **Output.** CSV and JSON hold every stored field in CSV order, with `Location` rebuilt. The CSV is
 written like the source (same header, non-empty fields quoted, empty fields bare, `\n` line ends), so
-each record comes out as its source line byte for byte. JSON also holds the query as interpreted (dates resolved to exact
+each record comes out as its source line byte for byte when the source writes its numbers in
+canonical form, as every value of the reference CSV does. Numbers are stored typed, so one written
+otherwise comes out in canonical form: `41.80` as `41.8`, a Ward `08` as `8`. JSON also holds the query as interpreted (dates resolved to exact
 seconds, the limit) and the dataset version it read. The results go to the standard output;
 warnings, errors and the closing line with the number of results, the time, the indexes used and the
 filters applied go to the standard error, so the results can be redirected or piped as they are. **The
@@ -213,14 +215,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-accep
 [`scripts/acceptance/run-query-acceptance.ps1`](scripts/acceptance/run-query-acceptance.ps1) checks
 the query app's AC-C1 to AC-C18 on the reference CSV: it generates the dataset, runs every criterion
 through the binary, compares every count with an independent filtering of the CSV and writes
-`query-acceptance-report.md`. It needs about 5 GB of free disk.
+`query-acceptance-report.md`. It needs about 5 GB of free disk. Its AC-C1 takes the parent AC3's
+"el primero, el último" as the first and last CSV rows, and the verifier's AC-G3-SAMPLE as the
+smallest and largest IDs, so both readings are checked.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir D:\query-acceptance
 ```
 
-Measured on the reference machine (2026-10-13, all 58 checks of the 18 criteria passed, about 6½
-minutes including the generation and the verifier):
+Measured on the reference machine (2026-10-13, all 58 checks of the 18 criteria passed; three runs
+took 6¼, 7½ and 15 minutes including the generation and the verifier, the last one with a release
+rebuild while the machine was busy):
 
 | Measure | Result |
 |---|---|

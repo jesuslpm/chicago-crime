@@ -3,7 +3,10 @@
 //!
 //! - **CSV**: the 22 source columns under the source header, written like the source file:
 //!   every non-empty field quoted (a `"` inside doubled), every empty field left bare (`,,`) and
-//!   every line ended by `\n`, so a record comes out as its source line byte for byte. Text is written as stored (the CSV text as is), dates
+//!   every line ended by `\n`, so a record comes out as its source line byte for byte when the
+//!   source writes its numbers in canonical form (every value of the reference CSV does).
+//!   Numbers are stored typed (decision D4), so one written otherwise comes out in canonical
+//!   form: `41.80` as `41.8`, a Ward `08` as `8`. Text is written as stored (the CSV text as is), dates
 //!   in the source text `MM/DD/YYYY hh:mm:ss AM|PM`, booleans `true`/`false`, `Location`
 //!   rebuilt from the coordinates and "sin valor" as an empty field.
 //! - **JSON**: one object, `{"query": …, "dataset": …, "results": [ … ]}`, with the interpreted

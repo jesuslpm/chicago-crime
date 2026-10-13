@@ -22,7 +22,13 @@
     console Ctrl+C, see send-ctrl-c.ps1) once the query's temporary output file holds 1 MiB, and
     AC-C12 publishes version 2 while the query on version 1 is held in flight: its standard output
     is read only up to its first rows, so it cannot finish, and is read to the end once CURRENT has
-    switched.
+    switched. AC-C12 passes only if the publication completed during the query: CURRENT names
+    version 2 and the version 1 folder is gone while the query still runs.
+
+    AC-C1 reads "el primero, el último" of the parent AC3 as the first and the last CSV rows; the
+    generator verifier's AC-G3-SAMPLE (crime-acceptance, run by run-acceptance.ps1 and by the
+    verifier step here) reads them as the smallest and the largest IDs. Both readings are checked
+    across the two scripts.
 
     Memory (AC-C13) is the peak private committed bytes (PeakPagefileUsage, the counter behind
     PeakPagedMemorySize64), sampled every 10 ms and read once more after the process ends.
@@ -88,6 +94,8 @@ $Everything = 'Date=2000-01-01..'
 $RareType = 'RITUALISM'
 $MissingId = 123          # below the smallest ID of the CSV (634)
 $MissingCase = 'JA000000'
+# The end of the name of the query app's temporary output file, `.<target name>.XXXXXX.crime-query.tmp`.
+$TemporarySuffix = '.crime-query.tmp'
 # Peaks of the same order (AC-C13): the largest is at most this many times the smallest.
 $MemoryRatioLimit = 3
 
@@ -127,6 +135,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class QueryAcceptance {
     static readonly Encoding Utf8 = new UTF8Encoding(false);
@@ -229,6 +238,62 @@ public static class QueryAcceptance {
         Counters counters;
         if (!GetProcessMemoryInfo(process, out counters, (uint)Marshal.SizeOf(typeof(Counters)))) return -1;
         return (long)counters.PeakPagefileUsage.ToUInt64();
+    }
+}
+
+// Samples without pause, on a thread of its own, the size of every file of a folder whose name
+// matches a pattern, until Stop: it sees what a short run writes to a temporary file that the
+// run deletes before it ends. Each size is read through a handle, which is current while the
+// writer still holds the file open.
+public sealed class TemporaryOutputWatch {
+    readonly string dir, pattern;
+    readonly Thread thread;
+    readonly Dictionary<string, long> largest = new Dictionary<string, long>(StringComparer.Ordinal);
+    volatile bool stopping;
+    long samples;
+
+    public TemporaryOutputWatch(string dir, string pattern) {
+        this.dir = dir;
+        this.pattern = pattern;
+        thread = new Thread(Run);
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
+    public long Samples { get { return Interlocked.Read(ref samples); } }
+
+    void Run() {
+        while (!stopping) { Sample(); Thread.Yield(); }
+        Sample();
+    }
+
+    void Sample() {
+        string[] paths;
+        try { paths = Directory.GetFiles(dir, pattern); }
+        catch (IOException) { return; }
+        foreach (string path in paths) {
+            long length;
+            try {
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) {
+                    length = stream.Length;
+                }
+            }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            string name = Path.GetFileName(path);
+            lock (largest) {
+                long known;
+                if (!largest.TryGetValue(name, out known) || length > known) largest[name] = length;
+            }
+        }
+        Interlocked.Increment(ref samples);
+    }
+
+    // Stops sampling and returns each file seen with the largest size it was seen holding.
+    public Dictionary<string, long> Stop() {
+        stopping = true;
+        thread.Join();
+        lock (largest) { return new Dictionary<string, long>(largest, StringComparer.Ordinal); }
     }
 }
 "@
@@ -530,12 +595,40 @@ function Test-Formats([string]$Label, [string[]]$Arguments, [string[]]$ExpectedW
 
 # A query that must be refused (AC-C10): exactly one stderr line with the message, nothing on
 # stdout, and the exit code of decision C6.
-function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir) {
+#
+# With -AfterWriting, the query's output file is -AfterWriting and the query must fail after it
+# started writing records: while it runs, its temporary file `.<target name>.XXXXXX.crime-query.tmp`
+# must be seen holding more bytes than the header line. A run that fails when it opens the
+# dataset never creates that file, and one that fails before its first record writes the header
+# line at most. The run gets the properties TemporaryName, TemporaryBytes and WroteRecords.
+function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir, [string]$AfterWriting) {
+    $watch = $null
+    if ($AfterWriting) {
+        $watch = New-Object TemporaryOutputWatch -ArgumentList (Split-Path -Parent $AfterWriting), ('*' + $TemporarySuffix)
+    }
     $run = Invoke-Query -Arguments $Arguments -Dataset $Dataset
     $lines = @(Get-Lines $run.Stderr)
     $ok = $run.ExitCode -eq $ExitCode -and $lines.Count -eq 1 -and $lines[0] -ceq $Message -and $run.Stdout -eq ''
-    Add-Result "AC-C10 $Row" $ok ('`{0}`: exit {1} (C6: {2}); stderr "{3}"; stdout empty: {4}' -f `
-            (Format-Query $run), $run.ExitCode, $ExitCode, ($lines -join ' / '), ($run.Stdout -eq ''))
+    $evidence = '`{0}`: exit {1} (C6: {2}); stderr "{3}"; stdout empty: {4}' -f `
+        (Format-Query $run), $run.ExitCode, $ExitCode, ($lines -join ' / '), ($run.Stdout -eq '')
+    if ($watch) {
+        $seen = $watch.Stop()
+        $pattern = '^' + [regex]::Escape('.' + (Split-Path -Leaf $AfterWriting) + '.') + '[A-Za-z0-9]{6}' + [regex]::Escape($TemporarySuffix) + '$'
+        $temporary = @($seen.GetEnumerator() | Where-Object { $_.Key -cmatch $pattern } | Sort-Object Value -Descending | Select-Object -First 1)
+        $headerBytes = $Utf8.GetByteCount($Header) + 1
+        $wrote = $temporary.Count -eq 1 -and $temporary[0].Value -gt $headerBytes
+        $ok = $ok -and $wrote
+        $evidence += '; while it ran ({0} samples of the target folder), {1}' -f (Format-Count $watch.Samples), $(
+            if ($temporary.Count -eq 1) {
+                'its temporary file {0} held up to {1} bytes (the header line has {2}): records were being written before the abort: {3}' -f `
+                    $temporary[0].Key, (Format-Count $temporary[0].Value), $headerBytes, $wrote
+            }
+            else { 'no temporary file was seen (FAIL: no proof that writing had started)' })
+        $run | Add-Member -NotePropertyName TemporaryName -NotePropertyValue $(if ($temporary.Count -eq 1) { $temporary[0].Key } else { $null })
+        $run | Add-Member -NotePropertyName TemporaryBytes -NotePropertyValue $(if ($temporary.Count -eq 1) { $temporary[0].Value } else { 0 })
+        $run | Add-Member -NotePropertyName WroteRecords -NotePropertyValue $wrote
+    }
+    Add-Result "AC-C10 $Row" $ok $evidence
     $run
 }
 
@@ -762,17 +855,21 @@ New-Item -ItemType Directory -Path $folderTarget | Out-Null
 Test-Rejection 'child: output file that is a folder' @('--where', 'ID=634', '--format', 'json', '--output', $folderTarget) (Get-UnwritableMessage $folderTarget) 1 | Out-Null
 
 # The active version unreadable in the middle of the query, with an output file (AC-C10 and
-# AC-C15): the query starts writing, reaches the damaged block and aborts.
+# AC-C15): the query starts writing, reaches the damaged block and aborts. Both runs must show
+# that writing had started: the output file run through its temporary file (see Test-Rejection),
+# the stdout run through the header and at least one record on stdout before the abort.
 $damagedOut = Join-Path $OutDir 'damaged'
 New-Item -ItemType Directory -Path $damagedOut | Out-Null
 $damagedTarget = Join-Path $damagedOut 'result.csv'
-$damaged = Test-Rejection 'child: the version becomes unreadable mid-query (output file)' @('--range', $Everything, '--format', 'csv', '--output', $damagedTarget) (Get-UnreadableMessage $DamagedDir) 1 $DamagedDir
+$damaged = Test-Rejection 'child: the version becomes unreadable mid-query (output file)' @('--range', $Everything, '--format', 'csv', '--output', $damagedTarget) (Get-UnreadableMessage $DamagedDir) 1 $DamagedDir -AfterWriting $damagedTarget
 $damagedEntries = @(Get-EntryNames $damagedOut)
 $damagedStdout = Invoke-Query -Arguments @('--range', $Everything, '--format', 'csv') -Dataset $DamagedDir
 $damagedStdoutLines = @(Get-Lines $damagedStdout.Stderr)
-Add-Result 'AC-C10 child: the version becomes unreadable mid-query (stdout)' ($damagedStdout.ExitCode -eq 1 -and $damagedStdoutLines.Count -eq 1 -and $damagedStdoutLines[0] -ceq (Get-UnreadableMessage $DamagedDir) -and -not (Get-Stats $damagedStdout.Stderr)) `
-('`{0}` on a copy of the small dataset with 4 KiB overwritten at byte {1} of primary.sst ({2} bytes): exit {3}; stderr "{4}"; {5} CSV lines reached stdout before the abort, no stats line' -f `
-        (Format-Query $damagedStdout), (Format-Count $damageOffset), (Format-Count $primaryLength), $damagedStdout.ExitCode, ($damagedStdoutLines -join ' / '), @(Get-Lines $damagedStdout.Stdout).Count)
+$damagedStdoutRows = @(Get-Lines $damagedStdout.Stdout)
+$damagedStdoutWrote = $damagedStdoutRows.Count -ge 2 -and $damagedStdoutRows[0] -ceq $Header
+Add-Result 'AC-C10 child: the version becomes unreadable mid-query (stdout)' ($damagedStdout.ExitCode -eq 1 -and $damagedStdoutLines.Count -eq 1 -and $damagedStdoutLines[0] -ceq (Get-UnreadableMessage $DamagedDir) -and -not (Get-Stats $damagedStdout.Stderr) -and $damagedStdoutWrote) `
+('`{0}` on a copy of the small dataset with 4 KiB overwritten at byte {1} of primary.sst ({2} bytes): exit {3}; stderr "{4}"; {5} CSV lines reached stdout before the abort, the header first and then records: {6}; no stats line' -f `
+        (Format-Query $damagedStdout), (Format-Count $damageOffset), (Format-Count $primaryLength), $damagedStdout.ExitCode, ($damagedStdoutLines -join ' / '), $damagedStdoutRows.Count, $damagedStdoutWrote)
 
 # --- AC-C18 (second half): a schema-1 dataset is rejected ---
 
@@ -797,9 +894,10 @@ $previousKept = (Get-FileSha $previousTarget) -eq $previousHash -and @(Get-Entry
 Add-Result 'AC-C15 (rejected)' ($rejectedRun.ExitCode -eq 1 -and $rejectedUsage.ExitCode -eq 2 -and $rejectedNone -and $rejectedOver.ExitCode -eq 1 -and $previousKept) `
 ('unknown field with --output: exit {0}; limit 0 with --output: exit {1}; no file in the target folder afterwards: {2}. Over an existing file: an inverted range exits {3} and the damaged dataset exits {4}; the file keeps its SHA-256 and the folder holds only it: {5}' -f `
         $rejectedRun.ExitCode, $rejectedUsage.ExitCode, $rejectedNone, $rejectedOver.ExitCode, $failedOver.ExitCode, $previousKept)
-Add-Result 'AC-C15 (failing)' ($damaged.ExitCode -eq 1 -and $damagedEntries.Count -eq 0 -and $failedOver.ExitCode -eq 1) `
-('the query over the damaged dataset failed after it started writing: exit {0}, stderr "{1}"; the target folder holds afterwards: {2}' -f `
-        $damaged.ExitCode, $damaged.Stderr.Trim(), $(if ($damagedEntries.Count -eq 0) { 'nothing (no file with the requested name, no temporary file)' } else { $damagedEntries -join ', ' }))
+Add-Result 'AC-C15 (failing)' ($damaged.ExitCode -eq 1 -and $damaged.WroteRecords -and $damagedEntries.Count -eq 0 -and $failedOver.ExitCode -eq 1) `
+('the query over the damaged dataset failed after it started writing: exit {0}, stderr "{1}"; while it ran, its temporary file {2} held up to {3} bytes (more than the header line: {4}); the target folder holds afterwards: {5}' -f `
+        $damaged.ExitCode, $damaged.Stderr.Trim(), $(if ($damaged.TemporaryName) { $damaged.TemporaryName } else { '(none seen)' }), (Format-Count $damaged.TemporaryBytes), $damaged.WroteRecords, `
+        $(if ($damagedEntries.Count -eq 0) { 'nothing (no file with the requested name, no temporary file)' } else { $damagedEntries -join ', ' }))
 
 # --- AC-C10: a real Ctrl+C on a long query with an output file ---
 
@@ -1034,7 +1132,7 @@ $afterFile = Join-Path $OutDir 'query-swap-after.csv'
 $afterRun = Invoke-Query -Dataset $SwapDir -Arguments @('--range', $Everything, '--format', 'csv', '--output', $afterFile)
 $afterDiff = if ($afterRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($afterFile, $Slice2Rows) } else { 'the query failed' }
 $switched = $publish.ExitCode -eq 0 -and $v2Name -ne $v1Name
-Add-Result 'AC-C12 (query in flight)' ($switched -and $runningAtPublish -and $runningAfterPublish -and $swapDone.ExitCode -eq 0 -and $null -eq $duringDiff) `
+Add-Result 'AC-C12 (query in flight)' ($switched -and $v1Gone -and $runningAtPublish -and $runningAfterPublish -and $swapDone.ExitCode -eq 0 -and $null -eq $duringDiff) `
 ('`crime-query --dataset swap --range "{0}" --format csv` on version 1 ({1}, {2} rows of slice 1) held after its first 1,000 rows; generator --overwrite with slice 2 exit {3}, CURRENT {1} -> {4}, old version folder gone: {5}; query still running when the generator ended: {6}; then exit {7}, {8} rows, equal to select on slice 1 ({9}) byte for byte in any order: {10}' -f `
         $Everything, $v1Name, (Format-Count $slice1Count), $publish.ExitCode, $v2Name, $v1Gone, $runningAfterPublish, $swapDone.ExitCode, $(if ($duringStats) { Format-Count $duringStats.Count } else { '-' }), `
     (Format-Count (Get-SelectCount 'slice-1')), $(if ($null -eq $duringDiff) { 'yes' } else { $duringDiff }))

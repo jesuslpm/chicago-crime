@@ -117,9 +117,10 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 | T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | **done**: 337/337 (parent re-ran + binary spot checks); assess medium `under_budget` (2,656 lines) → pending in the slice | `005e565` |
 | T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer (parallel with T2a) | **done**: 373/373 (parent re-ran); assess high (1,741 lines) → verified and reviewed with T5 as one slice | `04b604a` (verified and reviewed with T5) |
 | T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | **done**: committed tree 389/389, clippy, fmt (worktree check); slice T4+T5 high (3,140 lines); verifier PASS; RDD approved `review-29c8f4b5a6db639b` | `f65a997` |
-| T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b) | in progress (+ move `csv` out of `[dependencies]`, unused since T6b) | — |
+| T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b) | **done**: 423/423 (parent re-ran); + `csv` moved to dev-dependencies | `d8dd41b` |
 | T6a — `crime-acceptance select` (independent CSV filtering: counts, ID lists, source rows) + T1 review suggestions `R3-001` (empty-dataset lowercase check pinned) and `R3-002` (non-ASCII `index_text` test) | S10 (tooling), S1 | delegated writer (parallel with T5, disjoint files) | **done**: 418/418 (parent re-ran); assess medium `under_budget` (1,429) → pending for the closing slice | `9a47432` |
 | T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | **done**: acceptance 58/58 PASS on the reference CSV; 419/419 (parent re-ran); closing slice high → verifier + RDD after T5a | `8a45c08` |
+| T6c — Harden the acceptance script from the closing-slice verifier: AC-C12 requires the old folder gone; unreadable-version rows assert writing had started; README/`output.rs` byte-fidelity claim qualified (D4 canonical numbers); note the two AC3 sample readings | S10 | delegated writer + acceptance re-run | **done**: acceptance 58/58 PASS (886 s with rebuild); 423/423 | (next commit) |
 
 Forecast: ~3,500 authored changed lines. RDD: on (global). After each commit run
 `gentle-ai review assess --committed-only` against the last reviewed boundary (first boundary `4c74bfe`);
@@ -142,18 +143,18 @@ consent always granted (standing user instruction); at feature close review what
   cerrar: tiempo real vs estimado; informe de archivos tocados con líneas añadidas y eliminadas por área …
   Pendiente menor: en .claude/settings.local.json la regla "ask" de git push no pidió confirmación … No
   confíes en esa regla"
-- **L2 (2026-10-13 16:07–16:40)**: Engram updated: #839 (C11), #840 (C7) rewritten to v1.1; #845 saved (no cost
+- **L2 (16:07–16:14)**: Engram updated: #839 (C11), #840 (C7) rewritten to v1.1; #845 saved (no cost
   planner). Baseline: `main` 4c74bfe, 230 tests green, RDD on (global). No `git push` will be run at all.
   `sstable` 0.11.1 reader facts: `TableIterator::advance` swallows block read errors and jumps to the next
   block; `seek` past the end resets the iterator; `Table::get` returns errors.
-- **L3 (16:50–17:00, T1)**: writer delivered S1 (`c8db165`): `index_text` = `to_lowercase` in `crime-dataset`,
+- **L3 (T1, commit 16:21)**: writer delivered S1 (`c8db165`): `index_text` = `to_lowercase` in `crime-dataset`,
   `index_key` lowercases primary type, district and case number, `SCHEMA_VERSION` 2; generator tests updated plus a
   mixed-case test (index lowercase, primary keeps CSV text); verifier lowercases expected keys, expects schema 2 and
   adds `AC-C18-LOWERCASE`. RED observed first (index keys held `ARSON`/`Theft`, manifest 1 vs 2, 18 criteria
   expected). fmt/clippy clean, 236/236 (parent re-ran 236/236). Native assess: medium, `under_budget` (521 lines);
   raised by the parent with `--escalate-item 1` (persisted index format change) → `review_due` high. Pending for T6:
   the acceptance script does not yet map `AC-C18-LOWERCASE` to a result row.
-- **L4 (17:00–17:20, T1 verification)**: independent verifier (scratch clones under the system temp dir): S1 PASS, no
+- **L4 (T1 verification, after 16:21)**: independent verifier (scratch clones under the system temp dir): S1 PASS, no
   blockers. Mixed-case fixture → index values lowercase (`theft`, `00a`, `ja123`, `jé900`), codes keep zeros (`008` ≠
   `8`), primary keeps the CSV text; manifest schema 2; verifier 18/18 PASS; baseline dataset fails the new verifier
   (7/18); `primary.sst`, `index-date.sst`, `index-community_area.sst` byte-identical baseline vs T1. Advisories (not
@@ -163,7 +164,7 @@ consent always granted (standing user instruction); at feature close review what
   instruction) → **approved**, acknowledged (lineage `review-9f2da850bb2a217a`, authority burned). Reviewed boundary
   → `c8db165`. Suggestions: `R3-001` (empty-dataset behavior of `AC-C18-LOWERCASE` untested), `R3-002` (no non-ASCII
   `index_text` test where lowercase changes byte length) — accepted as advisory, folded into T6.
-- **L5 (17:20–17:35, T2)**: writer delivered `7a752e3`: `crates/crime-query` library (dataset, index streams, tracked
+- **L5 (T2, commit 16:34)**: writer delivered `7a752e3`: `crates/crime-query` library (dataset, index streams, tracked
   reader, messages) + 30 integration and 3 unit tests (RED against a panicking stub). New `sstable` 0.11.1 findings:
   `seek` to a target between a block's last key and its separator leaves the iterator invalid (workaround with
   `approx_offset_of` + bounded advance, pinned by a test over 2,999 range starts); block reads ignore short reads (the
@@ -172,7 +173,7 @@ consent always granted (standing user instruction); at feature close review what
   and the open snapshot kept reading old data (AC-C12 behavior confirmed in a test). Added `foundationdb-tuple` to the
   crate (key decoding). Native assess high → independent verifier launched; T3 writer launched in parallel (disjoint
   files, verifier works in a temp clone).
-- **L6 (17:35–17:55, T2 verification)**: independent verifier PASS (S2, S5 access, S9), no blockers: 90 value queries,
+- **L6 (T2 verification, after 16:34)**: independent verifier PASS (S2, S5 access, S9), no blockers: 90 value queries,
   22,368 + 500 date-range queries (0 mismatches; disabling the seek workaround gives 9), 502 records, every open message
   verbatim, snapshot under `--overwrite` holds, truncation after open → read error, folder hashes unchanged after ~27k
   queries, peak private 1.0 MB (ARSON) vs 2.2 MB (THEFT 200k) — growth is the bounded block cache (2,048 blocks ≈ 8 MiB).
@@ -181,7 +182,7 @@ consent always granted (standing user instruction); at feature close review what
   conjunto o incompleta"); (3) judge AC-C13 with the ≈8 MiB cache in mind (T6). RDD on a clean worktree at `7a752e3`
   (base `c8db165`), lenses resilience + reliability, consent granted → **approved**, acknowledged (lineage
   `review-a365970a61ce8d44`). Boundary → `7a752e3`. Warnings `R4-001`, `R3-001` and suggestion `R3-002` → T2a.
-- **L7 (17:55–18:15, T3)**: writer delivered `005e565`: `fields.rs` (22-column catalog), `query.rs` (typed query,
+- **L7 (T3, commit 16:47)**: writer delivered `005e565`: `fields.rs` (22-column catalog), `query.rs` (typed query,
   filters, C2 intervals, JSON view), `cli.rs` (clap in Spanish; derive + `ArgMatches::indices_of` to keep the order of
   `--where`/`--range`), interim `main.rs`, `CivilDateTime::{MIN, MAX, from_parts, to_iso_string}` in `crime-dataset`
   (additive; the parser now builds through `from_parts`). 66 new tests (RED: compile failures on the missing API).
@@ -192,7 +193,7 @@ consent always granted (standing user instruction); at feature close review what
   field (Block included) → `Solo se admiten rangos sobre "Date".`. Parent spot checks: missing dataset exit 1, Block →
   "no admite condiciones" exit 1, `--count --format csv` exit 2. Assess: medium, `under_budget`. T2a and T4 launched
   in parallel (declared disjoint surfaces; the parent owns git).
-- **L8 (18:15–18:35, T2a)**: writer delivered `c67f70d`: `TrackedFile` verifies the masked CRC32C of every block read
+- **L8 (T2a, commit 16:55)**: writer delivered `c67f70d`: `TrackedFile` verifies the masked CRC32C of every block read
   (in-house CRC32C + LevelDB unmask, no new dependency; reads of exactly the last 48 bytes are the footer; the
   `filter._` metaindex entry written by `new_no_filter` is never read because the reader looks up
   `filter.leveldb.BuiltinBloomFilter2`, pinned by a unit test). RED: zeroing 64 bytes in `index-primary_type.sst`
@@ -201,7 +202,7 @@ consent always granted (standing user instruction); at feature close review what
   files) was checked in a separate worktree: 347/347, clippy and fmt clean. Assess of the slice `7a752e3..c67f70d`
   (T4's untracked files excluded with `--untracked-scope=exclude`): **high** (`process_boundary`, 3,120 lines) →
   independent verifier launched, then RDD.
-- **L9 (18:35–18:50, T4)**: writer delivered `04b604a`: `exec.rs` (`Execution`, `ExecError`, `Summary`; date-driven
+- **L9 (T4, commit 16:58)**: writer delivered `04b604a`: `exec.rs` (`Execution`, `ExecError`, `Summary`; date-driven
   scan with `has_entry` probes, k-way union, sorted-merge intersection, filters on the decoded record only when needed,
   limit, cancel closure polled per examined ID), typed case-number spelling kept for the warning, stats/warning messages,
   `main.rs` wired (count prints the bare number; records mode interim). 26 new tests incl. a brute-force comparison over
@@ -209,7 +210,7 @@ consent always granted (standing user instruction); at feature close review what
   open). Assess high (`process_boundary`, 1,741 lines). Decision (parent): T4 and T5 form one slice for the independent
   verifier and the RDD review (`c67f70d..T5`), instead of two ceremonies on adjacent commits by the same writer model
   ("Verification timing" rule). T5 launched; the T3+T2a verifier is still running on `c67f70d`.
-- **L10 (18:50–19:10, T3+T2a verification)**: independent verifier on `c67f70d` (base `7a752e3`): S2, S3, S4 (T3 part),
+- **L10 (T3+T2a verification, after 16:55)**: independent verifier on `c67f70d` (base `7a752e3`): S2, S3, S4 (T3 part),
   S8 (0/1/2) **PASS**, no blockers; every T3 message provoked through the binary with exact text and exit code; C2
   resolution, filters, JSON view and error order probed through the library; corrupt blocks → read errors, 0 false
   errors over valid Snappy/uncompressed datasets; `CivilDateTime` parse/display byte-identical to the baseline over ~55k
@@ -221,7 +222,7 @@ consent always granted (standing user instruction); at feature close review what
   without output) are resolved by T4/T5 before the merge; `R2-002` (130 without a handler) is T5's Ctrl+C; `R2-003`
   (Spanish boolean spellings undocumented) sent to the T5 writer: message becomes `se esperaba true, false, sí o no.`
   plus `--where` help; `R2-004` (task table out of date at that commit) is fixed in this document.
-- **L11 (19:10–19:35, T5)**: writer delivered `f65a997`: `output.rs` (streaming table/CSV/JSON; CSV `
+- **L11 (T5, commit 17:16)**: writer delivered `f65a997`: `output.rs` (streaming table/CSV/JSON; CSV `
 ` terminator and
   every field quoted like the source; table widths ID 8, Case Number 11, Date 22, Block 38, IUCR 4, Primary Type 33,
   Description 45, Location Description 40, Arrest 6, Domestic 8, Beat 4, District 8, Ward 4, Community Area 14, FBI Code
@@ -232,14 +233,14 @@ consent always granted (standing user instruction); at feature close review what
   no.` + `--where` help). Table output prints header + separator even with 0 results. 15 new tests (RED: 7/8 output
   tests without stdout, file tests not compiling); the broken-pipe test caught the stats line printed after a closed
   pipe. No real Ctrl+C binary test yet (T6b). Committed tree checked in a worktree: 389/389, clippy, fmt.
-- **L12 (19:35–19:50, T6a)**: writer delivered `9a47432`: `crime-acceptance select` re-implements the condition
+- **L12 (T6a, commit 17:19)**: writer delivered `9a47432`: `crime-acceptance select` re-implements the condition
   semantics from the PRD (no query code); on the reference CSV `Primary Type=theft` → 1838502 and `Community Area=` →
   613720 (AC-C2/AC-C3 figures) in ~22 s per pass; `--rows-out` is byte-identical to the source rows. `select` is looser
   than the query app on purpose (accepts any column, ranges on Updated On; it is an oracle, not a product). R3-001: the
   lowercase check passes with 0 values on an empty dataset (pinned). R3-002: non-ASCII lowercase with a byte-length
   change (`İ`, `ẞ`) pinned on both sides. RED: 18/18 unit + 6/6 binary tests against a stub. T6b launched (work dir
   `target/query-acceptance`); the T4+T5 verifier is still running.
-- **L13 (19:50–20:30, T4+T5 verification)**: independent verifier on `f65a997` (base `c67f70d`): S4 (T4/T5 messages),
+- **L13 (T4+T5 verification, after 17:16)**: independent verifier on `f65a997` (base `c67f70d`): S4 (T4/T5 messages),
   S5, S6, S7, S8 (real Ctrl+C → 130 in file, stdout and count modes), S9 **PASS**, no blockers. 390 random + 51 fixed + 35
   edge oracle queries (Python, PRD semantics): 0 mismatches over ~2.5M compared rows; AC-C8 across 0…7,868 results; limit
   exact; output file atomic (damaged primary → exit 1, old content kept, no temp left); broken pipe → `0 0` in 75 ms;
@@ -253,10 +254,34 @@ consent always granted (standing user instruction); at feature close review what
   + resilience + readability, consent granted → **approved**, acknowledged (lineage `review-29c8f4b5a6db639b`). Boundary
   → `f65a997`. `R4-001`, `R3-002`, `R2-003`, `R2-004`, `R2-005` → T5a. `R2-001` (task table stale at that commit) fixed
   here; `R2-002`/`R3-001` (sí/si/no unproven) are already proven by T3's acceptance tests and the T3+T2a verifier.
-- **L14 (20:30–21:45, T6b)**: writer delivered `8a45c08`: `scripts/acceptance/run-query-acceptance.ps1` (58 checks, every
+- **L14 (T6b, commit 18:34)**: writer delivered `8a45c08`: `scripts/acceptance/run-query-acceptance.ps1` (58 checks, every
   count also checked against `crime-acceptance select`), `send-ctrl-c.ps1` can trigger on an output file size and capture
   output, the generator script maps `AC-C18-LOWERCASE`, README query section. Product/tool fix A1 (RED: 2 output tests
   showed `""` where the source has `,,`): `crime-query` CSV writes empty fields bare and quotes non-empty ones like the
   source (`write_csv_line`); `select --rows-out` copies the source row bytes. **Acceptance on the reference CSV: exit 0,
   58/58 PASS in 377 s** (report `target/query-acceptance/query-acceptance-report.md`; generation 70 s, verifier 257 s).
   Generator acceptance re-run (Ctrl+C helper changed): 15/15 PASS. Assess of `f65a997..8a45c08`: high (2,921 lines).
+- **L15 (T5a, commit 18:40)**: writer delivered `d8dd41b`: temp output file `.<target>.XXXXXX.crime-query.tmp` with the
+  leftover documented in `--help` and README (nothing deleted automatically); Ctrl+C polled before each ID and case-number
+  check in `Execution::start` and once more before output (`start` now returns `ExecError`); `ended`;
+  `Field::csv_position()`; shared test helpers; `csv` → dev-dependencies. RED: temp names `.tmp31rTMC`, table output
+  after a cancel during start, help text missing, compile failures for the new API. Closing slice `f65a997..d8dd41b`
+  (T6a + T6b + T5a): high (3,322 lines) → independent verifier (incl. an acceptance re-run and a script audit), then RDD.
+- **L16 (closing-slice verification, 18:41–~19:00)**: independent verifier on `d8dd41b` (base `f65a997`): no blockers.
+  Script audit: every AC-C row really checks its criterion. Its own acceptance re-run: exit 0, 58/58 PASS in 444 s with
+  the same figures (THEFT 1,838,502; CA nil 613,720; August 2019 24,505; THEFT+008 112,724; Arrest filter 514; street
+  1,397; AC-C13 ratios 2.04/2.16; verifier 18/18; AC-C7 first run 399 ms under load). Oracle independence confirmed
+  (`cargo tree`), three-way cross-check Python/`select`/`crime-query` 36/36 on 200k rows; the 200k slice as CSV is
+  byte-identical to the source; temp name, real Ctrl+C (also inside `Execution::start` with 1,500 IDs) → 130;
+  `f65a997` vs `d8dd41b` outputs identical except the deliberate `""` → `,,`. Advisories: (1) AC-C12 does not require the
+  old folder gone; (2) unreadable-version rows do not assert writing had started; (3) the byte-for-byte claim needs the
+  D4 qualification; (4) two readings of the AC3 sample (first/last row vs smallest/largest ID) — all four → T6c.
+- **L17 (19:15, correction by the parent)**: the time ranges first written in L2–L16 were estimates, not measurements,
+  and they ran ahead of the real clock (up to "22:20" when the real time was 19:14). They are replaced by real anchors
+  from `git log` commit times. Measured times are only: the start (`date`, 16:06:57) and the commit timestamps.
+- **L18 (T6c, finished ~19:16)**: AC-C12 now requires the old folder gone (evidence: `dataset-20261013-190644-13952` →
+  `dataset-20261013-191451-27396`, old folder gone, query still running when the generator ended); the unreadable-version
+  rows require writing to have started (temp file seen up to 402,520 bytes > 250-byte header, 110 samples; stdout case
+  1,423 lines before the abort); README and `output.rs` qualify the byte-for-byte claim with D4; the two AC3 sample
+  readings are noted. Acceptance re-run: exit 0, 58/58 PASS, 886 s with a release rebuild. Parent fixed the README run
+  time (6¼, 7½ and 15 min measured).
