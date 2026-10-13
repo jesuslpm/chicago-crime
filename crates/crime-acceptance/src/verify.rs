@@ -427,7 +427,8 @@ fn scan_csv(path: &Path, primary: &PrimaryTable) -> Result<CsvScan, String> {
     Ok(scan)
 }
 
-fn check_header(record: &ByteRecord) -> Result<(), String> {
+/// Whether the first record of a CSV is exactly [`HEADER`], a UTF-8 byte order mark aside.
+pub(crate) fn check_header(record: &ByteRecord) -> Result<(), String> {
     let found: Vec<String> = record
         .iter()
         .enumerate()

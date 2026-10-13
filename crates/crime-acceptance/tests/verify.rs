@@ -368,6 +368,32 @@ fn an_uppercase_value_in_a_text_index_fails_the_lowercase_check() {
 }
 
 #[test]
+fn the_lowercase_check_passes_with_zero_values_on_a_dataset_without_records() {
+    let fixture = Fixture::with_rows(&[]);
+
+    let report = fixture.verify();
+
+    let lowercase = check(&report, "AC-C18-LOWERCASE");
+    assert_eq!(lowercase.outcome, Outcome::Pass, "{}", report.render());
+    assert!(
+        lowercase
+            .summary
+            .starts_with("0 text values in the primary_type, district, case_number indexes, 0 not"),
+        "{}",
+        report.render()
+    );
+    // Consistent with the other counts over the same empty dataset.
+    for criterion in ["AC-G4-THEFT", "AC-G4-COMMUNITY-NIL", "AC-G4-SHARED-CASES"] {
+        assert_eq!(
+            check(&report, criterion).outcome,
+            Outcome::Pass,
+            "{criterion}\n{}",
+            report.render()
+        );
+    }
+}
+
+#[test]
 fn a_dataset_with_schema_version_1_fails_the_manifest_schema() {
     let fixture = Fixture::new();
     let manifest = fixture.version().join("manifest.json");

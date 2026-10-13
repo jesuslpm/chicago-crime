@@ -237,6 +237,26 @@ mod tests {
     }
 
     #[test]
+    fn non_ascii_text_is_expected_in_lowercase_even_when_its_byte_length_changes() {
+        // U+0130 (2 bytes) lowercases to `i` + U+0307 (3 bytes); U+1E9E (3 bytes) to U+00DF.
+        let fields = row("JÉ900", "10/03/2026 12:00:00 AM", "İSTANBUL", "ẞ01", "8");
+        let id = 7;
+
+        assert_eq!(
+            expected_key(spec("primary_type"), &fields, id),
+            Some(pack(&("i\u{307}stanbul", id)))
+        );
+        assert_eq!(
+            expected_key(spec("district"), &fields, id),
+            Some(pack(&("ß01", id)))
+        );
+        assert_eq!(
+            expected_key(spec("case_number"), &fields, id),
+            Some(pack(&("jé900", id)))
+        );
+    }
+
+    #[test]
     fn empty_optional_fields_are_nil_and_sort_first() {
         let empty = row("JC1", "01/01/2001 12:00:00 AM", "THEFT", "", "");
         let filled = row("JC1", "01/01/2001 12:00:00 AM", "THEFT", "001", "1");

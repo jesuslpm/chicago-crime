@@ -55,15 +55,33 @@ pub fn parse_civil(text: &str) -> Option<i64> {
         b"PM" => true,
         _ => return None,
     };
+    if !(1..=12).contains(&clock_hour) {
+        return None;
+    }
+    let hour = clock_hour % 12 + if afternoon { 12 } else { 0 };
+    civil_seconds(year, month, day, hour, minute, second)
+}
+
+/// The seconds of a civil date and time with `hour` on the 24-hour clock, or `None` unless the
+/// date exists on the calendar (from year 1) and the time on the clock. There is no time zone:
+/// a time in the spring-forward hour has its seconds like any other.
+pub fn civil_seconds(
+    year: i64,
+    month: i64,
+    day: i64,
+    hour: i64,
+    minute: i64,
+    second: i64,
+) -> Option<i64> {
     let date_exists = year >= 1
         && (1..=12).contains(&month)
         && day >= 1
         && day <= month_lengths(year)[usize::try_from(month - 1).ok()?];
-    let time_exists = (1..=12).contains(&clock_hour) && minute < 60 && second < 60;
+    let time_exists =
+        (0..24).contains(&hour) && (0..60).contains(&minute) && (0..60).contains(&second);
     if !date_exists || !time_exists {
         return None;
     }
-    let hour = clock_hour % 12 + if afternoon { 12 } else { 0 };
     let day_number = days_before_year(year)
         + month_lengths(year)[..usize::try_from(month - 1).ok()?]
             .iter()
@@ -218,6 +236,41 @@ mod tests {
         ];
         for text in invalid {
             assert_eq!(parse_civil(text), None, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn civil_seconds_take_the_24_hour_clock_and_only_existing_dates_and_times() {
+        assert_eq!(civil_seconds(2026, 10, 3, 0, 0, 0), Some(OCTOBER_3_2026));
+        assert_eq!(
+            civil_seconds(2026, 10, 10, 15, 42, 19),
+            Some(seconds("10/10/2026 03:42:19 PM"))
+        );
+        assert_eq!(
+            civil_seconds(2015, 3, 8, 2, 30, 0),
+            Some(seconds("03/08/2015 02:30:00 AM")),
+            "the spring-forward hour has seconds like any other"
+        );
+        assert_eq!(
+            civil_seconds(2024, 2, 29, 23, 59, 59),
+            Some(LEAP_DAY_2024 + 86_399)
+        );
+        for (year, month, day, hour, minute, second) in [
+            (2026, 2, 29, 0, 0, 0),
+            (2026, 13, 1, 0, 0, 0),
+            (2026, 0, 1, 0, 0, 0),
+            (2026, 4, 31, 0, 0, 0),
+            (0, 1, 1, 0, 0, 0),
+            (2026, 1, 1, 24, 0, 0),
+            (2026, 1, 1, -1, 0, 0),
+            (2026, 1, 1, 0, 60, 0),
+            (2026, 1, 1, 0, 0, 60),
+        ] {
+            assert_eq!(
+                civil_seconds(year, month, day, hour, minute, second),
+                None,
+                "{year}-{month}-{day} {hour}:{minute}:{second}"
+            );
         }
     }
 

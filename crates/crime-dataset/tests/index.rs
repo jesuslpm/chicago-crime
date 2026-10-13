@@ -61,6 +61,62 @@ fn index_text_lowercases_and_never_pads_or_strips_codes() {
 }
 
 #[test]
+fn index_text_lowercases_non_ascii_text_even_when_its_byte_length_changes() {
+    // U+0130 (2 bytes) lowercases to `i` + U+0307 (3 bytes); U+1E9E (3 bytes) to U+00DF (2 bytes).
+    let cases = [
+        ("İ", "i\u{307}"),
+        ("İSTANBUL", "i\u{307}stanbul"),
+        ("ẞ", "ß"),
+        ("STRAẞE", "straße"),
+        ("JÉ900", "jé900"),
+    ];
+    for (text, lowercase) in cases {
+        assert_eq!(index_text(text), lowercase, "{text}");
+    }
+    assert_eq!(("İ".len(), index_text("İ").len()), (2, 3));
+    assert_eq!(("ẞ".len(), index_text("ẞ").len()), (3, 2));
+
+    let mut record = sample_record();
+    record.primary_type = "İSTANBUL".to_owned();
+    record.district = Some("ẞ01".to_owned());
+    record.case_number = "JÉ900".to_owned();
+    let id = record.id;
+    assert_eq!(
+        index_key(IndexKind::PrimaryType, &record),
+        pack(&("i\u{307}stanbul", id))
+    );
+    assert_eq!(index_key(IndexKind::District, &record), pack(&("ß01", id)));
+    assert_eq!(
+        index_key(IndexKind::CaseNumber, &record),
+        pack(&("jé900", id))
+    );
+}
+
+#[test]
+fn text_keys_sort_by_the_bytes_of_their_lowercase_values() {
+    // The uppercase spellings sort differently from their lowercase forms, so only the
+    // lowercase bytes can explain the order of the keys.
+    let values = ["ẞA", "İB", "ZZ", "ia", "Ä", "ß", "THEFT", "i"];
+    let mut keyed: Vec<(Vec<u8>, &str)> = values
+        .iter()
+        .map(|&value| {
+            let mut record = sample_record();
+            record.primary_type = value.to_owned();
+            (index_key(IndexKind::PrimaryType, &record), value)
+        })
+        .collect();
+    keyed.sort();
+    let by_key: Vec<String> = keyed
+        .into_iter()
+        .map(|(_, value)| index_text(value))
+        .collect();
+
+    let mut lowercase: Vec<String> = values.iter().map(|&value| index_text(value)).collect();
+    lowercase.sort_by(|left, right| left.as_bytes().cmp(right.as_bytes()));
+    assert_eq!(by_key, lowercase);
+}
+
+#[test]
 fn empty_values_are_nil_and_sort_before_any_value() {
     let mut empty = sample_record();
     empty.id = 99_999_999;

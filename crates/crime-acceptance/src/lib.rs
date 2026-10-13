@@ -12,13 +12,16 @@
 //! - [`indexes`]: the five index definitions and their keys;
 //! - [`dataset`]: `CURRENT`, the version folder, the manifest and the tables on disk;
 //! - [`verify`]: every check of AC-G1, AC-G3 and AC-G4 plus the manifest;
-//! - [`report`]: one PASS, FAIL or SKIP line per check.
+//! - [`report`]: one PASS, FAIL or SKIP line per check;
+//! - [`select`]: the independent filtering of the CSV that the query app's acceptance compares
+//!   against (counts, ID lists and source rows).
 
 pub mod civil;
 pub mod dataset;
 pub mod fields;
 pub mod indexes;
 pub mod report;
+pub mod select;
 pub mod verify;
 
 pub use report::{Check, Outcome, Report};

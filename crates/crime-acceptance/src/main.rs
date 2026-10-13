@@ -2,20 +2,27 @@
 //!
 //! ```text
 //! crime-acceptance --csv <file> --dataset <output folder> [--reference]
+//! crime-acceptance select --csv <file> [--where FIELD=VALUE]... [--range Date=FROM..TO]...
+//!                         [--ids-out <file>] [--rows-out <file>]
 //! ```
 //!
-//! It prints one PASS, FAIL or SKIP line per check and a final result line, and exits with 0 when
-//! no check failed (a SKIP counts as neither PASS nor FAIL), 1 when any failed and 2 when the
-//! command line is not valid. Progress goes to the standard error.
+//! The verification prints one PASS, FAIL or SKIP line per check and a final result line, and
+//! exits with 0 when no check failed (a SKIP counts as neither PASS nor FAIL), 1 when any failed
+//! and 2 when the command line is not valid. Progress goes to the standard error.
+//!
+//! `select` filters the CSV alone (see [`crime_acceptance::select`]): it prints the number of
+//! matching rows, and exits with 0, 1 when a file cannot be read or written, or 2 when the
+//! command line is not valid.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use crime_acceptance::{Options, verify};
+use crime_acceptance::{Options, select, verify};
 
 const USAGE: &str = "usage: crime-acceptance --csv <file> --dataset <output folder> [--reference]
+       crime-acceptance select --csv <file> [conditions and outputs]
 
   --csv <file>        the CSV the dataset was generated from
   --dataset <folder>  the generator's output folder (the one that holds CURRENT)
@@ -52,7 +59,12 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Request, String> {
 }
 
 fn main() -> ExitCode {
-    let request = match parse(std::env::args_os().skip(1)) {
+    let mut args = std::env::args_os().skip(1).peekable();
+    if args.peek().and_then(|arg| arg.to_str()) == Some("select") {
+        args.next();
+        return run_select(args);
+    }
+    let request = match parse(args) {
         Ok(request) => request,
         Err(error) => {
             eprintln!("{error}\n\n{USAGE}");
@@ -75,5 +87,30 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+fn run_select(args: impl IntoIterator<Item = OsString>) -> ExitCode {
+    let request = match select::parse(args) {
+        Ok(request) => request,
+        Err(error) => {
+            eprintln!("{error}\n\n{}", select::USAGE);
+            return ExitCode::from(2);
+        }
+    };
+    match select::run(&request) {
+        Ok(summary) => {
+            println!("{}", summary.matching);
+            eprintln!(
+                "{} rows read, {} matching, {} skipped (not 22 fields, not UTF-8 or an ID that \
+                 is not an integer)",
+                summary.rows, summary.matching, summary.skipped
+            );
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            ExitCode::from(1)
+        }
     }
 }
