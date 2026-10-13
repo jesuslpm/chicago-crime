@@ -94,8 +94,8 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
    - **Combinación** de varias condiciones anteriores con Y lógico.
 4. Opciones de salida: límite de resultados, solo conteo, y formato tabla legible, CSV o JSON.
 5. Los resultados se devuelven en orden ascendente de ID. *Anotación del 2026-10-13: sustituido por la
-   decisión C11 del [PRD del consultor](consultor.prd.md); el orden es el que pide el analista, con el ID
-   como desempate, y un límite exige indicar un orden.*
+   decisión C11 del [PRD del consultor](consultor.prd.md); en ese cambio el orden de los resultados no está
+   garantizado, y la ordenación queda prevista para un cambio posterior.*
 6. El consultor informa del número de resultados, del tiempo empleado y de los índices usados.
 
 ### Reglas de los campos
@@ -170,8 +170,8 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
 - Consultas geoespaciales (radio, polígono, cuadrícula).
 - Agregaciones y agrupaciones más allá del conteo de resultados.
 - Índices compuestos (por ejemplo, tipo + fecha) y orden de resultados distinto del ID. *Anotación del
-  2026-10-13: el orden distinto del ID entra en el consultor por la decisión C11 del
-  [PRD del consultor](consultor.prd.md); los índices compuestos siguen fuera.*
+  2026-10-13: la ordenación de resultados sigue fuera y queda prevista para un cambio posterior (decisión
+  C11 del [PRD del consultor](consultor.prd.md)); los índices compuestos siguen fuera.*
 - Control de acceso: los datos son públicos.
 
 ## Criterios de aceptación

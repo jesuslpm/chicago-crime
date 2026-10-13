@@ -1,6 +1,6 @@
 # Consultor del conjunto de datos — PRD
 
-**Versión**: 1.0
+**Versión**: 1.1
 **Fecha**: 2026-10-13
 **Documento padre**: [Almacén consultable de delitos de Chicago sobre SSTable — PRD](chicago-crime.prd.md) (v1.2)
 
@@ -69,12 +69,9 @@ Sigue el flujo B del documento padre. Esta entrega concreta los puntos siguiente
 5. Opciones de salida: límite de resultados, solo conteo, y formato tabla, CSV o JSON (decisión C4). Los
    resultados en CSV o JSON se pueden guardar en un archivo de salida en lugar de mostrarse en consola
    (decisión C8). La salida JSON incluye la consulta que se ha hecho junto a los resultados (decisión C9).
-6. Orden de los resultados (decisión C11):
-   - sin orden ni límite, el orden no está especificado y puede variar entre ejecuciones; el conjunto de
-     resultados es siempre el mismo;
-   - el analista puede pedir un orden por uno o varios campos, cada uno ascendente o descendente; el ID se
-     añade siempre como último criterio para que el orden sea estable;
-   - un límite exige indicar un orden; con él, el límite devuelve los N primeros según ese orden.
+6. Orden de los resultados (decisión C11): el orden no está especificado y puede variar entre ejecuciones;
+   solo se garantiza el conjunto de resultados. Con un límite N se devuelven N registros cualesquiera de ese
+   conjunto, que pueden no ser los mismos en cada ejecución.
 7. Al terminar informa del número de resultados, del tiempo empleado, de los índices usados y de los filtros
    aplicados sin índice. Esta información y los avisos van por un canal distinto de los resultados, para que
    la salida CSV o JSON se pueda guardar o encadenar tal cual (decisión C5).
@@ -95,12 +92,7 @@ Se aplican las validaciones del consultor del documento padre, salvo la fila "Co
 | Valor de tipo incorrecto (por ejemplo, área comunitaria no numérica) | Rechaza | `"<valor>" no es válido para "<campo>": se esperaba un número entero.` |
 | Rango de fechas sobre un campo que no es fecha | Rechaza | `Solo se admiten rangos sobre "Date".` |
 | Límite no positivo | Rechaza | `El límite debe ser un número entero mayor que 0.` |
-| Límite sin orden | Rechaza; sin orden, "los N primeros" no está definido (C11) | `Con un límite hay que indicar el orden de los resultados.` |
-| Orden por un campo desconocido | Rechaza, como cualquier campo desconocido | `El campo "<nombre>" no existe. Campos disponibles: ...` |
-| Orden por Location | Rechaza; Location no se almacena (D4) | `"Location" no se almacena; ordena por "Latitude" y "Longitude".` |
-| La carpeta temporal no existe o no admite escritura, y la ordenación la necesita | Aborta y limpia lo escrito (C7) | `No se puede usar la carpeta temporal <carpeta>.` |
-| Falta espacio en la carpeta temporal | Aborta y limpia lo escrito (C7) | `Espacio insuficiente en <carpeta>.` |
-| Cancelación por el analista (Ctrl+C) | Termina sin dejar temporales ni un archivo de salida a medias | `Consulta cancelada.` |
+| Cancelación por el analista (Ctrl+C) | Termina sin dejar un archivo de salida a medias | `Consulta cancelada.` |
 | Solo conteo junto con un formato de salida | Rechaza por contradictorio | `"Solo conteo" no se combina con un formato de salida.` |
 | La versión activa desaparece o queda ilegible a mitad de la consulta | Aborta sin salida parcial engañosa | `No se pudo leer el conjunto de datos en <carpeta>.` |
 | Archivo de salida con formato tabla o con solo conteo | Rechaza; el archivo solo admite CSV o JSON | `El archivo de salida solo admite los formatos CSV o JSON.` |
@@ -115,15 +107,12 @@ Se aplican las validaciones del consultor del documento padre, salvo la fila "Co
 - **Verificador independiente**: base para comprobar los criterios contra el CSV sin usar código del
   consultor.
 - **Mediciones del CSV de referencia** del padre: cifras esperadas en la verificación.
-- **Ordenación externa del generador**: ordena con memoria acotada usando disco temporal solo cuando hace
-  falta, y limpia sus temporales, incluidos los de procesos muertos. El consultor la reutiliza para C7 en
-  lugar de escribir otra.
 
 ## Fuera de alcance
 
 - Todo lo excluido en el documento padre: modo interactivo, servidor o API, texto libre, búsqueda
-  aproximada, geoespacial, agregaciones más allá del conteo e índices compuestos. El orden distinto del ID,
-  también excluido por el padre, entra en esta entrega (C11).
+  aproximada, geoespacial, agregaciones más allá del conteo e índices compuestos.
+- Ordenar los resultados, por ID o por cualquier otro campo: queda previsto para un cambio posterior (C11).
 - Rangos sobre campos distintos de la fecha (por ejemplo, ID entre A y B o Ward entre 1 y 10).
 - Negaciones y O lógico entre condiciones distintas (solo O entre valores de una misma condición).
 - Elegir qué campos aparecen en la salida o el orden de las columnas.
@@ -168,16 +157,15 @@ filtrado directo del CSV" significa un recuento independiente sobre el CSV que n
    el mensaje de la tabla.
 10. **AC-C10** — Dada cada fila de la tabla de validaciones (padre y esta entrega), cuando se provoca la
     situación, entonces se muestra el mensaje indicado y el código de salida es el de la decisión C6.
-11. **AC-C11** (decisión C11) — Dada una consulta con orden por fecha descendente y límite N, cuando hay más
-    de N resultados, entonces se devuelven exactamente los N primeros según ese orden; los que comparten
-    fecha se desempatan por ID, y repetir la consulta devuelve lo mismo en el mismo orden.
+11. **AC-C11** (decisión C11) — Dada una consulta con más de N resultados y un límite N, cuando se ejecuta,
+    entonces se devuelven exactamente N registros y todos pertenecen al resultado de la misma consulta sin
+    límite, aunque no sean necesariamente los mismos N en cada ejecución.
 12. **AC-C12** — Dada una consulta en curso, cuando el generador publica una versión nueva, entonces la
     consulta termina con resultados coherentes de una sola versión.
 13. **AC-C13** (decisión C7) — Dadas dos consultas de conteo, una por `THEFT` y otra por un tipo principal
     con pocos registros, y un rango de fechas de varios años combinado con un tipo principal, cuando se
     mide el pico de memoria de cada una, entonces los picos son del mismo orden y no crecen con el número de
-    resultados. Lo mismo vale para `THEFT` ordenado por Block sin límite, que además deja la carpeta
-    temporal como estaba al terminar.
+    resultados.
 14. **AC-C14** (decisión C8) — Dada una consulta con archivo de salida en CSV y en JSON, cuando se ejecuta,
     entonces el archivo contiene los mismos registros que la salida en tabla, la salida estándar no contiene
     resultados, y repetir la consulta sobrescribe el archivo sin preguntar.
@@ -186,14 +174,11 @@ filtrado directo del CSV" significa un recuento independiente sobre el CSV que n
 16. **AC-C16** (decisión C9) — Dada una consulta con tipo principal y un rango de fechas sin hora, cuando se
     pide en JSON, entonces la salida contiene la consulta interpretada, con la fecha final resuelta al último
     segundo del día, y la versión del conjunto consultada.
-17. **AC-C17** (decisión C11) — Dada una consulta sin límite con orden por un campo opcional sin índice (por
-    ejemplo, Ward ascendente) sobre un distrito, cuando se ejecuta, entonces los registros salen en el mismo
-    orden que el filtrado directo del CSV ordenado por Ward y después por ID, con los "sin valor" primero.
-18. **AC-C18** (decisión C1) — Dado un conjunto regenerado con el esquema 2, cuando se cuenta el tipo principal
+17. **AC-C17** (decisión C1) — Dado un conjunto regenerado con el esquema 2, cuando se cuenta el tipo principal
     escrito como `theft`, `Theft` y `THEFT`, entonces las tres dan 1.838.502, y al listar resultados el tipo
     principal sale como `THEFT`, igual que en el CSV. Un filtro sin índice sobre Location Description escrito
     en minúsculas da el mismo conteo que escrito en mayúsculas.
-19. **AC-C19** (decisión C1) — Dado el conjunto regenerado, cuando se ejecuta el verificador independiente,
+18. **AC-C18** (decisión C1) — Dado el conjunto regenerado, cuando se ejecuta el verificador independiente,
     entonces confirma que los índices de texto están en minúsculas y que la tabla principal coincide con el
     CSV tal cual. Dado un conjunto con esquema 1, cuando se consulta, entonces se rechaza con el mensaje de
     esquema incompatible del padre.
@@ -211,8 +196,7 @@ el cuerpo del PRD.
     índice;
   - la tabla principal conserva cada campo exactamente como viene en el CSV, y la salida lo muestra así;
   - los filtros sin índice (C3) convierten a minúsculas tanto el valor buscado como el del campo antes de
-    compararlos;
-  - al ordenar por un campo de texto (C11) tampoco se distinguen mayúsculas.
+    compararlos.
 
   Los códigos conservan los ceros a la izquierda y no se completan (`8` no equivale a `008`). Motivo: el
   primer borrador suponía que los textos publicados eran siempre mayúsculas. Se comprobó el 2026-10-13 que
@@ -238,14 +222,11 @@ el cuerpo del PRD.
 - **C6 — Códigos de salida** (confirmada el 2026-10-13): 0 si la consulta se ejecuta, aunque no haya resultados; 1 si se
   rechaza por el conjunto o por los datos de la consulta, o si aborta; 2 si la línea de comandos no es
   válida; 130 si el analista la cancela con Ctrl+C. Motivo: coincide con el generador.
-- **C7 — Memoria** (confirmada el 2026-10-13): sin límite fijo como el del generador, pero el consumo no
-  crece con el tamaño del resultado. Contar `THEFT` (1,8 millones) usa una memoria comparable a la de contar
-  un tipo raro. Cuando un orden (C11) obliga a ordenar más resultados de los que caben en un tope de
-  memoria, el consultor ordena por partes en una carpeta temporal y las mezcla al devolver los resultados;
-  si caben, no usa el disco. La carpeta temporal es configurable y, por defecto, la del sistema; sus archivos
-  se borran al terminar, al fallar o al cancelar, y los que deje un proceso muerto los limpia la siguiente
-  ejecución. Con orden y límite basta con conservar los N primeros. Motivo: el padre exige no cargar el
-  conjunto entero, y ordenar sin límite un resultado grande no debe romper esa regla.
+- **C7 — Memoria** (confirmada el 2026-10-13, revisada el mismo día a petición del usuario): sin límite fijo
+  como el del generador, pero el consumo no crece con el tamaño del resultado. Contar `THEFT` (1,8 millones)
+  usa una memoria comparable a la de contar un tipo raro. Motivo: el padre exige no cargar el conjunto
+  entero. La ordenación externa que necesitaría ordenar resultados grandes pasa a un cambio posterior junto
+  con C11.
 
 - **C8 — Archivo de salida** (confirmada el 2026-10-13): con formato CSV o JSON se puede indicar un archivo
   de salida. Los resultados se escriben en él en lugar de en la salida estándar; avisos, errores y
@@ -254,8 +235,8 @@ el cuerpo del PRD.
   Motivo: el usuario quiere guardar resultados para usarlos después y repetir consultas sin pasos extra.
 - **C9 — La consulta en el JSON** (confirmada el 2026-10-13): la salida JSON, tanto en consola como en
   archivo, contiene la consulta interpretada junto a los resultados: cada condición tal como se aplicó (con
-  los valores y los rangos de fecha resueltos a instantes exactos según C1 y C2), el orden aplicado (con el
-  ID final de C11) si lo hubo, el límite si lo hubo y la versión del conjunto consultada. Motivo: el archivo documenta por sí solo qué se buscó y sobre qué datos,
+  los valores y los rangos de fecha resueltos a instantes exactos según C1 y C2), el límite si lo hubo y la
+  versión del conjunto consultada. Motivo: el archivo documenta por sí solo qué se buscó y sobre qué datos,
   sin ambigüedad.
 - **C10 — Intersección de índices y filtros** (confirmada el 2026-10-13): toda consulta necesita al menos una
   condición indexada. Las condiciones indexadas se combinan con Y lógico por intersección de los ID que
@@ -266,15 +247,13 @@ el cuerpo del PRD.
   documento padre, que permitían el recorrido completo con aviso; el padre queda anotado. Consecuencia
   aceptada: la condición indexada limita el recorrido, pero no garantiza que sea pequeño (un rango de
   fechas de 25 años abarca casi todo el conjunto).
-- **C11 — Orden de los resultados** (confirmada el 2026-10-13): sin orden ni límite, el orden no está
-  especificado y puede variar; solo se garantiza el conjunto de resultados. El analista puede ordenar por
-  uno o varios campos almacenados, cada uno ascendente o descendente, y el ID se añade siempre como último
-  criterio para que el orden sea estable. Los "sin valor" van primero en orden ascendente y últimos en
-  descendente. Un límite exige indicar un orden, igual que `OFFSET … FETCH` en SQL exige `ORDER BY`.
-  Motivo: el ID no tiene significado para el analista, y exigir un orden por ID condicionaría cómo se
-  resuelve la consulta sin aportarle nada; en cambio, un límite sin orden devolvería N registros
-  arbitrarios. Corrige el paso 5 del flujo B del padre ("orden ascendente de ID") y la exclusión del orden
-  distinto del ID en su fuera de alcance; el padre queda anotado.
+- **C11 — Orden de los resultados** (confirmada el 2026-10-13, revisada el mismo día a petición del
+  usuario): el orden de los resultados no está especificado y puede variar entre ejecuciones; solo se
+  garantiza el conjunto de resultados. En esta entrega el analista no puede pedir un orden. Un límite N
+  devuelve N registros del conjunto de resultados, que pueden no ser los mismos en cada ejecución. Motivo:
+  avanzar paso a paso; ordenar por campos, con el ID como desempate, la posición de los "sin valor" y la
+  ordenación externa que eso requiere (C7), pasa a un cambio posterior. Corrige el paso 5 del flujo B del
+  padre ("orden ascendente de ID"); el padre queda anotado.
 
 ## Referencias
 

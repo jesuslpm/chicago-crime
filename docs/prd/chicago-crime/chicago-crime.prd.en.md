@@ -95,8 +95,8 @@ Verified on 2026-10-12 against the repository and the data:
    - **Combination** of several of the previous conditions with logical AND.
 4. Output options: result limit, count only, and readable table, CSV or JSON format.
 5. Results are returned in ascending ID order. *Note of 2026-10-13: replaced by decision C11 of the
-   [query app PRD](consultor.prd.md); the order is the one the analyst asks for, with the ID as the
-   tiebreaker, and a limit requires an order.*
+   [query app PRD](consultor.prd.md); in that change the order of results is not guaranteed, and ordering
+   is planned for a later change.*
 6. The query app reports the number of results, the time taken and the indexes used.
 
 ### Field rules
@@ -170,8 +170,8 @@ Verified on 2026-10-12 against the repository and the data:
 - Geospatial queries (radius, polygon, grid).
 - Aggregations and groupings beyond counting the results.
 - Composite indexes (for example, type + date) and result ordering other than by ID. *Note of
-  2026-10-13: ordering other than by ID enters the query app through decision C11 of the
-  [query app PRD](consultor.prd.md); composite indexes remain out of scope.*
+  2026-10-13: result ordering remains out of scope and is planned for a later change (decision C11 of the
+  [query app PRD](consultor.prd.md)); composite indexes remain out of scope.*
 - Access control: the data is public.
 
 ## Acceptance criteria
