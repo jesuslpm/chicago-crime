@@ -120,7 +120,7 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 | T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b) | **done**: 423/423 (parent re-ran); + `csv` moved to dev-dependencies | `d8dd41b` |
 | T6a — `crime-acceptance select` (independent CSV filtering: counts, ID lists, source rows) + T1 review suggestions `R3-001` (empty-dataset lowercase check pinned) and `R3-002` (non-ASCII `index_text` test) | S10 (tooling), S1 | delegated writer (parallel with T5, disjoint files) | **done**: 418/418 (parent re-ran); assess medium `under_budget` (1,429) → pending for the closing slice | `9a47432` |
 | T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | **done**: acceptance 58/58 PASS on the reference CSV; 419/419 (parent re-ran); closing slice high → verifier + RDD after T5a | `8a45c08` |
-| T6c — Harden the acceptance script from the closing-slice verifier: AC-C12 requires the old folder gone; unreadable-version rows assert writing had started; README/`output.rs` byte-fidelity claim qualified (D4 canonical numbers); note the two AC3 sample readings | S10 | delegated writer + acceptance re-run | **done**: acceptance 58/58 PASS (886 s with rebuild); 423/423 | (next commit) |
+| T6c — Harden the acceptance script from the closing-slice verifier: AC-C12 requires the old folder gone; unreadable-version rows assert writing had started; README/`output.rs` byte-fidelity claim qualified (D4 canonical numbers); note the two AC3 sample readings | S10 | delegated writer + acceptance re-run | **done**: acceptance 58/58 PASS (886 s with rebuild); 423/423 | `ecf00e0` |
 
 Forecast: ~3,500 authored changed lines. RDD: on (global). After each commit run
 `gentle-ai review assess --committed-only` against the last reviewed boundary (first boundary `4c74bfe`);
@@ -285,3 +285,55 @@ consent always granted (standing user instruction); at feature close review what
   1,423 lines before the abort); README and `output.rs` qualify the byte-for-byte claim with D4; the two AC3 sample
   readings are noted. Acceptance re-run: exit 0, 58/58 PASS, 886 s with a release rebuild. Parent fixed the README run
   time (6¼, 7½ and 15 min measured).
+- **L19 (closing reviews, ~19:17–19:20)**: the whole closing slice `f65a997..ecf00e0` exceeded the reviewer context
+  budget (`lens_context_budget_exceeded`, no authority created), so it was reviewed as three chained candidates on clean
+  worktrees, consent granted: `f65a997..9a47432` (T6a, reliability + readability) → **approved** `review-3a8060112658ece1`;
+  `9a47432..8a45c08` (T6b) → **approved** `review-ecaaa320cf93780a`; `8a45c08..ecf00e0` (T5a + T6c, reliability +
+  resilience) → **approved** `review-466c3f450abd969d`. Boundary → `ecf00e0`: every commit of the feature is covered by
+  an acknowledged review. Non-blocking findings recorded as follow-ups below (no correction loop on approved reviews).
+
+## Acceptance results (reference CSV, 2026-10-13, `scripts/acceptance/run-query-acceptance.ps1`)
+
+58/58 checks PASS over AC-C1…AC-C18 in three runs (writer T6b, independent verifier, writer T6c after hardening).
+
+| Criterion | Evidence |
+|---|---|
+| AC-C1 | IDs 14348063 (first row), 8197725 (last), 983 (no coordinates), 636 (no Ward), 11618340 (`03/10/2019 02:00:00 AM`, spring-forward): query CSV row byte-identical to the source line |
+| AC-C2 / AC-C3 | THEFT 1,838,502; community area "sin valor" 613,720 (= `select` = PRD) |
+| AC-C4 | August 2019: 24,505; first minute 41; last minute 1 (= `select`) |
+| AC-C5 | THEFT + District 008: 112,724; stats line `Índices usados: Primary Type, District` |
+| AC-C6 | case number `JK426166`: both records |
+| AC-C7 | existing ID: 39–51 ms per run (399 ms once under concurrent load) |
+| AC-C8 | table/CSV/JSON same records and values; CSV and JSON parse; stdout results only |
+| AC-C9 | Arrest (`true` and `sí`) + THEFT + month: 514; indexes Date, Primary Type; filter Arrest; Arrest alone rejected |
+| AC-C10 | 26 rows: every parent and child validation message and exit code; real Ctrl+C → 130, no file; damaged dataset mid-query → 1 after writing started |
+| AC-C11 | `--limit 100` twice: 100 THEFT records each, all in the full result |
+| AC-C12 | `--overwrite` publication completed (old folder gone) while the query ran; the query returned exactly version 1 |
+| AC-C13 | peaks: THEFT count 14.5 MiB, RITUALISM count 7.5 MiB, THEFT 2005–2015 15.3 MiB (ratio 2.04 ≤ 3); CSV files 16.6 vs 7.5 MiB (2.21) |
+| AC-C14 / AC-C15 | output file = stdout output, overwritten without asking; rejected or failing runs leave no file and no temp |
+| AC-C16 | JSON query `theft`, `2019-08-01T00:00:00`..`2019-08-31T23:59:59`, `dataset.version` = `CURRENT`, schema 2 |
+| AC-C17 | `theft`/`Theft`/`THEFT` → 1,838,502; listed as `THEFT`; Location Description `street`/`STREET` → 1,397 |
+| AC-C18 | verifier 18/18 PASS (0 of 25,970,665 text index values not lowercase; primary = CSV); schema-1 copy rejected with the exact message |
+
+Generator acceptance re-run on schema 2: 15/15 PASS.
+
+## Closure
+
+- **Outcome**: S1–S10 delivered and verified. 423 tests green; acceptance 58/58 on the reference CSV.
+- **Timing**: start 16:06:57; feature closed ~19:22 → **~3 h 15 min real** vs estimate 4–7 h (below the range).
+  Waits for the user: none. No calibration reference was used, as requested.
+- **Size**: 11,619 authored changed lines (+11,516 −103) vs a forecast of ~3,500 (3.3×; about half are tests and
+  1,249 are the acceptance script); `Cargo.lock` +16 apart.
+- **Delivery**: fast-forward merge of `feat/crime-query` into `main`; nothing pushed (no `git push` was run at all).
+- **Follow-ups (non-blocking, from the final reviews and verifiers)**:
+  - `select --rows-out`: a source re-read error is labelled as an output write error (`R2-001`/`R3-001` t6a); a source
+    with a UTF-8 BOM or mixed line ends would not be copied byte for byte (`R3-001`/`R3-002` t6a/t6b); empty-CSV and
+    bad-header exits untested; `kind()` relies on column-name literals.
+  - Acceptance script: AC-C1 sample IDs are not deduplicated (a compatible CSV where one record lacks both coordinates
+    and Ward would false-FAIL; distinct on the reference); `TemporaryOutputWatch` catches only `IOException`; the AC-C8
+    message still says "quoted fields".
+  - `crime-query`: the temp file name adds 24 characters to the target name, so a name near the 255-character limit is
+    reported unwritable (`R4-001` t5a6c); no test for a read error during the start existence checks (`R3-001`).
+  - Accepted design limits: values are not trimmed; rows already on stdout stay there after a mid-run read error;
+    the date-driven plan scans the whole range even for one ID (no cost model, out of scope); typed numbers come out
+    canonical (D4); `R3-decoder-accepts-empty-and-nonfinite` (from the generator feature) stays out of scope.
