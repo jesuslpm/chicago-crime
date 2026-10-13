@@ -11,6 +11,15 @@ fn the_catalog_lists_every_csv_column_in_order() {
 }
 
 #[test]
+fn the_csv_position_of_every_field_is_its_header_column() {
+    for (column, &name) in HEADER.iter().enumerate() {
+        let field = Field::find(name).unwrap_or_else(|| panic!("{name} is a field"));
+        assert_eq!(field.csv_position(), column, "{name}");
+        assert_eq!(Field::ALL[column].csv_position(), column, "{name}");
+    }
+}
+
+#[test]
 fn every_field_has_the_type_of_the_parent_field_rules() {
     use FieldType::*;
     let expected = [

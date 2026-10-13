@@ -91,7 +91,11 @@ struct Args {
         value_name = "ARCHIVO",
         help = "Escribe los resultados en este archivo en lugar de la salida estándar; solo con \
                 --format csv o json. Si ya existe, se sobrescribe sin preguntar. Si la consulta \
-                se rechaza, falla o se cancela, el archivo no se crea ni se modifica."
+                se rechaza, falla o se cancela, el archivo no se crea ni se modifica. Mientras \
+                se escribe, los resultados van a un archivo temporal junto al destino, \
+                .<ARCHIVO>.XXXXXX.crime-query.tmp, que al final se renombra como ARCHIVO; si \
+                el proceso se termina a la fuerza (consola cerrada, taskkill /F, corte de \
+                luz), puede quedar ese archivo temporal; se puede borrar."
     )]
     output: Option<PathBuf>,
 

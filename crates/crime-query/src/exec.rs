@@ -100,17 +100,20 @@ pub struct Execution<'a> {
 impl<'a> Execution<'a> {
     /// Starts `query` on `dataset`: checks that every requested ID and case number exists,
     /// keeping a warning for each one that does not, and prepares the plan. `cancel` is polled
-    /// for every ID examined; once it answers `true` the execution ends with
-    /// [`ExecError::Cancelled`].
+    /// before each of those checks and then for every ID examined; once it answers `true` the
+    /// execution ends with [`ExecError::Cancelled`], here or from the iterator.
     pub fn start(
         dataset: &'a Dataset,
         query: &'a Query,
         cancel: &'a dyn Fn() -> bool,
-    ) -> Result<Self, ReadError> {
+    ) -> Result<Self, ExecError> {
         let started = Instant::now();
         let mut warnings = Vec::new();
         let mut existing = Vec::new();
         for &id in query.ids().unwrap_or_default() {
+            if cancel() {
+                return Err(ExecError::Cancelled);
+            }
             if dataset.id_exists(id)? {
                 existing.push(id);
             } else {
@@ -123,6 +126,9 @@ impl<'a> Execution<'a> {
             .filter(|equality| equality.index() == IndexKind::CaseNumber);
         for equality in case_numbers {
             for (value, typed) in equality.values().iter().zip(equality.typed()) {
+                if cancel() {
+                    return Err(ExecError::Cancelled);
+                }
                 if !dataset.has_value(IndexKind::CaseNumber, value)? {
                     warnings.push(messages::missing_case_number(typed));
                 }
@@ -192,8 +198,8 @@ impl<'a> Execution<'a> {
             indexes.push(Field::Date);
         }
         let mut filters: Vec<Field> = self.query.filters().iter().map(|f| f.field()).collect();
-        indexes.sort_by_key(|&field| field as usize);
-        filters.sort_by_key(|&field| field as usize);
+        indexes.sort_by_key(|&field| field.csv_position());
+        filters.sort_by_key(|&field| field.csv_position());
         Summary {
             count: self.count,
             elapsed: self.elapsed.unwrap_or_else(|| self.started.elapsed()),
@@ -208,7 +214,8 @@ impl<'a> Execution<'a> {
             return None;
         }
         let item = self.find(want_record || !self.query.filters().is_empty());
-        let limit_reached = match &item {
+        // Ended by the limit, by the end of the candidates or by a failure.
+        let ended = match &item {
             Some(Ok(_)) => {
                 self.count += 1;
                 self.query
@@ -217,7 +224,7 @@ impl<'a> Execution<'a> {
             }
             _ => true,
         };
-        if limit_reached {
+        if ended {
             self.elapsed = Some(self.started.elapsed());
         }
         item

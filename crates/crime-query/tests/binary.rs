@@ -4,10 +4,9 @@
 mod common;
 
 use std::fs;
-use std::path::Path;
 use std::process::{Command, Output};
 
-use common::{Fixture, fixture_rows};
+use common::{Fixture, fixture_rows, query_on};
 use crime_query::exit_code;
 
 fn query(args: &[&str]) -> Output {
@@ -15,12 +14,6 @@ fn query(args: &[&str]) -> Output {
         .args(args)
         .output()
         .expect("the query app can be started")
-}
-
-fn query_on(dataset: &Path, args: &[&str]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_crime-query"));
-    command.arg("--dataset").arg(dataset).args(args);
-    command.output().expect("the query app can be started")
 }
 
 fn stderr(output: &Output) -> String {

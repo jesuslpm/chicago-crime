@@ -680,6 +680,44 @@ fn cancellation_stops_the_execution() {
     }
 }
 
+#[test]
+fn cancellation_is_polled_during_the_existence_checks() {
+    let fixture = Fixture::with_rows(&fixture_rows());
+    let dataset = open(&fixture);
+    let polls = Cell::new(0_u32);
+    let raised_from = Cell::new(u32::MAX);
+    let cancel = || {
+        polls.set(polls.get() + 1);
+        polls.get() >= raised_from.get()
+    };
+    // Three IDs and two case numbers: one poll before each of the five existence checks.
+    let query = query(
+        &[
+            eq("ID", "10"),
+            eq("ID", "999"),
+            eq("ID", "20"),
+            eq("Case Number", "JA100"),
+            eq("Case Number", "JA000000"),
+        ],
+        None,
+    );
+    for raised in 1..=5 {
+        polls.set(0);
+        raised_from.set(raised);
+        let error = Execution::start(&dataset, &query, &cancel)
+            .err()
+            .unwrap_or_else(|| panic!("cancelled at poll {raised}"));
+        assert!(matches!(error, ExecError::Cancelled), "{error:?}");
+        assert_eq!(polls.get(), raised, "no check runs after the cancellation");
+    }
+
+    polls.set(0);
+    raised_from.set(6);
+    let execution = Execution::start(&dataset, &query, &cancel).expect("starts");
+    assert_eq!(polls.get(), 5);
+    assert_eq!(execution.warnings().len(), 2, "{:?}", execution.warnings());
+}
+
 /// A small deterministic generator (xorshift64*), so the property check needs no dependency.
 struct Random(u64);
 

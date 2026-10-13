@@ -8,7 +8,6 @@ publish.workspace = true
 [dependencies]
 clap.workspace = true
 crime-dataset.workspace = true
-csv.workspace = true
 ctrlc.workspace = true
 # Index keys are packed tuples `(value, id)`: the query app builds and decodes them itself.
 foundationdb-tuple.workspace = true
@@ -21,3 +20,5 @@ tempfile.workspace = true
 [dev-dependencies]
 # Only to build small datasets for the tests; the query app itself never uses the generator.
 crime-generator = { path = "../crime-generator" }
+# Parses the CSV output back in the tests; the app writes CSV itself (`write_csv_line`).
+csv.workspace = true

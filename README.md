@@ -180,8 +180,13 @@ seconds, the limit) and the dataset version it read. The results go to the stand
 warnings, errors and the closing line with the number of results, the time, the indexes used and the
 filters applied go to the standard error, so the results can be redirected or piped as they are. **The
 order of the results is not guaranteed** and may change between runs. A rejected, failed or cancelled
-query never leaves a half-written output file: with `--output` the file is replaced only once every
-result is written. On the standard output, results are written as they are found, so if the dataset
+query never leaves a half-written output file: with `--output` the results are written to a
+temporary file next to the target, named `.<ARCHIVO>.XXXXXX.crime-query.tmp` (for `thefts.csv`,
+something like `.thefts.csv.a1B2c3.crime-query.tmp`), which replaces the target only once every
+result is written; a rejected, failed or cancelled query deletes it. Only a run killed without a
+chance to clean up (console window closed, `taskkill /F`, power loss) can leave that temporary file
+behind; it holds no useful result and can be deleted. The query app never deletes such files itself,
+since another run writing to the same target may own one. On the standard output, results are written as they are found, so if the dataset
 becomes unreadable in the middle of a query, the results already written stay there; the exit code 1
 and the error message on the standard error flag the output as incomplete.
 

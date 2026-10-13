@@ -1,11 +1,13 @@
 //! Fixtures shared by the integration tests: small datasets published by the generator library
-//! from CSV rows built in code.
+//! from CSV rows built in code, and helpers to run the built binary and damage tables.
 
 // Each test crate uses a different subset of these helpers.
 #![allow(dead_code)]
 
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
 
 use crime_dataset::{CivilDateTime, Compression, HEADER};
 use crime_generator::cancel::CancelFlag;
@@ -263,4 +265,41 @@ pub const TABLE_FILES: [&str; 6] = [
 /// Writes a `CURRENT` file naming `name` in `output`.
 pub fn write_current(output: &Path, name: &str) {
     fs::write(output.join("CURRENT"), format!("{name}\n")).expect("CURRENT can be written");
+}
+
+/// Runs the built binary on `dataset` with `args` after `--dataset`. Only for the integration
+/// tests: the crate's unit tests include this file too, and Cargo builds no binary for them.
+pub fn query_on(dataset: &Path, args: &[&str]) -> Output {
+    let Some(binary) = option_env!("CARGO_BIN_EXE_crime-query") else {
+        panic!("only the integration tests have the binary");
+    };
+    let mut command = Command::new(binary);
+    command.arg("--dataset").arg(dataset).args(args);
+    command.output().expect("the query app can be started")
+}
+
+/// The standard output of a run, which is always UTF-8.
+pub fn stdout(output: &Output) -> String {
+    String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
+}
+
+/// The lines of the standard error of a run.
+pub fn stderr_lines(output: &Output) -> Vec<String> {
+    String::from_utf8_lossy(&output.stderr)
+        .lines()
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Overwrites bytes in the middle of a table file, past the part opening reads, so the damage
+/// is found while the query reads records.
+pub fn damage_middle(path: &Path) {
+    let size = fs::metadata(path).expect("the table exists").len();
+    let mut file = OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("the table can be opened for writing");
+    file.seek(SeekFrom::Start(size / 3)).expect("seekable");
+    file.write_all(&vec![0xa5; (size / 3) as usize])
+        .expect("the table can be damaged");
 }

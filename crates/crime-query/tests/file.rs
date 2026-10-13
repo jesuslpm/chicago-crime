@@ -4,32 +4,15 @@
 
 mod common;
 
-use std::cell::Cell;
-use std::fs::{self, OpenOptions};
-use std::io::{self, Seek, SeekFrom, Write};
+use std::cell::{Cell, RefCell};
+use std::fs;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
-use common::{Fixture, fixture_rows, many_rows};
+use common::{Fixture, damage_middle, fixture_rows, many_rows, query_on, stderr_lines, stdout};
 use crime_query::cli::{self, Options, Parsed};
 use crime_query::exit_code;
-
-fn query_on(dataset: &Path, args: &[&str]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_crime-query"));
-    command.arg("--dataset").arg(dataset).args(args);
-    command.output().expect("the query app can be started")
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-fn stderr_lines(output: &Output) -> Vec<String> {
-    String::from_utf8_lossy(&output.stderr)
-        .lines()
-        .map(str::to_owned)
-        .collect()
-}
 
 fn assert_code(output: &Output, code: u8) {
     assert_eq!(
@@ -131,19 +114,6 @@ fn a_rejected_query_creates_no_file_and_keeps_an_existing_one() {
     assert!(!new.exists());
     assert_eq!(fs::read_to_string(&old).expect("kept"), "old content");
     assert_eq!(entries(folder.path()), ["old.csv"]);
-}
-
-/// Overwrites bytes in the middle of a table file, past the part opening reads, so the damage
-/// is found while the query reads records.
-fn damage_middle(path: &Path) {
-    let size = fs::metadata(path).expect("the table exists").len();
-    let mut file = OpenOptions::new()
-        .write(true)
-        .open(path)
-        .expect("the table can be opened for writing");
-    file.seek(SeekFrom::Start(size / 3)).expect("seekable");
-    file.write_all(&vec![0xa5; (size / 3) as usize])
-        .expect("the table can be damaged");
 }
 
 #[test]
@@ -295,6 +265,124 @@ fn a_cancelled_query_exits_with_130_and_leaves_no_file() {
         assert_eq!(code, exit_code::CANCELLED, "{mode:?}");
         assert_eq!(err, "Consulta cancelada.\n", "{mode:?}");
     }
+}
+
+/// Whether `name` is a temporary output file for the target `results.csv`.
+fn is_temporary_for_results(name: &str) -> bool {
+    name.starts_with(".results.csv.") && name.ends_with(".crime-query.tmp")
+}
+
+#[test]
+fn the_temporary_file_is_named_after_the_target_and_never_outlives_the_run() {
+    let fixture = Fixture::with_rows(&many_rows(50));
+    let folder = results_folder();
+    let target = folder.path().join("results.csv");
+    let options = options(
+        &fixture.output(),
+        &[
+            "--where",
+            "Primary Type=theft",
+            "--format",
+            "csv",
+            "--output",
+            target.to_str().expect("UTF-8"),
+        ],
+    );
+    // The cancellation check runs while the records are written: it lists the folder then.
+    let seen = RefCell::new(Vec::new());
+    let polls = Cell::new(0_usize);
+    let watching = |cancel_from: usize| {
+        let seen = &seen;
+        let polls = &polls;
+        let folder = folder.path();
+        move || {
+            seen.borrow_mut().extend(entries(folder));
+            polls.set(polls.get() + 1);
+            polls.get() > cancel_from
+        }
+    };
+
+    let (code, _, err) = run_with(&options, &watching(usize::MAX));
+    assert_eq!(code, exit_code::COMPLETED, "{err}");
+    let temporary: Vec<String> = seen
+        .take()
+        .into_iter()
+        .filter(|name| name != "results.csv")
+        .collect();
+    assert!(
+        !temporary.is_empty(),
+        "the temporary file is seen while writing"
+    );
+    assert!(
+        temporary.iter().all(|name| is_temporary_for_results(name)),
+        "{temporary:?}"
+    );
+    assert_eq!(entries(folder.path()), ["results.csv"]);
+    let written = fs::read(&target).expect("the file was written");
+
+    polls.set(0);
+    let (code, _, err) = run_with(&options, &watching(20));
+    assert_eq!(code, exit_code::CANCELLED, "{err}");
+    assert!(
+        seen.take()
+            .iter()
+            .any(|name| is_temporary_for_results(name)),
+        "the cancelled run wrote to a temporary file"
+    );
+    assert_eq!(
+        entries(folder.path()),
+        ["results.csv"],
+        "no temporary file left"
+    );
+    assert_eq!(fs::read(&target).expect("kept"), written);
+}
+
+#[test]
+fn a_cancellation_during_the_existence_checks_ends_the_run_before_any_output() {
+    let fixture = Fixture::with_rows(&fixture_rows());
+    let folder = results_folder();
+    let target = folder.path().join("results.csv");
+    // Two IDs and a case number: three existence checks, then the output starts.
+    let conditions = [
+        "--where",
+        "ID=10",
+        "--where",
+        "ID=999",
+        "--where",
+        "Case Number=JA000000",
+    ];
+    let file_mode = [
+        "--format",
+        "csv",
+        "--output",
+        target.to_str().expect("UTF-8"),
+    ];
+    for mode in [&["--format", "table"][..], &["--count"][..], &file_mode[..]] {
+        let mut args = conditions.to_vec();
+        args.extend(mode);
+        let options = options(&fixture.output(), &args);
+        for after in 0..3 {
+            let (code, out, err) = run_with(&options, &raised_after(after));
+            assert_eq!(code, exit_code::CANCELLED, "{mode:?} {after}: {err}");
+            assert!(out.is_empty(), "{mode:?} {after}");
+            assert_eq!(err, "Consulta cancelada.\n", "{mode:?} {after}");
+        }
+        // Raised once the checks are done: the warnings are out, nothing else is.
+        let (code, out, err) = run_with(&options, &raised_after(3));
+        assert_eq!(code, exit_code::CANCELLED, "{mode:?}: {err}");
+        assert!(out.is_empty(), "{mode:?}");
+        assert_eq!(
+            err,
+            "No existe ningún delito con ID 999.\n\
+             No existe ningún delito con número de caso JA000000.\n\
+             Consulta cancelada.\n",
+            "{mode:?}"
+        );
+    }
+    assert!(
+        entries(folder.path()).is_empty(),
+        "no file and no temporary file"
+    );
 }
 
 /// A stdout that fails every write with `kind`.

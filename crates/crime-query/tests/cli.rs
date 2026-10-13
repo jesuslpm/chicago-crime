@@ -235,6 +235,8 @@ fn the_help_is_in_spanish_and_ends_with_the_exit_codes() {
         "los avisos y las estadísticas, a la salida de errores",
         "se sobrescribe sin preguntar",
         "el archivo no se crea ni se modifica",
+        ".<ARCHIVO>.XXXXXX.crime-query.tmp",
+        "puede quedar ese archivo temporal; se puede borrar",
         "cancelado la consulta con Ctrl+C; no queda ningún archivo de salida a",
     ] {
         assert!(text.contains(expected), "{expected:?} in:\n{text}");

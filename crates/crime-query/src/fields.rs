@@ -72,9 +72,16 @@ impl Field {
         Field::Location,
     ];
 
+    /// The position of the field's column in the CSV, from 0: its index in [`HEADER`] and in
+    /// [`Field::ALL`]. Lists of fields shown to the analyst are sorted by it.
+    pub fn csv_position(self) -> usize {
+        // The variants are declared in HEADER order, so the discriminant is the column.
+        self as usize
+    }
+
     /// The CSV header name, the name the analyst types and every message shows.
     pub fn name(self) -> &'static str {
-        HEADER[self as usize]
+        HEADER[self.csv_position()]
     }
 
     pub fn field_type(self) -> FieldType {

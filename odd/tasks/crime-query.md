@@ -117,9 +117,9 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 | T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | **done**: 337/337 (parent re-ran + binary spot checks); assess medium `under_budget` (2,656 lines) → pending in the slice | `005e565` |
 | T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer (parallel with T2a) | **done**: 373/373 (parent re-ran); assess high (1,741 lines) → verified and reviewed with T5 as one slice | `04b604a` (verified and reviewed with T5) |
 | T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | **done**: committed tree 389/389, clippy, fmt (worktree check); slice T4+T5 high (3,140 lines); verifier PASS; RDD approved `review-29c8f4b5a6db639b` | `f65a997` |
-| T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b, which owns `crime-query` now) | pending | — |
+| T5a — Fixes from the T4+T5 review: temp output file with a recognizable name next to the target and documented leftover after a hard kill (`R4-001`); Ctrl+C polled during `Execution::start` existence checks (`R3-002`); `limit_reached` → `ended` (`R2-003`); CSV-position helper for the summary order (`R2-004`); shared test helpers in `tests/common` (`R2-005`) | S7, S8 | delegated writer (after T6b) | in progress (+ move `csv` out of `[dependencies]`, unused since T6b) | — |
 | T6a — `crime-acceptance select` (independent CSV filtering: counts, ID lists, source rows) + T1 review suggestions `R3-001` (empty-dataset lowercase check pinned) and `R3-002` (non-ASCII `index_text` test) | S10 (tooling), S1 | delegated writer (parallel with T5, disjoint files) | **done**: 418/418 (parent re-ran); assess medium `under_budget` (1,429) → pending for the closing slice | `9a47432` |
-| T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | in progress | — |
+| T6b — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), query acceptance script for AC-C1…AC-C18 using `select`, README | S10 | delegated writer + verification run | **done**: acceptance 58/58 PASS on the reference CSV; 419/419 (parent re-ran); closing slice high → verifier + RDD after T5a | `8a45c08` |
 
 Forecast: ~3,500 authored changed lines. RDD: on (global). After each commit run
 `gentle-ai review assess --committed-only` against the last reviewed boundary (first boundary `4c74bfe`);
@@ -253,3 +253,10 @@ consent always granted (standing user instruction); at feature close review what
   + resilience + readability, consent granted → **approved**, acknowledged (lineage `review-29c8f4b5a6db639b`). Boundary
   → `f65a997`. `R4-001`, `R3-002`, `R2-003`, `R2-004`, `R2-005` → T5a. `R2-001` (task table stale at that commit) fixed
   here; `R2-002`/`R3-001` (sí/si/no unproven) are already proven by T3's acceptance tests and the T3+T2a verifier.
+- **L14 (20:30–21:45, T6b)**: writer delivered `8a45c08`: `scripts/acceptance/run-query-acceptance.ps1` (58 checks, every
+  count also checked against `crime-acceptance select`), `send-ctrl-c.ps1` can trigger on an output file size and capture
+  output, the generator script maps `AC-C18-LOWERCASE`, README query section. Product/tool fix A1 (RED: 2 output tests
+  showed `""` where the source has `,,`): `crime-query` CSV writes empty fields bare and quotes non-empty ones like the
+  source (`write_csv_line`); `select --rows-out` copies the source row bytes. **Acceptance on the reference CSV: exit 0,
+  58/58 PASS in 377 s** (report `target/query-acceptance/query-acceptance-report.md`; generation 70 s, verifier 257 s).
+  Generator acceptance re-run (Ctrl+C helper changed): 15/15 PASS. Assess of `f65a997..8a45c08`: high (2,921 lines).

@@ -9,7 +9,13 @@
 //! query runs, and renamed over the target only once every result is written, flushed and
 //! synced. A rejection, a read or write error or a cancellation drops the temporary file, which
 //! deletes it: the target keeps its old content, or does not exist when it did not before.
+//!
+//! A process killed without unwinding (console closed, `taskkill /F`, power loss) cannot delete
+//! it, so its name tells what it is: `.<target name>.XXXXXX.crime-query.tmp` next to the target
+//! (see [`TEMPORARY_SUFFIX`]). Such a leftover can be deleted by hand; the run never deletes one
+//! itself, since it may belong to another run writing to the same target.
 
+use std::ffi::{OsStr, OsString};
 use std::fmt::Display;
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
@@ -19,6 +25,10 @@ use tempfile::NamedTempFile;
 use crate::cli::{Format, Mode, Options};
 use crate::output::RecordWriter;
 use crate::{Dataset, ExecError, Execution, Query, exit_code, messages};
+
+/// The end of the name of every temporary output file, after `.<target name>.` and six random
+/// characters.
+const TEMPORARY_SUFFIX: &str = ".crime-query.tmp";
 
 /// Runs `options` and returns the exit code. `cancel` is polled while the query runs; once it
 /// answers `true` the run ends with [`exit_code::CANCELLED`] (Ctrl+C in the binary).
@@ -51,10 +61,14 @@ pub fn run(
     };
     let mut execution = match Execution::start(&dataset, &query, cancel) {
         Ok(execution) => execution,
-        Err(error) => return report(stderr, error, exit_code::REJECTED),
+        Err(error) => return failed(stderr, &error),
     };
     for warning in execution.warnings() {
         say(stderr, warning);
+    }
+    // A Ctrl+C during the existence checks or the warnings ends the run before any output.
+    if cancel() {
+        return failed(stderr, &ExecError::Cancelled);
     }
     let format = match options.mode {
         Mode::Count => return count(execution, stdout, stderr),
@@ -168,8 +182,9 @@ fn count(execution: Execution, stdout: &mut dyn Write, stderr: &mut dyn Write) -
 }
 
 /// The temporary file the output is written to, in the folder of `path` so that the final
-/// rename never crosses file systems. A `path` that is a folder is refused here, before the
-/// query runs, rather than when the rename fails.
+/// rename never crosses file systems, named `.<target name>.XXXXXX.crime-query.tmp` so that a
+/// leftover is recognizable. A `path` that is a folder is refused here, before the query runs,
+/// rather than when the rename fails.
 fn temporary_next_to(path: &Path) -> io::Result<NamedTempFile> {
     if path.is_dir() {
         return Err(io::Error::from(io::ErrorKind::IsADirectory));
@@ -178,7 +193,13 @@ fn temporary_next_to(path: &Path) -> io::Result<NamedTempFile> {
         Some(folder) if !folder.as_os_str().is_empty() => folder,
         _ => Path::new("."),
     };
-    NamedTempFile::new_in(folder)
+    let mut prefix = OsString::from(".");
+    prefix.push(path.file_name().unwrap_or(OsStr::new("output")));
+    prefix.push(".");
+    tempfile::Builder::new()
+        .prefix(&prefix)
+        .suffix(TEMPORARY_SUFFIX)
+        .tempfile_in(folder)
 }
 
 /// Ends the run after a failed write on stdout.

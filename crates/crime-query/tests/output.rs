@@ -7,29 +7,13 @@ mod common;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Output};
 
-use common::{Fixture, Row, csv_text, fixture_rows, many_rows, row};
+use common::{
+    Fixture, Row, csv_text, fixture_rows, many_rows, query_on, row, stderr_lines, stdout,
+};
 use crime_dataset::HEADER;
 use crime_query::exit_code;
 use serde_json::Value;
-
-fn query_on(dataset: &Path, args: &[&str]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_crime-query"));
-    command.arg("--dataset").arg(dataset).args(args);
-    command.output().expect("the query app can be started")
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8(output.stdout.clone()).expect("stdout is UTF-8")
-}
-
-fn stderr_lines(output: &Output) -> Vec<String> {
-    String::from_utf8_lossy(&output.stderr)
-        .lines()
-        .map(str::to_owned)
-        .collect()
-}
 
 /// Runs the query in `format` and checks that it completed.
 fn records(dataset: &Path, args: &[&str], format: &str) -> (String, Vec<String>) {

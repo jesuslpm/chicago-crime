@@ -3,30 +3,11 @@
 
 mod common;
 
-use std::fs::{self, OpenOptions};
-use std::io::{Seek, SeekFrom, Write};
-use std::path::Path;
-use std::process::{Command, Output};
-
-use common::{Fixture, Row, fixture_rows, many_rows, row};
+use common::{
+    Fixture, Row, damage_middle, fixture_rows, many_rows, query_on, row, stderr_lines, stdout,
+};
 use crime_query::exit_code;
-
-fn query_on(dataset: &Path, args: &[&str]) -> Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_crime-query"));
-    command.arg("--dataset").arg(dataset).args(args);
-    command.output().expect("the query app can be started")
-}
-
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
-
-fn stderr_lines(output: &Output) -> Vec<String> {
-    String::from_utf8_lossy(&output.stderr)
-        .lines()
-        .map(str::to_owned)
-        .collect()
-}
+use std::process::Output;
 
 fn assert_completed(output: &Output) {
     assert_eq!(
@@ -214,19 +195,6 @@ fn a_filter_ignores_case_like_the_indexes() {
             "Location Description",
         );
     }
-}
-
-/// Overwrites bytes in the middle of a table file, past the part opening reads, so the damage
-/// is found while the query reads records.
-fn damage_middle(path: &Path) {
-    let size = fs::metadata(path).expect("the table exists").len();
-    let mut file = OpenOptions::new()
-        .write(true)
-        .open(path)
-        .expect("the table can be opened for writing");
-    file.seek(SeekFrom::Start(size / 3)).expect("seekable");
-    file.write_all(&vec![0xa5; (size / 3) as usize])
-        .expect("the table can be damaged");
 }
 
 #[test]
