@@ -13,6 +13,9 @@
 //! - [`Query`]: the conditions of the command line checked, typed and grouped as the engine
 //!   resolves them (decisions C1, C2, C3 and C10), with the filters for the fields without
 //!   index and the interpreted form the JSON output shows (decision C9);
+//! - [`Execution`]: a query run over an open dataset with the fixed plan of decision C10, as a
+//!   lazy stream of records or a count, with the warnings for missing IDs and case numbers and
+//!   the [`Summary`] of the stats line (decision C5);
 //! - [`cli`]: the command line in Spanish, and [`exit_code`];
 //! - [`messages`]: every user-facing text.
 //!
@@ -21,6 +24,7 @@
 
 pub mod cli;
 mod dataset;
+mod exec;
 mod fields;
 mod index;
 pub mod messages;
@@ -28,6 +32,7 @@ mod query;
 mod tracked;
 
 pub use dataset::{Dataset, OpenError, ReadError};
+pub use exec::{ExecError, Execution, Summary};
 pub use fields::{Field, FieldType};
 pub use index::{IdStream, IndexValue};
 pub use query::{

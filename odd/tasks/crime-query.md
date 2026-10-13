@@ -90,7 +90,7 @@ everything else.
 | Exit 2 vs 1 | 2: unknown/missing option, malformed `--where`/`--range` (no `=`/`..`), non-numeric or non-positive limit, count + format, output file with table/count. 1: field/value/date problems, no indexed condition, dataset errors, I/O. | C6: "2 si la línea de comandos no es válida"; condition content is "datos de la consulta". |
 | Plan (C10, no cost model) | Fixed rule. **With a date condition**: stream the date index over its range(s) (unsorted IDs) and test every other indexed condition per ID by an index point lookup of `(value, id)` (membership in that index's ID set); ID condition = membership in the requested list. **Without a date condition**: each alternative of each equality condition is an ID-ascending stream of its index (ID list: requested IDs that exist, sorted); alternatives merge by union, conditions by sorted-merge intersection. Non-indexed filters on the decoded primary record afterwards. Primary records are read only when the output or a filter needs them. | Every indexed condition is resolved through its own index; memory is O(number of conditions + alternatives), never O(result) (C7). THEFT is read completely in the no-date case, the PRD's known worst case. |
 | Snapshot | Resolve `CURRENT`, read the manifest, then open every table file handle before reading any data; if a file vanished between `CURRENT` and the open, re-resolve (3 attempts). Windows file handles opened by Rust allow delete, so a new publication cannot disturb the open snapshot. | AC-C12. |
-| Read errors | Table reads go through a `RandomAccess` wrapper that records I/O errors; the `sstable` iterator swallows block errors and skips to the next block, so the run checks the wrapper after every scan and aborts with S2's read message. Known limit: a block with a bad checksum is still skipped silently by the crate. | Avoids misleading partial output (PRD row). |
+| Read errors | Table reads go through a `RandomAccess` wrapper that records I/O errors; the `sstable` iterator swallows block errors and skips to the next block, so the run checks the wrapper after every scan and aborts with S2's read message. Since T2a the wrapper also verifies each block's masked CRC32C, so a corrupt block is a read error too. | Avoids misleading partial output (PRD row). |
 | Count only | Prints the bare number on stdout. Limit caps the count too. | Machine-friendly; "limit N returns at most N". |
 | Table | Fixed column widths per field (header or typical max), values never truncated (a longer value shifts that row). | Streaming output; C7 forbids buffering all rows to size columns. |
 | CSV | Header = the 22 source columns; every field quoted like the source; dates in the source text; booleans `true`/`false`; Location rebuilt; "sin valor" empty. | C4. |
@@ -113,9 +113,9 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 |---|---|---|---|---|
 | T1 — C1: lowercase text indexes, `index_text`, schema 2 in `crime-dataset`, generator tests, verifier (lowercase keys, schema 2) | S1 | delegated writer | **done**: 236/236; verifier S1 PASS; RDD approved `review-9f2da850bb2a217a` | `c8db165` |
 | T2 — `crime-query` dataset layer: snapshot open with retries, manifest + schema check, error-tracking reader, record get, index streams (ID-ascending per value, date range), membership probe, case-number existence | S2, S5 (access), S9 | delegated writer | **done**: 269/269; native assess high; verifier PASS; RDD approved `review-a365970a61ce8d44` | `7a752e3` |
-| T2a — Fixes from the T2 verification and review: `TrackedFile` verifies the masked CRC32C of every table block it reads (blocks are read as content + type byte + CRC in one `read_at`) so a corrupt block becomes a `ReadError` instead of a silently short stream (`R4-001`, verifier advisory 1); the AC-C12 snapshot test asserts the old version folder is gone before reading through open handles (`R3-001`); a test where `CURRENT` moves to a new version between open attempts and a later attempt succeeds (`R3-002`) | S2 | delegated writer | pending (after T3, same crate) | — |
-| T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | pending | — |
-| T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer | pending | — |
+| T2a — Fixes from the T2 verification and review: `TrackedFile` verifies the masked CRC32C of every table block it reads (blocks are read as content + type byte + CRC in one `read_at`) so a corrupt block becomes a `ReadError` instead of a silently short stream (`R4-001`, verifier advisory 1); the AC-C12 snapshot test asserts the old version folder is gone before reading through open handles (`R3-001`); a test where `CURRENT` moves to a new version between open attempts and a later attempt succeeds (`R3-002`) | S2 | delegated writer (parallel with T4, disjoint files) | **done**: committed tree 347/347, clippy, fmt (worktree check) | `c67f70d` |
+| T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | **done**: 337/337 (parent re-ran + binary spot checks); assess medium `under_budget` (2,656 lines) → pending in the slice | `005e565` |
+| T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer (parallel with T2a) | in progress | — |
 | T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | pending | — |
 | T6 — Acceptance: regenerate the reference dataset (schema 2), verifier run (AC-C18), `crime-acceptance count`, acceptance script for AC-C1…AC-C18, README | S10 | delegated writer + verification run | pending | — |
 
@@ -179,3 +179,23 @@ consent always granted (standing user instruction); at feature close review what
   conjunto o incompleta"); (3) judge AC-C13 with the ≈8 MiB cache in mind (T6). RDD on a clean worktree at `7a752e3`
   (base `c8db165`), lenses resilience + reliability, consent granted → **approved**, acknowledged (lineage
   `review-a365970a61ce8d44`). Boundary → `7a752e3`. Warnings `R4-001`, `R3-001` and suggestion `R3-002` → T2a.
+- **L7 (17:55–18:15, T3)**: writer delivered `005e565`: `fields.rs` (22-column catalog), `query.rs` (typed query,
+  filters, C2 intervals, JSON view), `cli.rs` (clap in Spanish; derive + `ArgMatches::indices_of` to keep the order of
+  `--where`/`--range`), interim `main.rs`, `CivilDateTime::{MIN, MAX, from_parts, to_iso_string}` in `crime-dataset`
+  (additive; the parser now builds through `from_parts`). 66 new tests (RED: compile failures on the missing API).
+  Defaults the writer chose: range messages `El rango "<texto>" no tiene la forma Date=DESDE..HASTA.` and `El rango
+  "<texto>" necesita al menos una fecha: Date=DESDE.., Date=..HASTA o Date=DESDE..HASTA.`; `El formato "<x>" no es
+  válido. Formatos admitidos: table, csv, json.`; `--format` case-insensitive; `NaN`/`inf` rejected as decimals; open
+  range ends shown as `0001-01-01T00:00:00`/`9999-12-31T23:59:59` in the JSON view; `--range` on any non-Date known
+  field (Block included) → `Solo se admiten rangos sobre "Date".`. Parent spot checks: missing dataset exit 1, Block →
+  "no admite condiciones" exit 1, `--count --format csv` exit 2. Assess: medium, `under_budget`. T2a and T4 launched
+  in parallel (declared disjoint surfaces; the parent owns git).
+- **L8 (18:15–18:35, T2a)**: writer delivered `c67f70d`: `TrackedFile` verifies the masked CRC32C of every block read
+  (in-house CRC32C + LevelDB unmask, no new dependency; reads of exactly the last 48 bytes are the footer; the
+  `filter._` metaindex entry written by `new_no_filter` is never read because the reader looks up
+  `filter.leveldb.BuiltinBloomFilter2`, pinned by a unit test). RED: zeroing 64 bytes in `index-primary_type.sst`
+  returned IDs 852..3000 as success; now a read error. Snapshot test asserts the old folder is gone (Windows deletes it);
+  retry-success test through a crate-private seam `open_observed`. The committed tree (T3 + T2a, without T4's in-progress
+  files) was checked in a separate worktree: 347/347, clippy and fmt clean. Assess of the slice `7a752e3..c67f70d`
+  (T4's untracked files excluded with `--untracked-scope=exclude`): **high** (`process_boundary`, 3,120 lines) →
+  independent verifier launched, then RDD.

@@ -5,6 +5,7 @@
 
 use std::fmt::Display;
 use std::path::Path;
+use std::time::Duration;
 
 use crime_dataset::SCHEMA_VERSION;
 
@@ -91,6 +92,59 @@ pub fn inverted_range() -> String {
 fn available_fields() -> String {
     let names: Vec<&str> = Field::conditionable().map(Field::name).collect();
     format!("{}.", names.join(", "))
+}
+
+// Running the query: warnings, the stats line (stderr) and cancellation.
+
+/// A requested ID with no record; not an error (the query completes).
+pub fn missing_id(id: i64) -> String {
+    format!("No existe ningún delito con ID {id}.")
+}
+
+/// A requested case number with no record, as the analyst typed it; not an error.
+pub fn missing_case_number(typed: &str) -> String {
+    format!("No existe ningún delito con número de caso {typed}.")
+}
+
+/// The line after a completed query (decision C5, flow step 7): the number of results with
+/// Spanish thousands separators, the time in seconds with three decimals and a decimal comma,
+/// the CSV names of the indexed conditions and of the fields filtered without an index.
+pub fn stats(count: u64, elapsed: Duration, indexes: &[&str], filters: &[&str]) -> String {
+    let results = if count == 1 {
+        "resultado"
+    } else {
+        "resultados"
+    };
+    let millis = (elapsed.as_micros() + 500) / 1_000;
+    let filters = if filters.is_empty() {
+        "ninguno".to_owned()
+    } else {
+        filters.join(", ")
+    };
+    format!(
+        "{} {results} en {},{:03} s. Índices usados: {}. Filtros sin índice: {filters}.",
+        thousands(u128::from(count)),
+        thousands(millis / 1_000),
+        millis % 1_000,
+        indexes.join(", ")
+    )
+}
+
+pub fn query_cancelled() -> String {
+    "Consulta cancelada.".to_owned()
+}
+
+/// `1838502` as `1.838.502`.
+fn thousands(value: u128) -> String {
+    let digits = value.to_string();
+    let mut text = String::with_capacity(digits.len() + digits.len() / 3);
+    for (position, digit) in digits.chars().enumerate() {
+        if position > 0 && (digits.len() - position).is_multiple_of(3) {
+            text.push('.');
+        }
+        text.push(digit);
+    }
+    text
 }
 
 // Command line (exit code 2).

@@ -98,6 +98,8 @@ pub struct Equality {
     field: Field,
     index: IndexKind,
     values: Vec<IndexValue>,
+    /// Each alternative as the analyst first typed it, one per value.
+    typed: Vec<String>,
 }
 
 impl Equality {
@@ -112,6 +114,12 @@ impl Equality {
     /// The distinct alternatives in first-appearance order, in the index form.
     pub fn values(&self) -> &[IndexValue] {
         &self.values
+    }
+
+    /// Each alternative of [`Equality::values`] as the analyst first typed it, for the messages
+    /// that quote it (a missing case number).
+    pub fn typed(&self) -> &[String] {
+        &self.typed
     }
 }
 
@@ -384,12 +392,14 @@ impl Builder {
                             field,
                             index,
                             values: Vec::new(),
+                            typed: Vec::new(),
                         });
                         self.equalities.last_mut().expect("just pushed")
                     }
                 };
                 if !equality.values.contains(&value) {
                     equality.values.push(value);
+                    equality.typed.push(raw.to_owned());
                 }
             }
             (_, None, value) => {

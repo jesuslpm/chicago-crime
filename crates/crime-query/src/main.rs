@@ -10,8 +10,8 @@
 
 use std::process::ExitCode;
 
-use crime_query::cli::{self, Parsed};
-use crime_query::{Dataset, Query, exit_code};
+use crime_query::cli::{self, Mode, Parsed};
+use crime_query::{Dataset, ExecError, Execution, Query, exit_code};
 
 fn main() -> ExitCode {
     let options = match cli::parse(std::env::args_os()) {
@@ -39,8 +39,46 @@ fn main() -> ExitCode {
             return ExitCode::from(exit_code::REJECTED);
         }
     };
-    // Interim behavior until the execution task (T4) runs the query and writes its results
-    // (T5): a valid query on a valid dataset ends successfully and prints nothing.
-    drop((query, dataset));
+    // Ctrl+C is wired by the output task (T5); until then nothing cancels.
+    let cancel = || false;
+    let mut execution = match Execution::start(&dataset, &query, &cancel) {
+        Ok(execution) => execution,
+        Err(error) => {
+            eprintln!("{error}");
+            return ExitCode::from(exit_code::REJECTED);
+        }
+    };
+    for warning in execution.warnings() {
+        eprintln!("{warning}");
+    }
+    let summary = match options.mode {
+        Mode::Count => match execution.count() {
+            Ok(summary) => {
+                println!("{}", summary.count);
+                summary
+            }
+            Err(error) => return failed(&error),
+        },
+        Mode::Records(_) => {
+            // Interim behavior until the output task (T5) writes the records in their format:
+            // the query runs and reads every record, and nothing is printed on stdout.
+            for record in &mut execution {
+                if let Err(error) = record {
+                    return failed(&error);
+                }
+            }
+            execution.summary()
+        }
+    };
+    eprintln!("{}", summary.stats_line());
     ExitCode::from(exit_code::COMPLETED)
+}
+
+/// Reports why the execution ended early: 1 when a read failed, 130 when it was cancelled.
+fn failed(error: &ExecError) -> ExitCode {
+    eprintln!("{error}");
+    ExitCode::from(match error {
+        ExecError::Read(_) => exit_code::REJECTED,
+        ExecError::Cancelled => exit_code::CANCELLED,
+    })
 }
