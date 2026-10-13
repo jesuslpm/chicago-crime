@@ -112,7 +112,8 @@ parent context is past the ~150k advisory backstop, so each task goes to **one b
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 — C1: lowercase text indexes, `index_text`, schema 2 in `crime-dataset`, generator tests, verifier (lowercase keys, schema 2) | S1 | delegated writer | **done**: 236/236; verifier S1 PASS; RDD approved `review-9f2da850bb2a217a` | `c8db165` |
-| T2 — `crime-query` dataset layer: snapshot open with retries, manifest + schema check, error-tracking reader, record get, index streams (ID-ascending per value, date range), membership probe, case-number existence | S2, S5 (access), S9 | delegated writer | pending | — |
+| T2 — `crime-query` dataset layer: snapshot open with retries, manifest + schema check, error-tracking reader, record get, index streams (ID-ascending per value, date range), membership probe, case-number existence | S2, S5 (access), S9 | delegated writer | **done**: 269/269; native assess high; verifier PASS; RDD approved `review-a365970a61ce8d44` | `7a752e3` |
+| T2a — Fixes from the T2 verification and review: `TrackedFile` verifies the masked CRC32C of every table block it reads (blocks are read as content + type byte + CRC in one `read_at`) so a corrupt block becomes a `ReadError` instead of a silently short stream (`R4-001`, verifier advisory 1); the AC-C12 snapshot test asserts the old version folder is gone before reading through open handles (`R3-001`); a test where `CURRENT` moves to a new version between open attempts and a later attempt succeeds (`R3-002`) | S2 | delegated writer | pending (after T3, same crate) | — |
 | T3 — Query model + CLI: field catalog, `--where`/`--range` parsing, value typing, C1 lowercasing, C2 date resolution, every S4 validation message, clap in Spanish, exit codes 1/2 | S3, S4, S8 | delegated writer | pending | — |
 | T4 — Execution: fixed plan, union/intersection streams, probes, filters, limit, count, missing-ID/case warnings, stderr stats | S5, S6 (stats), S9 | delegated writer | pending | — |
 | T5 — Output: table, CSV, JSON with the interpreted query, output file (temp + rename), Ctrl+C → 130 | S6, S7, S8 | delegated writer | pending | — |
@@ -160,3 +161,21 @@ consent always granted (standing user instruction); at feature close review what
   instruction) → **approved**, acknowledged (lineage `review-9f2da850bb2a217a`, authority burned). Reviewed boundary
   → `c8db165`. Suggestions: `R3-001` (empty-dataset behavior of `AC-C18-LOWERCASE` untested), `R3-002` (no non-ASCII
   `index_text` test where lowercase changes byte length) — accepted as advisory, folded into T6.
+- **L5 (17:20–17:35, T2)**: writer delivered `7a752e3`: `crates/crime-query` library (dataset, index streams, tracked
+  reader, messages) + 30 integration and 3 unit tests (RED against a panicking stub). New `sstable` 0.11.1 findings:
+  `seek` to a target between a block's last key and its separator leaves the iterator invalid (workaround with
+  `approx_offset_of` + bounded advance, pinned by a test over 2,999 range starts); block reads ignore short reads (the
+  wrapper turns early EOF into an error); the reader panics on a file shorter than the footer or without the magic (checked
+  before `Table::new`). Windows: the generator's overwrite deleted the old version folder while the query held handles,
+  and the open snapshot kept reading old data (AC-C12 behavior confirmed in a test). Added `foundationdb-tuple` to the
+  crate (key decoding). Native assess high → independent verifier launched; T3 writer launched in parallel (disjoint
+  files, verifier works in a temp clone).
+- **L6 (17:35–17:55, T2 verification)**: independent verifier PASS (S2, S5 access, S9), no blockers: 90 value queries,
+  22,368 + 500 date-range queries (0 mismatches; disabling the seek workaround gives 9), 502 records, every open message
+  verbatim, snapshot under `--overwrite` holds, truncation after open → read error, folder hashes unchanged after ~27k
+  queries, peak private 1.0 MB (ARSON) vs 2.2 MB (THEFT 200k) — growth is the bounded block cache (2,048 blocks ≈ 8 MiB).
+  Advisories: (1) in-place corruption keeping the size is skipped silently (CRC failures never reach the wrapper; fix:
+  check the CRC in `TrackedFile`) → T2a; (2) invalid manifest JSON reports "No se encontró…" (defensible: "carpeta sin
+  conjunto o incompleta"); (3) judge AC-C13 with the ≈8 MiB cache in mind (T6). RDD on a clean worktree at `7a752e3`
+  (base `c8db165`), lenses resilience + reliability, consent granted → **approved**, acknowledged (lineage
+  `review-a365970a61ce8d44`). Boundary → `7a752e3`. Warnings `R4-001`, `R3-001` and suggestion `R3-002` → T2a.

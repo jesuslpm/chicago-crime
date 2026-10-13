@@ -26,22 +26,68 @@ pub enum DateTimeError {
 }
 
 impl CivilDateTime {
+    /// The first supported instant, `0001-01-01T00:00:00`.
+    pub const MIN: CivilDateTime = CivilDateTime(days_from_civil(MIN_YEAR, 1, 1) * SECONDS_PER_DAY);
+
+    /// The last supported instant, `9999-12-31T23:59:59`.
+    pub const MAX: CivilDateTime =
+        CivilDateTime((days_from_civil(MAX_YEAR, 12, 31) + 1) * SECONDS_PER_DAY - 1);
+
     /// Builds a value from seconds since `1970-01-01T00:00:00`.
     ///
     /// Fails when the value falls outside the years `0001..=9999`.
     pub fn from_seconds(seconds: i64) -> Result<Self, DateTimeError> {
-        let first = days_from_civil(MIN_YEAR, 1, 1) * SECONDS_PER_DAY;
-        let last = (days_from_civil(MAX_YEAR, 12, 31) + 1) * SECONDS_PER_DAY - 1;
-        if (first..=last).contains(&seconds) {
+        if (Self::MIN.0..=Self::MAX.0).contains(&seconds) {
             Ok(Self(seconds))
         } else {
             Err(DateTimeError::OutOfRange)
         }
     }
 
+    /// Builds a value from its civil components, with the hour on the 24-hour clock (`0..=23`).
+    ///
+    /// Fails with [`DateTimeError::OutOfRange`] when the date does not exist, a time component
+    /// is out of range or the year is outside `0001..=9999`.
+    pub fn from_parts(
+        year: i64,
+        month: i64,
+        day: i64,
+        hour: i64,
+        minute: i64,
+        second: i64,
+    ) -> Result<Self, DateTimeError> {
+        let date_exists = (MIN_YEAR..=MAX_YEAR).contains(&year)
+            && (1..=12).contains(&month)
+            && (1..=days_in_month(year, month)).contains(&day);
+        let time_exists =
+            (0..=23).contains(&hour) && (0..=59).contains(&minute) && (0..=59).contains(&second);
+        if !date_exists || !time_exists {
+            return Err(DateTimeError::OutOfRange);
+        }
+        let seconds_of_day = hour * 3_600 + minute * 60 + second;
+        Self::from_seconds(days_from_civil(year, month, day) * SECONDS_PER_DAY + seconds_of_day)
+    }
+
     /// Seconds since `1970-01-01T00:00:00` of the naive civil clock.
     pub fn seconds(self) -> i64 {
         self.0
+    }
+
+    /// The civil instant as `YYYY-MM-DDThh:mm:ss` (24-hour clock, no time zone).
+    pub fn to_iso_string(self) -> String {
+        let (year, month, day, hour, minute, second) = self.parts();
+        format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
+    }
+
+    /// Year, month, day, hour of the day (`0..=23`), minute and second.
+    fn parts(self) -> (i64, i64, i64, i64, i64, i64) {
+        let days = self.0.div_euclid(SECONDS_PER_DAY);
+        let seconds_of_day = self.0.rem_euclid(SECONDS_PER_DAY);
+        let (year, month, day) = civil_from_days(days);
+        let hour = seconds_of_day / 3_600;
+        let minute = seconds_of_day % 3_600 / 60;
+        let second = seconds_of_day % 60;
+        (year, month, day, hour, minute, second)
     }
 }
 
@@ -76,29 +122,18 @@ impl FromStr for CivilDateTime {
             _ => return Err(DateTimeError::Format),
         };
 
-        let date_exists = (MIN_YEAR..=MAX_YEAR).contains(&year)
-            && (1..=12).contains(&month)
-            && (1..=days_in_month(year, month)).contains(&day);
-        let time_exists = (1..=12).contains(&hour) && minute <= 59 && second <= 59;
-        if !date_exists || !time_exists {
+        if !(1..=12).contains(&hour) {
             return Err(DateTimeError::OutOfRange);
         }
-
         let hour_of_day = hour % 12 + if afternoon { 12 } else { 0 };
-        let seconds_of_day = hour_of_day * 3_600 + minute * 60 + second;
-        Self::from_seconds(days_from_civil(year, month, day) * SECONDS_PER_DAY + seconds_of_day)
+        Self::from_parts(year, month, day, hour_of_day, minute, second)
     }
 }
 
 impl fmt::Display for CivilDateTime {
     /// Formats as `MM/DD/YYYY hh:mm:ss AM|PM`, the same text the source publishes.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let days = self.0.div_euclid(SECONDS_PER_DAY);
-        let seconds_of_day = self.0.rem_euclid(SECONDS_PER_DAY);
-        let (year, month, day) = civil_from_days(days);
-        let hour_of_day = seconds_of_day / 3_600;
-        let minute = seconds_of_day % 3_600 / 60;
-        let second = seconds_of_day % 60;
+        let (year, month, day, hour_of_day, minute, second) = self.parts();
         let hour = match hour_of_day % 12 {
             0 => 12,
             hour => hour,
@@ -147,7 +182,7 @@ fn is_leap_year(year: i64) -> bool {
 }
 
 /// Days since 1970-01-01 of a proleptic Gregorian date (Howard Hinnant's `days_from_civil`).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+const fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     let year = if month <= 2 { year - 1 } else { year };
     let era = year.div_euclid(400);
     let year_of_era = year - era * 400;

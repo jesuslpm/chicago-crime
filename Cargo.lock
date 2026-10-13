@@ -255,6 +255,7 @@ dependencies = [
 name = "crime-query"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "crime-dataset",
  "crime-generator",
  "foundationdb-tuple",
