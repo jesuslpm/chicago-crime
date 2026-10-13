@@ -1,5 +1,6 @@
-//! Command line entry point: checks the command line, then the query conditions, then opens the
-//! dataset (decision C6; see [`crime_query::exit_code`] and the end of `--help`):
+//! Command line entry point: checks the command line, wires Ctrl+C and hands the run to
+//! [`crime_query::run`], which checks the query conditions, opens the dataset and writes the
+//! results (decision C6; see [`crime_query::exit_code`] and the end of `--help`):
 //!
 //! | Code | Meaning |
 //! |------|---------|
@@ -8,10 +9,13 @@
 //! | 2    | The command line is not valid; nothing was queried. |
 //! | 130  | The analyst cancelled the query with Ctrl+C. |
 
+use std::io::{self, BufWriter};
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use crime_query::cli::{self, Mode, Parsed};
-use crime_query::{Dataset, ExecError, Execution, Query, exit_code};
+use crime_query::cli::{self, Parsed};
+use crime_query::{exit_code, messages};
 
 fn main() -> ExitCode {
     let options = match cli::parse(std::env::args_os()) {
@@ -25,60 +29,17 @@ fn main() -> ExitCode {
             return ExitCode::from(exit_code::USAGE);
         }
     };
-    let query = match Query::build(&options.conditions) {
-        Ok(query) => query.with_limit(options.limit),
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(exit_code::REJECTED);
-        }
-    };
-    let dataset = match Dataset::open(&options.dataset) {
-        Ok(dataset) => dataset,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(exit_code::REJECTED);
-        }
-    };
-    // Ctrl+C is wired by the output task (T5); until then nothing cancels.
-    let cancel = || false;
-    let mut execution = match Execution::start(&dataset, &query, &cancel) {
-        Ok(execution) => execution,
-        Err(error) => {
-            eprintln!("{error}");
-            return ExitCode::from(exit_code::REJECTED);
-        }
-    };
-    for warning in execution.warnings() {
-        eprintln!("{warning}");
+    // Ctrl+C only raises this flag; the query polls it and ends with exit code 130, dropping a
+    // half-written output file. Nothing else is published through the flag, so no ordering
+    // with other memory is needed.
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let handler_flag = Arc::clone(&cancelled);
+    if ctrlc::set_handler(move || handler_flag.store(true, Ordering::Relaxed)).is_err() {
+        eprintln!("{}", messages::cancel_unavailable());
     }
-    let summary = match options.mode {
-        Mode::Count => match execution.count() {
-            Ok(summary) => {
-                println!("{}", summary.count);
-                summary
-            }
-            Err(error) => return failed(&error),
-        },
-        Mode::Records(_) => {
-            // Interim behavior until the output task (T5) writes the records in their format:
-            // the query runs and reads every record, and nothing is printed on stdout.
-            for record in &mut execution {
-                if let Err(error) = record {
-                    return failed(&error);
-                }
-            }
-            execution.summary()
-        }
-    };
-    eprintln!("{}", summary.stats_line());
-    ExitCode::from(exit_code::COMPLETED)
-}
-
-/// Reports why the execution ended early: 1 when a read failed, 130 when it was cancelled.
-fn failed(error: &ExecError) -> ExitCode {
-    eprintln!("{error}");
-    ExitCode::from(match error {
-        ExecError::Read(_) => exit_code::REJECTED,
-        ExecError::Cancelled => exit_code::CANCELLED,
-    })
+    let cancel = || cancelled.load(Ordering::Relaxed);
+    // Buffered: stdout is line-buffered by default, one write per record line otherwise.
+    let mut stdout = BufWriter::new(io::stdout().lock());
+    let code = crime_query::run(&options, &cancel, &mut stdout, &mut io::stderr());
+    ExitCode::from(code)
 }

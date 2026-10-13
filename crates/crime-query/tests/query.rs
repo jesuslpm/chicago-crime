@@ -248,7 +248,7 @@ fn boolean_fields_reject_other_values() {
     ] {
         assert_eq!(
             error(&[by_id(), eq(name, value)]),
-            format!("\"{value}\" no es válido para \"{name}\": se esperaba true o false.")
+            format!("\"{value}\" no es válido para \"{name}\": se esperaba true, false, sí o no.")
         );
     }
 }
@@ -334,7 +334,7 @@ fn an_inverted_range_is_rejected() {
 fn the_first_wrong_condition_in_command_line_order_is_reported() {
     assert_eq!(
         error(&[eq("Arrest", "x"), eq("Foo", "1"), by_id()]),
-        "\"x\" no es válido para \"Arrest\": se esperaba true o false."
+        "\"x\" no es válido para \"Arrest\": se esperaba true, false, sí o no."
     );
     assert_eq!(
         error(&[eq("Foo", "1"), eq("Arrest", "x"), by_id()]),

@@ -8,13 +8,16 @@ publish.workspace = true
 [dependencies]
 clap.workspace = true
 crime-dataset.workspace = true
+csv.workspace = true
+ctrlc.workspace = true
 # Index keys are packed tuples `(value, id)`: the query app builds and decodes them itself.
 foundationdb-tuple.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sstable.workspace = true
+# The output file is written next to its target and renamed over it (decision C8).
+tempfile.workspace = true
 
 [dev-dependencies]
 # Only to build small datasets for the tests; the query app itself never uses the generator.
 crime-generator = { path = "../crime-generator" }
-tempfile.workspace = true

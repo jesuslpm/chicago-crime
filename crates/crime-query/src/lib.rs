@@ -16,11 +16,15 @@
 //! - [`Execution`]: a query run over an open dataset with the fixed plan of decision C10, as a
 //!   lazy stream of records or a count, with the warnings for missing IDs and case numbers and
 //!   the [`Summary`] of the stats line (decision C5);
+//! - [`output`]: the records in table, CSV or JSON, written one at a time (decision C4);
+//! - [`run()`]: one run of a valid command line, from the conditions to the exit code, with the
+//!   results on stdout or in the output file and everything else on stderr (decisions C5, C6
+//!   and C8);
 //! - [`cli`]: the command line in Spanish, and [`exit_code`];
 //! - [`messages`]: every user-facing text.
 //!
 //! Nothing here holds IDs or records in memory in proportion to a result (decision C7): streams
-//! read one index entry at a time and lookups read one entry.
+//! read one index entry at a time, lookups read one entry and the output writes one record.
 
 pub mod cli;
 mod dataset;
@@ -28,7 +32,9 @@ mod exec;
 mod fields;
 mod index;
 pub mod messages;
+pub mod output;
 mod query;
+mod run;
 mod tracked;
 
 pub use dataset::{Dataset, OpenError, ReadError};
@@ -39,6 +45,7 @@ pub use query::{
     Applied, AppliedCondition, AppliedInterval, AppliedValue, DateInterval, Equality, Filter,
     Interpreted, Query, QueryError, RawCondition,
 };
+pub use run::run;
 
 /// Exit codes of the binary (decision C6), the same as the generator's.
 pub mod exit_code {

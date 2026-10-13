@@ -37,6 +37,15 @@ fn assert_completed(output: &Output) {
     );
 }
 
+/// Asserts that `text` is a table with no rows: the header row and the separator row only.
+fn assert_empty_table(text: &str) {
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 2, "{text}");
+    assert!(lines[0].starts_with("ID  "), "{text}");
+    assert!(lines[0].trim_end().ends_with("Location"), "{text}");
+    assert!(lines[1].chars().all(|c| c == '-' || c == ' '), "{text}");
+}
+
 /// Asserts the stats line `<results> en <t> s. Índices usados: <indexes>. Filtros sin índice:
 /// <filters>.`, whatever the time.
 fn assert_stats(line: &str, results: &str, indexes: &str, filters: &str) {
@@ -127,7 +136,7 @@ fn a_missing_case_number_is_warned_and_the_query_completes() {
     let fixture = Fixture::with_rows(&fixture_rows());
     let output = query_on(&fixture.output(), &["--where", "Case Number=JA000000"]);
     assert_completed(&output);
-    assert!(stdout(&output).is_empty());
+    assert_empty_table(&stdout(&output));
     let lines = stderr_lines(&output);
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -149,7 +158,7 @@ fn an_empty_result_exits_with_0() {
     let fixture = Fixture::with_rows(&fixture_rows());
     let output = query_on(&fixture.output(), &["--where", "Primary Type=homicide"]);
     assert_completed(&output);
-    assert!(stdout(&output).is_empty());
+    assert_empty_table(&stdout(&output));
     let lines = stderr_lines(&output);
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_stats(&lines[0], "0 resultados", "Primary Type", "ninguno");

@@ -182,9 +182,9 @@ fn a_valid_query_on_a_valid_dataset_exits_with_0() {
         ],
     );
     assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
-    // Interim behavior until the output task (T5) writes the records: nothing on stdout, and
-    // only the stats line on stderr.
-    assert!(output.stdout.is_empty());
+    let results: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout is the JSON document");
+    assert_eq!(results["results"].as_array().map(Vec::len), Some(3));
     let stderr = stderr(&output);
     assert_eq!(stderr.lines().count(), 1, "{stderr}");
     assert!(stderr.starts_with("3 resultados en "), "{stderr}");

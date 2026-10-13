@@ -68,8 +68,9 @@ pub fn expected_integer(value: &str, field: &str) -> String {
     format!("\"{value}\" no es válido para \"{field}\": se esperaba un número entero.")
 }
 
+/// Every spelling a boolean condition accepts, case-insensitive (`si` is accepted too).
 pub fn expected_boolean(value: &str, field: &str) -> String {
-    format!("\"{value}\" no es válido para \"{field}\": se esperaba true o false.")
+    format!("\"{value}\" no es válido para \"{field}\": se esperaba true, false, sí o no.")
 }
 
 pub fn expected_decimal(value: &str, field: &str) -> String {
@@ -132,6 +133,26 @@ pub fn stats(count: u64, elapsed: Duration, indexes: &[&str], filters: &[&str]) 
 
 pub fn query_cancelled() -> String {
     "Consulta cancelada.".to_owned()
+}
+
+/// Ctrl+C could not be wired: the query runs, but cannot be cancelled cleanly.
+pub fn cancel_unavailable() -> String {
+    "Aviso: no se pudo activar la cancelación con Ctrl+C.".to_owned()
+}
+
+// Writing the results (decisions C5 and C8). The path is shown exactly as the analyst gave it.
+
+/// The output file cannot be created or written, or cannot replace the target.
+pub fn output_unwritable(path: &Path) -> String {
+    format!(
+        "No se puede escribir el archivo de salida {}.",
+        path.display()
+    )
+}
+
+/// Writing the results to stdout failed for a reason other than a closed pipe.
+pub fn stdout_unwritable() -> String {
+    "No se puede escribir en la salida estándar.".to_owned()
 }
 
 /// `1838502` as `1.838.502`.

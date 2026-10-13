@@ -22,7 +22,8 @@ Códigos de salida:
   1    La consulta se ha rechazado por el conjunto de datos o por sus condiciones, o ha
        abortado.
   2    La línea de comandos no es válida; no se ha consultado nada.
-  130  El analista ha cancelado la consulta con Ctrl+C.";
+  130  El analista ha cancelado la consulta con Ctrl+C; no queda ningún archivo de salida a
+       medias.";
 
 /// Command line options as typed by the analyst. The limit and the format are read as text so
 /// that their errors get the PRD messages instead of clap's.
@@ -50,8 +51,10 @@ struct Args {
         value_name = "CAMPO=VALOR",
         help = "Condición de igualdad. CAMPO es el nombre de la columna del CSV, sin distinguir \
                 mayúsculas. Repetida sobre el mismo campo da valores alternativos (O); sobre \
-                campos distintos, todas se cumplen (Y). CAMPO= pide \"sin valor\". Las fechas \
-                van como AAAA-MM-DD [hh:mm] y abarcan el día o el minuto entero."
+                campos distintos, todas se cumplen (Y). El texto se compara sin distinguir \
+                mayúsculas y los códigos conservan los ceros a la izquierda. CAMPO= (nada tras \
+                el =) pide \"sin valor\". Arrest y Domestic admiten true, false, sí, si o no. \
+                Las fechas van como AAAA-MM-DD [hh:mm] y abarcan el día o el minuto entero."
     )]
     conditions: Vec<String>,
 
@@ -78,7 +81,8 @@ struct Args {
     #[arg(
         long,
         value_name = "FORMATO",
-        help = "Formato de los resultados: table (por defecto), csv o json."
+        help = "Formato de los resultados: table (por defecto), csv o json. Los resultados van \
+                a la salida estándar; los avisos y las estadísticas, a la salida de errores."
     )]
     format: Option<String>,
 
@@ -86,7 +90,8 @@ struct Args {
         long,
         value_name = "ARCHIVO",
         help = "Escribe los resultados en este archivo en lugar de la salida estándar; solo con \
-                --format csv o json. Si ya existe, se sobrescribe."
+                --format csv o json. Si ya existe, se sobrescribe sin preguntar. Si la consulta \
+                se rechaza, falla o se cancela, el archivo no se crea ni se modifica."
     )]
     output: Option<PathBuf>,
 
