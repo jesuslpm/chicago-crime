@@ -4,12 +4,13 @@
 mod common;
 
 use std::fs::{self, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use common::{
     Fixture, TABLE_FILES, datetime, fixture_rows, hourly_date, many_rows, row, write_current,
 };
-use crime_dataset::{CivilDateTime, IndexKind, SCHEMA_VERSION};
+use crime_dataset::{CivilDateTime, Compression, IndexKind, SCHEMA_VERSION};
 use crime_query::{Dataset, IdStream, IndexValue, OpenError};
 
 fn open(fixture: &Fixture) -> Dataset {
@@ -564,9 +565,11 @@ fn an_open_dataset_keeps_reading_its_version_after_a_new_publication() {
     ];
     fixture.publish(&replacement);
     assert_ne!(fixture.version_dir(), old_version);
-    println!(
-        "old version folder still exists after the overwrite: {}\ngenerator log:\n{}",
-        old_version.exists(),
+    // The overwriting run deleted the open version: every read below goes through the handles.
+    assert!(
+        !old_version.exists(),
+        "the generator should have deleted {}\ngenerator log:\n{}",
+        old_version.display(),
         fixture.last_log()
     );
 
@@ -658,4 +661,123 @@ fn a_record_read_over_a_damaged_table_fails() {
         )
     );
     assert!(dataset.id_exists(2_995).is_err());
+}
+
+/// Overwrites 64 bytes a third into a table file with zeros, keeping its size: inside one of its
+/// data blocks, whose bytes still read completely but no longer match their checksum, as
+/// corruption on disk would leave them.
+fn zero_a_data_block(path: &Path) {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .expect("the table can be opened for writing");
+    let size = file.metadata().expect("readable").len();
+    let start = size / 3;
+    let mut original = [0; 64];
+    file.seek(SeekFrom::Start(start)).expect("seekable");
+    file.read_exact(&mut original).expect("readable");
+    assert_ne!(
+        original, [0; 64],
+        "the bytes to corrupt should not be zeros already"
+    );
+    file.seek(SeekFrom::Start(start)).expect("seekable");
+    file.write_all(&[0; 64])
+        .expect("the table can be overwritten");
+    assert_eq!(file.metadata().expect("readable").len(), size);
+}
+
+fn unreadable_message(fixture: &Fixture) -> String {
+    format!(
+        "No se pudo leer el conjunto de datos en {}.",
+        fixture.output().display()
+    )
+}
+
+#[test]
+fn a_scan_over_a_block_with_a_bad_checksum_fails_instead_of_returning_fewer_ids() {
+    let fixture = Fixture::with_rows(&many_rows(3_000));
+    zero_a_data_block(&fixture.version_dir().join("index-primary_type.sst"));
+    zero_a_data_block(&fixture.version_dir().join("index-date.sst"));
+    let dataset = open(&fixture);
+
+    let by_value: Result<Vec<i64>, _> = dataset
+        .ids_with_value(IndexKind::PrimaryType, &IndexValue::text("theft"))
+        .collect();
+    let error = by_value.expect_err("the value scan should fail");
+    assert_eq!(error.to_string(), unreadable_message(&fixture));
+    assert!(
+        error.cause().contains("index-primary_type.sst"),
+        "{error:?}"
+    );
+
+    let fresh = open(&fixture);
+    let by_date: Result<Vec<i64>, _> = fresh
+        .ids_in_date_range(hourly_date(1), hourly_date(3_000))
+        .collect();
+    let error = by_date.expect_err("the date scan should fail");
+    assert_eq!(error.to_string(), unreadable_message(&fixture));
+    assert!(error.cause().contains("index-date.sst"), "{error:?}");
+}
+
+#[test]
+fn a_record_in_a_block_with_a_bad_checksum_fails_and_the_snapshot_is_no_longer_trusted() {
+    let fixture = Fixture::with_rows(&many_rows(3_000));
+    zero_a_data_block(&fixture.version_dir().join("primary.sst"));
+    let dataset = open(&fixture);
+
+    let failing = (1..=3_000)
+        .find(|&id| dataset.record(id).is_err())
+        .expect("a record of the corrupt block should fail");
+    let error = dataset.record(failing).expect_err("still failing");
+    assert_eq!(error.to_string(), unreadable_message(&fixture));
+    assert!(error.cause().contains("primary.sst"), "{error:?}");
+    // Records of intact blocks are not served from a snapshot known to be damaged.
+    let intact = if failing > 1_500 { 1 } else { 3_000 };
+    assert!(dataset.record(intact).is_err());
+    assert!(dataset.id_exists(intact).is_err());
+}
+
+#[test]
+fn valid_datasets_never_report_a_read_error_with_either_compression() {
+    for compression in [Compression::Snappy, Compression::None] {
+        let fixture = Fixture::with_rows_compressed(&many_rows(3_000), compression);
+        let dataset = open(&fixture);
+        let all: Vec<i64> = (1..=3_000).collect();
+
+        for id in 1..=3_000 {
+            let record = dataset
+                .record(id)
+                .unwrap_or_else(|error| panic!("{compression:?} record {id}: {error:?}"));
+            assert_eq!(record.map(|record| record.id), Some(id), "{compression:?}");
+        }
+        assert_eq!(
+            ids(dataset.ids_with_value(IndexKind::PrimaryType, &IndexValue::text("theft"))),
+            all,
+            "{compression:?}"
+        );
+        assert_eq!(
+            ids(dataset.ids_with_value(IndexKind::District, &IndexValue::text("003"))),
+            all,
+            "{compression:?}"
+        );
+        assert_eq!(
+            ids(dataset.ids_with_value(IndexKind::CommunityArea, &IndexValue::integer(42))),
+            all,
+            "{compression:?}"
+        );
+        assert_eq!(
+            ids(dataset.ids_in_date_range(hourly_date(1), hourly_date(3_000))),
+            all,
+            "{compression:?}"
+        );
+        for id in [1, 1_234, 3_000] {
+            let case = IndexValue::text(&format!("jb{id}"));
+            assert_eq!(
+                ids(dataset.ids_with_value(IndexKind::CaseNumber, &case)),
+                [id],
+                "{compression:?}"
+            );
+        }
+    }
 }

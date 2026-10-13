@@ -196,8 +196,20 @@ impl Fixture {
         self.output().join(current.trim_end())
     }
 
+    /// A fixture with `rows` already published with this block compression.
+    pub fn with_rows_compressed(rows: &[Row], compression: Compression) -> Self {
+        let mut fixture = Self::new();
+        fixture.publish_compressed(rows, compression);
+        fixture
+    }
+
     /// Publishes `rows` into the output folder, replacing the dataset already there.
     pub fn publish(&mut self, rows: &[Row]) {
+        self.publish_compressed(rows, Compression::Snappy);
+    }
+
+    /// [`Fixture::publish`] with this block compression.
+    pub fn publish_compressed(&mut self, rows: &[Row], compression: Compression) {
         self.runs += 1;
         let input = self.dir.path().join(format!("crimes-{}.csv", self.runs));
         fs::write(&input, csv_text(rows)).expect("the input can be written");
@@ -207,7 +219,7 @@ impl Fixture {
             temp_dir: self.dir.path().join("tmp"),
             log: self.dir.path().join(format!("run-{}.log", self.runs)),
             overwrite: true,
-            compression: Compression::Snappy,
+            compression,
             segment_size: DEFAULT_SEGMENT_SIZE,
             index_segment_size: DEFAULT_INDEX_SEGMENT_SIZE,
             memory_limit_mib: DEFAULT_MEMORY_LIMIT_MIB,

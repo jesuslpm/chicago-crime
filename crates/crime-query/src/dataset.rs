@@ -9,6 +9,10 @@
 //! with delete sharing). A table that vanished between resolving `CURRENT` and opening it means
 //! such a publication happened in between, so opening starts over, a few times at most.
 //!
+//! Every table is read through a [`TrackedFile`], which fails every incomplete read and every
+//! table block whose checksum does not match, and remembers it: an operation that used a table
+//! after any read failed returns a [`ReadError`] instead of a result that may be short.
+//!
 //! The query app only reads: nothing here creates, changes or deletes anything in the folder.
 
 use std::fmt;
@@ -26,13 +30,10 @@ use sstable::{Options, Status, Table};
 
 use crate::index::{IdStream, IndexValue};
 use crate::messages;
-use crate::tracked::{ReadHealth, TrackedFile, read_exact_at};
+use crate::tracked::{ReadHealth, TABLE_FOOTER_BYTES, TrackedFile, read_exact_at};
 
 /// How many times opening resolves `CURRENT` when the version it named vanished meanwhile.
 const OPEN_ATTEMPTS: usize = 3;
-
-/// Bytes at the end of every table file: two block handles, padding and the magic number.
-const TABLE_FOOTER_BYTES: u64 = 48;
 
 /// The last 8 bytes of every table file in the LevelDB table format.
 const TABLE_MAGIC: [u8; 8] = [0x57, 0xfb, 0x80, 0x8b, 0x24, 0x75, 0x47, 0xdb];
@@ -114,7 +115,17 @@ enum Attempt {
 impl Dataset {
     /// Opens the version of the dataset that `CURRENT` names in `folder`.
     pub fn open(folder: &Path) -> Result<Dataset, OpenError> {
-        for _ in 0..OPEN_ATTEMPTS {
+        Self::open_observed(folder, |_| {})
+    }
+
+    /// [`Dataset::open`], calling `before_attempt` with the number of each attempt (0 first):
+    /// the seam the tests use to change the folder between attempts.
+    fn open_observed(
+        folder: &Path,
+        mut before_attempt: impl FnMut(usize),
+    ) -> Result<Dataset, OpenError> {
+        for attempt in 0..OPEN_ATTEMPTS {
+            before_attempt(attempt);
             match open_version(folder) {
                 Ok(dataset) => return Ok(dataset),
                 Err(Attempt::Vanished) => {}
@@ -343,9 +354,9 @@ fn open_table(
     if magic != TABLE_MAGIC {
         return Err(fail("not a table file".to_owned()));
     }
-    let size = usize::try_from(size).map_err(|_| fail(format!("{size} bytes is too large")))?;
-    let tracked = TrackedFile::new(file, name, Arc::clone(health));
-    Table::new(options.clone(), Box::new(tracked), size)
+    let length = usize::try_from(size).map_err(|_| fail(format!("{size} bytes is too large")))?;
+    let tracked = TrackedFile::new(file, name, size, Arc::clone(health));
+    Table::new(options.clone(), Box::new(tracked), length)
         .map_err(|status| fail(status_text(&status)))
 }
 
@@ -366,4 +377,64 @@ fn unreadable(folder: &Path, cause: String) -> OpenError {
 /// `sstable` 0.11.
 fn status_text(status: &Status) -> String {
     format!("{:?} {}", status.code, status.err)
+}
+
+/// The integration test fixtures, for the tests that need the crate-private opening seam.
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod fixtures;
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{Fixture, fixture_rows, write_current};
+    use super::*;
+
+    /// A valid version name that no publication of the fixture uses.
+    const VANISHED: &str = "dataset-20200101-000000-1";
+
+    #[test]
+    fn opening_retries_when_current_moves_to_a_valid_version_meanwhile() {
+        let fixture = Fixture::with_rows(&fixture_rows());
+        let published = fixture.version_dir();
+        let published_name = published.file_name().expect("a folder name").to_owned();
+        // A publication between resolving `CURRENT` and opening its files looks like this to
+        // the first attempt: `CURRENT` names a version that is gone.
+        write_current(&fixture.output(), VANISHED);
+
+        let mut attempts = Vec::new();
+        let dataset = Dataset::open_observed(&fixture.output(), |attempt| {
+            attempts.push(attempt);
+            if attempt == 1 {
+                write_current(&fixture.output(), &published_name.to_string_lossy());
+            }
+        })
+        .unwrap_or_else(|error| panic!("the second attempt should open: {error:?}"));
+
+        assert_eq!(attempts, [0, 1]);
+        assert_eq!(dataset.version(), published_name.to_string_lossy());
+        assert_eq!(dataset.manifest().records.valid, 7);
+        assert_eq!(
+            dataset
+                .record(20)
+                .expect("readable")
+                .map(|record| record.id),
+            Some(20)
+        );
+    }
+
+    #[test]
+    fn opening_gives_up_after_its_attempts_when_the_version_keeps_vanishing() {
+        let fixture = Fixture::with_rows(&fixture_rows());
+        write_current(&fixture.output(), VANISHED);
+
+        let mut attempts = Vec::new();
+        let result = Dataset::open_observed(&fixture.output(), |attempt| attempts.push(attempt));
+
+        assert!(
+            matches!(result, Err(OpenError::NotFound { .. })),
+            "{:?}",
+            result.err()
+        );
+        assert_eq!(attempts, (0..OPEN_ATTEMPTS).collect::<Vec<_>>());
+    }
 }
