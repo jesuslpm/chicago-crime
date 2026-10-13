@@ -6,3 +6,6 @@
 
 # Reference dataset (2.3 GB) — never committed
 /chicago-crime-data.csv
+
+# Personal Claude Code settings
+.claude/settings.local.json
