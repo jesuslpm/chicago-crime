@@ -70,7 +70,9 @@ Verified on 2026-10-12 against the repository and the data:
 6. It writes **one SSTable per secondary index**: date, primary type, district, community area and case
    number (decision D2). Each entry relates a value of the indexed field to an ID. Within the same value,
    the IDs appear in ascending order. Empty values are indexed as "no value" (*sin valor*) so that they
-   can also be queried.
+   can also be queried. *Note of 2026-10-13: under decision C1 of the [query app PRD](consultor.prd.md),
+   the values of the text indexes (primary type, district and case number) are stored in lowercase, with
+   schema 2; the primary table does not change.*
 7. It writes a **manifest** that describes the dataset: schema version, source, generation date, number of
    valid and rejected records, and the included indexes with their number of entries.
 8. Only if everything finished successfully, it publishes the dataset to the output folder atomically: a
@@ -92,7 +94,9 @@ Verified on 2026-10-12 against the repository and the data:
    - **By date range** (from/to, both inclusive).
    - **Combination** of several of the previous conditions with logical AND.
 4. Output options: result limit, count only, and readable table, CSV or JSON format.
-5. Results are returned in ascending ID order.
+5. Results are returned in ascending ID order. *Note of 2026-10-13: replaced by decision C11 of the
+   [query app PRD](consultor.prd.md); the order is the one the analyst asks for, with the ID as the
+   tiebreaker, and a limit requires an order.*
 6. The query app reports the number of results, the time taken and the indexes used.
 
 ### Field rules
@@ -141,7 +145,7 @@ Verified on 2026-10-12 against the repository and the data:
 | Unknown field | Rejects | `El campo "<nombre>" no existe. Campos disponibles: ...`<br>*The field "`<name>`" does not exist. Available fields: ...* |
 | Value with an invalid format | Rejects | `"<valor>" no es una fecha válida. Formato esperado: AAAA-MM-DD [hh:mm].`<br>*"`<value>`" is not a valid date. Expected format: YYYY-MM-DD [hh:mm].* |
 | Inverted date range | Rejects | `La fecha inicial es posterior a la final.`<br>*The start date is later than the end date.* |
-| Condition on a field without an index | Allowed, with a warning | `Aviso: "<campo>" no tiene índice; la consulta recorrerá todos los registros.`<br>*Warning: "`<field>`" has no index; the query will scan all the records.* |
+| Condition on a field without an index | Allowed, with a warning. *Note of 2026-10-13: replaced by decision C10 of the [query app PRD](consultor.prd.md); it is only accepted as a filter alongside an indexed condition.* | `Aviso: "<campo>" no tiene índice; la consulta recorrerá todos los registros.`<br>*Warning: "`<field>`" has no index; the query will scan all the records.* |
 
 ## Reuse
 
@@ -165,7 +169,9 @@ Verified on 2026-10-12 against the repository and the data:
 - Free-text search (in Block or Description) and fuzzy search.
 - Geospatial queries (radius, polygon, grid).
 - Aggregations and groupings beyond counting the results.
-- Composite indexes (for example, type + date) and result ordering other than by ID.
+- Composite indexes (for example, type + date) and result ordering other than by ID. *Note of
+  2026-10-13: ordering other than by ID enters the query app through decision C11 of the
+  [query app PRD](consultor.prd.md); composite indexes remain out of scope.*
 - Access control: the data is public.
 
 ## Acceptance criteria
@@ -215,7 +221,9 @@ the PRD.
 - **D2 — Initial secondary indexes** (2026-10-12): date, primary type, district, community area and case
   number. Reason: the date enables range queries and the others are the usual filters with a useful
   cardinality. Arrest and Domestic (Yes/No) remain without an index because each value spans millions of
-  records; they can be used as a condition with a full scan.
+  records; they can be used as a condition with a full scan. *Note of 2026-10-13: decision C10 of the
+  [query app PRD](consultor.prd.md) replaces the full scan; Arrest and Domestic are only used as a filter
+  alongside an indexed condition.*
 - **D3 — Date policy** (2026-10-12): the Chicago local civil time is stored as published, without
   converting it to UTC, and queries are also expressed in local time. Reason: the source states neither a
   time zone nor an offset. As measured, 253 records have a nonexistent time (the spring-forward gap) and

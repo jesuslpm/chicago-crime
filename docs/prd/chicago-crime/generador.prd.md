@@ -110,7 +110,9 @@ Las cifras exactas corresponden al CSV de referencia, con la misma salvedad que 
    entonces:
    - cada índice tiene tantas entradas como registros válidos;
    - dentro de cada valor, los ID aparecen en orden creciente;
-   - en el índice de tipo principal, el valor `THEFT` tiene 1.838.502 entradas;
+   - en el índice de tipo principal, el valor `THEFT` tiene 1.838.502 entradas (*anotación del
+     2026-10-13: con el esquema 2, el valor indexado es `theft`, por la decisión C1 del
+     [PRD del consultor](consultor.prd.md)*);
    - en el índice de área comunitaria, el valor "sin valor" tiene 613.720 entradas;
    - en el índice de número de caso, cada número compartido lista todos los ID que lo comparten.
 5. **AC-G5** (padre AC9 y AC13) — Dados los CSV de prueba de AC9 y AC13 del padre, cuando se ejecuta el

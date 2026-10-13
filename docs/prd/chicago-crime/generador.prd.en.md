@@ -114,7 +114,8 @@ The exact figures correspond to the reference CSV, with the same caveat as in th
    then:
    - each index has as many entries as there are valid records;
    - within each value, the IDs appear in ascending order;
-   - in the primary type index, the value `THEFT` has 1,838,502 entries;
+   - in the primary type index, the value `THEFT` has 1,838,502 entries (*note of 2026-10-13: with
+     schema 2, the indexed value is `theft`, under decision C1 of the [query app PRD](consultor.prd.md)*);
    - in the community area index, the value "no value" (*sin valor*) has 613,720 entries;
    - in the case number index, each shared number lists all the IDs that share it.
 5. **AC-G5** (parent AC9 and AC13) — Given the test CSVs of the parent's AC9 and AC13, when the

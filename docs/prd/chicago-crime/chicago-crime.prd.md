@@ -68,7 +68,9 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
 6. Escribe una **SSTable por índice secundario**: fecha, tipo principal, distrito, área comunitaria y
    número de caso (decisión D2). Cada entrada relaciona un valor del campo indexado con un ID. Dentro de un
    mismo valor, los ID aparecen en orden creciente. Los valores vacíos se indexan como "sin valor" para que
-   también sean consultables.
+   también sean consultables. *Anotación del 2026-10-13: por la decisión C1 del
+   [PRD del consultor](consultor.prd.md), los valores de los índices de texto (tipo principal, distrito y
+   número de caso) se guardan en minúsculas, con el esquema 2; la tabla principal no cambia.*
 7. Escribe un **manifiesto** que describe el conjunto: versión del esquema, origen, fecha de generación,
    número de registros válidos y rechazados, e índices incluidos con su número de entradas.
 8. Solo si todo terminó bien, publica el conjunto en la carpeta de salida de forma atómica: nunca queda un
@@ -91,7 +93,9 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
    - **Por rango de fechas** (desde/hasta, ambos inclusivos).
    - **Combinación** de varias condiciones anteriores con Y lógico.
 4. Opciones de salida: límite de resultados, solo conteo, y formato tabla legible, CSV o JSON.
-5. Los resultados se devuelven en orden ascendente de ID.
+5. Los resultados se devuelven en orden ascendente de ID. *Anotación del 2026-10-13: sustituido por la
+   decisión C11 del [PRD del consultor](consultor.prd.md); el orden es el que pide el analista, con el ID
+   como desempate, y un límite exige indicar un orden.*
 6. El consultor informa del número de resultados, del tiempo empleado y de los índices usados.
 
 ### Reglas de los campos
@@ -140,7 +144,7 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
 | Campo desconocido | Rechaza | `El campo "<nombre>" no existe. Campos disponibles: ...` |
 | Valor con formato inválido | Rechaza | `"<valor>" no es una fecha válida. Formato esperado: AAAA-MM-DD [hh:mm].` |
 | Rango de fechas invertido | Rechaza | `La fecha inicial es posterior a la final.` |
-| Condición sobre un campo sin índice | Se permite, avisando | `Aviso: "<campo>" no tiene índice; la consulta recorrerá todos los registros.` |
+| Condición sobre un campo sin índice | Se permite, avisando. *Anotación del 2026-10-13: sustituida por la decisión C10 del [PRD del consultor](consultor.prd.md); solo se admite como filtro junto a una condición indexada.* | `Aviso: "<campo>" no tiene índice; la consulta recorrerá todos los registros.` |
 
 ## Reutilización
 
@@ -165,7 +169,9 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
 - Búsqueda de texto libre (en Block o Description) y búsqueda aproximada.
 - Consultas geoespaciales (radio, polígono, cuadrícula).
 - Agregaciones y agrupaciones más allá del conteo de resultados.
-- Índices compuestos (por ejemplo, tipo + fecha) y orden de resultados distinto del ID.
+- Índices compuestos (por ejemplo, tipo + fecha) y orden de resultados distinto del ID. *Anotación del
+  2026-10-13: el orden distinto del ID entra en el consultor por la decisión C11 del
+  [PRD del consultor](consultor.prd.md); los índices compuestos siguen fuera.*
 - Control de acceso: los datos son públicos.
 
 ## Criterios de aceptación
@@ -214,7 +220,9 @@ No queda ninguna decisión abierta. Todas se tomaron el 2026-10-12 y ya están r
 - **D2 — Índices secundarios iniciales** (2026-10-12): fecha, tipo principal, distrito, área comunitaria y
   número de caso. Motivo: la fecha habilita consultas por rango y los demás son los filtros habituales con
   cardinalidad útil. Arrest y Domestic (Sí/No) quedan sin índice porque cada valor abarca millones de
-  registros; se pueden usar como condición con recorrido completo.
+  registros; se pueden usar como condición con recorrido completo. *Anotación del 2026-10-13: la decisión
+  C10 del [PRD del consultor](consultor.prd.md) sustituye el recorrido completo; Arrest y Domestic solo se
+  usan como filtro junto a una condición indexada.*
 - **D3 — Política de fechas** (2026-10-12): se guarda la hora civil local de Chicago tal como se publica,
   sin convertir a UTC, y las consultas se expresan también en hora local. Motivo: la fuente no indica zona
   ni desfase horario. Según lo medido, 253 registros tienen una hora inexistente (el salto de primavera) y
