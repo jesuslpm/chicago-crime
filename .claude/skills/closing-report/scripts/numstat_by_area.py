@@ -1,16 +1,20 @@
 """Summarize `git diff --numstat` by area for a closing report.
 
 Usage:
-    python -I numstat_by_area.py <base> [<head>] [--lang es|en]
+    python -I numstat_by_area.py <base> [<head>] [--lang es|en] [--apart <glob> ...]
 
 An area is `crates/<name>` for workspace crates, the first path segment for any other folder, and the file
-name for files at the repository root. Lockfiles and generated or binary files are listed apart and kept out
-of the totals. Prints a Markdown table to stdout.
+name for files at the repository root. Lockfiles, binary files and any path matching an `--apart` glob
+(use it for generated files, e.g. `--apart 'docs/methodology/slides.html'`) are listed apart and kept out of
+the totals. Renames are counted under their destination path. Prints a Markdown table to stdout.
 """
 
+import argparse
+import fnmatch
 import subprocess
 import sys
 from collections import defaultdict
+from dataclasses import dataclass
 
 LOCKFILES = {"Cargo.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "uv.lock"}
 
@@ -18,6 +22,13 @@ LABELS = {
     "es": {"area": "Área", "files": "Archivos", "total": "Total", "apart": "Aparte (lockfiles, generados o binarios)"},
     "en": {"area": "Area", "files": "Files", "total": "Total", "apart": "Apart (lockfiles, generated or binary)"},
 }
+
+
+@dataclass
+class Counts:
+    added: int = 0
+    removed: int = 0
+    files: int = 0
 
 
 def area_of(path: str) -> str:
@@ -29,58 +40,87 @@ def area_of(path: str) -> str:
     return parts[0]
 
 
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description="Lines added and removed by area, from git diff --numstat.")
+    parser.add_argument("base", help="base commit, e.g. the branch point")
+    parser.add_argument("head", nargs="?", default="HEAD", help="head commit (default: HEAD)")
+    parser.add_argument("--lang", choices=sorted(LABELS), default="es", help="table language (default: es)")
+    parser.add_argument("--apart", action="append", default=[], metavar="GLOB",
+                        help="path glob listed apart and kept out of the totals (repeatable)")
+    return parser.parse_args(argv)
+
+
+def parse_numstat_z(data: str):
+    """Parse `git diff --numstat -z` output into (added, removed, path) tuples.
+
+    With -z, paths are never quoted, and a rename is written as an empty path field followed by the old
+    and the new path, each terminated by NUL. The destination path is kept.
+    """
+    fields = data.split("\0")
+    entries = []
+    i = 0
+    while i < len(fields) and fields[i]:
+        added, removed, path = fields[i].split("\t", 2)
+        if path == "":
+            path = fields[i + 2]  # rename: skip the old path, keep the new one
+            i += 3
+        else:
+            i += 1
+        entries.append((added, removed, path))
+    return entries
+
+
+def summarize(entries, apart_globs):
+    areas = defaultdict(Counts)
+    apart = []
+    for added, removed, path in entries:
+        name = path.rsplit("/", 1)[-1]
+        if added == "-" or name in LOCKFILES or any(fnmatch.fnmatch(path, g) for g in apart_globs):
+            apart.append((path, added, removed))
+            continue
+        counts = areas[area_of(path)]
+        counts.added += int(added)
+        counts.removed += int(removed)
+        counts.files += 1
+    return areas, apart
+
+
 def thousands(n: int, lang: str) -> str:
     text = f"{n:,}"
     return text.replace(",", ".") if lang == "es" else text
 
 
-def main() -> int:
-    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
-    args =[a for a in sys.argv[1:] if not a.startswith("--lang")]
-    lang = "es"
-    for a in sys.argv[1:]:
-        if a.startswith("--lang="):
-            lang = a.split("=", 1)[1]
-    if "--lang" in sys.argv:
-        lang = sys.argv[sys.argv.index("--lang") + 1]
-        args = [a for a in args if a != lang]
-    if lang not in LABELS or not args:
-        print(__doc__, file=sys.stderr)
-        return 2
-    base, head = args[0], (args[1] if len(args) > 1 else "HEAD")
-    out = subprocess.run(
-        ["git", "diff", "--numstat", f"{base}..{head}"], capture_output=True, text=True, check=True
-    ).stdout
-
-    areas = defaultdict(lambda: [0, 0, 0])
-    apart = []
-    for line in out.splitlines():
-        added, removed, path = line.split("\t", 2)
-        if " => " in path:  # rename: keep the destination path
-            path = path.split(" => ")[-1].replace("}", "").replace("{", "")
-        name = path.rsplit("/", 1)[-1]
-        if added == "-" or name in LOCKFILES:
-            apart.append((path, added, removed))
-            continue
-        a = areas[area_of(path)]
-        a[0] += int(added)
-        a[1] += int(removed)
-        a[2] += 1
-
+def render(areas, apart, lang):
     t = LABELS[lang]
-    print(f"| {t['area']} | + | − | {t['files']} |")
-    print("|---|---|---|---|")
-    total = [0, 0, 0]
-    for area, (add, rem, files) in sorted(areas.items(), key=lambda kv: -(kv[1][0] + kv[1][1])):
-        print(f"| `{area}` | {thousands(add, lang)} | {thousands(rem, lang)} | {files} |")
-        total = [total[0] + add, total[1] + rem, total[2] + files]
-    print(
-        f"| **{t['total']}** | **{thousands(total[0], lang)}** | **{thousands(total[1], lang)}** "
-        f"| **{total[2]}** |"
+    lines = [f"| {t['area']} | + | − | {t['files']} |", "|---|---|---|---|"]
+    total = Counts()
+    for area, c in sorted(areas.items(), key=lambda kv: -(kv[1].added + kv[1].removed)):
+        lines.append(f"| `{area}` | {thousands(c.added, lang)} | {thousands(c.removed, lang)} | {c.files} |")
+        total.added += c.added
+        total.removed += c.removed
+        total.files += c.files
+    lines.append(
+        f"| **{t['total']}** | **{thousands(total.added, lang)}** | **{thousands(total.removed, lang)}** "
+        f"| **{total.files}** |"
     )
     if apart:
-        print()
-        print(f"{t['apart']}: " + ", ".join(f"`{p}` (+{a} −{r})" for p, a, r in apart))
+        lines.append("")
+        lines.append(f"{t['apart']}: " + ", ".join(f"`{p}` (+{a} −{r})" for p, a, r in apart))
+    return "\n".join(lines)
+
+
+def main(argv=None) -> int:
+    sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    result = subprocess.run(
+        ["git", "diff", "--numstat", "-z", f"{args.base}..{args.head}"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    if result.returncode != 0:
+        print(f"git diff failed: {result.stderr.strip()}", file=sys.stderr)
+        return 2
+    areas, apart = summarize(parse_numstat_z(result.stdout), args.apart)
+    print(render(areas, apart, args.lang))
     return 0
 
 

@@ -40,7 +40,9 @@ Link the report from the execution document's closing section and the execution 
 2. Measure time: start time recorded at the beginning, end time from `date`; compute the active duration and
    list the waits apart.
 3. Generate the change table from the branch point (or the commit before the first change):
-   `python -I .claude/skills/closing-report/scripts/numstat_by_area.py <base> HEAD --lang es`.
+   `python -I .claude/skills/closing-report/scripts/numstat_by_area.py <base> HEAD --lang es`, adding
+   `--apart '<glob>'` for each generated file (for example an exported `slides.html`) so it stays out of the
+   totals.
 4. Fill `assets/closing-report-template.md`, section by section; delete a section only when it truly does
    not apply, and say why in one line.
 5. Save it at the path from the Location table, link it as described, and commit it with the change when the
@@ -53,5 +55,7 @@ Return the report path, the real-versus-estimated time line and the list of pend
 ## References
 
 - `assets/closing-report-template.md` — report skeleton with per-section guidance.
-- `scripts/numstat_by_area.py` — lines added and removed by area, with totals; lockfiles and binaries apart.
+- `scripts/numstat_by_area.py` — lines added and removed by area, with totals; lockfiles, binaries and
+  `--apart` globs listed apart; renames counted under their destination. Tests:
+  `python -m unittest discover -s .claude/skills/closing-report/scripts`.
 - Example: `odd/tasks/crime-query-report.md`.
