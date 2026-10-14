@@ -159,28 +159,43 @@ mod liveness {
     use crime_generator::messages::stale_sort_dir_kept;
     use crime_generator::process::is_alive;
 
-    /// A process that has already ended. While its handle is held, Windows keeps its ID from
-    /// being given to another process, so the ID stays the one of an ended process. Linux hands
-    /// IDs out in increasing order up to a large maximum, so the ID is not reused during a test.
+    /// A process that has already ended, whose ID cannot go to another process during the test.
+    /// Windows keeps the ID while the handle is held. On Linux the ended child is left unreaped,
+    /// a zombie that keeps its ID until it is waited for when this value is dropped.
     struct EndedProcess(Child);
 
     impl EndedProcess {
+        #[cfg(windows)]
         fn new() -> Self {
-            #[cfg(windows)]
-            let mut command = {
-                let mut command = Command::new("cmd");
-                command.args(["/C", "exit 0"]);
-                command
-            };
-            #[cfg(not(windows))]
-            let mut command = Command::new("true");
-            let mut child = command.spawn().expect("the process can be started");
-            child.wait().expect("the process ends");
+            let mut child = Command::new("cmd")
+                .args(["/C", "exit 0"])
+                .spawn()
+                .expect("cmd can be started");
+            child.wait().expect("cmd ends");
+            Self(child)
+        }
+
+        #[cfg(not(windows))]
+        fn new() -> Self {
+            let child = Command::new("true").spawn().expect("true can be started");
+            let stat = format!("/proc/{}/stat", child.id());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !fs::read_to_string(&stat).is_ok_and(|line| line.contains(") Z ")) {
+                assert!(std::time::Instant::now() < deadline, "true ends");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
             Self(child)
         }
 
         fn id(&self) -> u32 {
             self.0.id()
+        }
+    }
+
+    #[cfg(not(windows))]
+    impl Drop for EndedProcess {
+        fn drop(&mut self) {
+            let _ = self.0.wait();
         }
     }
 
@@ -322,4 +337,61 @@ fn a_run_without_stale_sort_folders_does_not_mention_them() {
 
     assert!(!log.contains(&stale_sort_dirs_discarded()), "{log}");
     assert_eq!(folder_entries(&scenario.temp_dir), [live]);
+}
+
+/// On Unix a running sort also holds an advisory lock on its folder, so a run never deletes it
+/// even when its owner looks ended from here (another PID namespace, or `/proc` hidden).
+#[cfg(not(windows))]
+mod folder_lock {
+    use std::fs::{self, File, TryLockError};
+
+    use super::*;
+
+    fn is_locked(folder: &std::path::Path) -> bool {
+        let file = File::open(folder).expect("the folder can be opened");
+        matches!(file.try_lock(), Err(TryLockError::WouldBlock))
+    }
+
+    #[test]
+    fn a_running_sort_holds_its_folder_until_it_is_dropped() {
+        let dir = tempfile::tempdir().expect("a temporary directory can be created");
+
+        let sort = start_sort(dir.path());
+        let names = folder_entries(dir.path());
+        let folder = dir.path().join(&names[0]);
+
+        assert!(is_locked(&folder), "held while the sort runs");
+        let sorted = sort.finish().expect("the sort finishes");
+        assert!(is_locked(&folder), "held while the merged stream is read");
+        drop(sorted);
+        assert!(!folder.exists(), "deleted with the stream");
+    }
+
+    #[test]
+    fn a_held_folder_is_left_alone_even_when_its_owner_looks_ended() {
+        let dir = tempfile::tempdir().expect("a temporary directory can be created");
+        let held = dir.path().join(format!("{SORT_DIR_PREFIX}{DEAD}-h0ld3r"));
+        fs::create_dir(&held).expect("the fixture folder can be created");
+        fs::write(held.join("segment-000000"), b"segment").expect("the segment can be written");
+        let lock = File::open(&held).expect("the folder can be opened");
+        lock.lock().expect("the folder can be locked");
+
+        let first = discard_stale_sort_dirs(dir.path(), |_| false);
+        drop(lock);
+        let second = discard_stale_sort_dirs(dir.path(), |_| false);
+
+        assert_eq!(
+            first,
+            StaleSortDirs::default(),
+            "neither deleted nor reported"
+        );
+        assert_eq!(
+            second,
+            StaleSortDirs {
+                removed: 1,
+                kept: Vec::new()
+            }
+        );
+        assert!(!held.exists());
+    }
 }

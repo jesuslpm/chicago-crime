@@ -12,7 +12,10 @@
 //! A process that is killed runs no cleanup at all, so its sort folders would stay forever. That
 //! is why each folder name carries the ID of the process that owns it ([`sort_dir_owner`]): a
 //! later run deletes the folders whose process has ended ([`discard_stale_sort_dirs`]) and never
-//! touches those of a running one.
+//! touches those of a running one. On Unix a sort also holds an advisory lock on its folder
+//! ([`FolderHold`]) for as long as the folder exists, and a held folder is never deleted: from
+//! another PID namespace (another container sharing the temporary folder), or with `/proc`
+//! hidden or missing, a running owner can look ended.
 //!
 //! The sort is stable: the in-memory sort is stable and the merge breaks ties by segment, which
 //! follows input order. With a total order, as the generator uses, the output does not depend on
@@ -69,6 +72,8 @@ pub struct ExternalSort<T: Sortable> {
     buffer: Vec<T>,
     segment_count: usize,
     dir: TempDir,
+    // Declared after `dir`, so the folder is deleted while it is still held.
+    hold: FolderHold,
 }
 
 impl<T: Sortable> ExternalSort<T> {
@@ -85,12 +90,14 @@ impl<T: Sortable> ExternalSort<T> {
             .prefix(&format!("{SORT_DIR_PREFIX}{}-", std::process::id()))
             .rand_bytes(SORT_DIR_RANDOM_CHARS)
             .tempdir_in(temp_dir)?;
+        let hold = FolderHold::take(dir.path());
         Ok(Self {
             compare,
             segment_size: segment_size.get(),
             buffer: Vec::new(),
             segment_count: 0,
             dir,
+            hold,
         })
     }
 
@@ -111,6 +118,7 @@ impl<T: Sortable> ExternalSort<T> {
                 source: Source::Memory(std::mem::take(&mut self.buffer).into_iter()),
                 segment_count: 0,
                 dir: self.dir,
+                hold: self.hold,
             });
         }
         if !self.buffer.is_empty() {
@@ -134,6 +142,7 @@ impl<T: Sortable> ExternalSort<T> {
             source: Source::Merge { segments, heap },
             segment_count: self.segment_count,
             dir: self.dir,
+            hold: self.hold,
         })
     }
 
@@ -208,6 +217,10 @@ pub fn discard_stale_sort_dirs(temp_dir: &Path, is_alive: impl Fn(u32) -> bool) 
         if !is_dir || is_alive(owner) {
             continue;
         }
+        // Kept until the folder is gone, so no sort can take it in between.
+        let Some(_hold) = FolderHold::take_if_free(&entry.path()) else {
+            continue;
+        };
         match fs::remove_dir_all(entry.path()) {
             Ok(()) => outcome.removed += 1,
             Err(_) => outcome.kept.push(entry.path()),
@@ -215,6 +228,49 @@ pub fn discard_stale_sort_dirs(temp_dir: &Path, is_alive: impl Fn(u32) -> bool) 
     }
     outcome.kept.sort();
     outcome
+}
+
+/// The advisory lock a sort holds on its own folder on Unix (see the module documentation). It
+/// is released when dropped, and by the operating system when the process ends, however it ends.
+/// On Windows it holds nothing: there the process ID alone tells a running owner.
+struct FolderHold {
+    #[cfg(not(windows))]
+    _file: Option<File>,
+}
+
+impl FolderHold {
+    /// Holds the new folder `dir` of this process. Best effort: on a file system without advisory
+    /// locks the folder is not held, and the process ID still protects it.
+    #[cfg(not(windows))]
+    fn take(dir: &Path) -> Self {
+        let file = File::open(dir).ok().filter(|file| file.try_lock().is_ok());
+        Self { _file: file }
+    }
+
+    #[cfg(windows)]
+    fn take(_dir: &Path) -> Self {
+        Self {}
+    }
+
+    /// Holds the folder `dir` of an owner that looks ended, or `None` when a running sort holds
+    /// it. A folder that cannot be opened is not held by anyone this process can see, so it is
+    /// returned unheld and its deletion reports any failure as usual.
+    #[cfg(not(windows))]
+    fn take_if_free(dir: &Path) -> Option<Self> {
+        let Ok(file) = File::open(dir) else {
+            return Some(Self { _file: None });
+        };
+        match file.try_lock() {
+            Ok(()) => Some(Self { _file: Some(file) }),
+            Err(fs::TryLockError::WouldBlock) => None,
+            Err(fs::TryLockError::Error(_)) => Some(Self { _file: None }),
+        }
+    }
+
+    #[cfg(windows)]
+    fn take_if_free(_dir: &Path) -> Option<Self> {
+        Some(Self {})
+    }
 }
 
 fn segment_path(dir: &Path, index: usize) -> PathBuf {
@@ -265,6 +321,8 @@ pub struct Sorted<T: Sortable> {
     source: Source<T>,
     segment_count: usize,
     dir: TempDir,
+    // Declared after `dir`, so the folder is deleted while it is still held.
+    hold: FolderHold,
 }
 
 enum Source<T: Sortable> {
@@ -285,7 +343,13 @@ impl<T: Sortable> Sorted<T> {
 
     /// Deletes the segments and their folder, reporting a failure that a drop would hide.
     pub fn close(self) -> io::Result<()> {
-        let Self { source, dir, .. } = self;
+        // `_hold` lives until the end, so the folder is deleted while it is still held.
+        let Self {
+            source,
+            dir,
+            hold: _hold,
+            ..
+        } = self;
         drop(source);
         dir.close()
     }
