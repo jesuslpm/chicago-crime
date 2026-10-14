@@ -23,7 +23,7 @@
 //! unreferenced version folder that the next run deletes. Durability against power loss is not
 //! required (parent flow A, step 8), so the output folder itself is never synced.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -39,7 +39,8 @@ use crate::fail::{self, FailPoint};
 use crate::log::RunLog;
 use crate::messages;
 
-/// File in the output folder that a running generation holds open exclusively.
+/// File in the output folder that a running generation holds open exclusively, on Windows. Older
+/// builds also left it behind elsewhere, so the folder inspection still accepts it as ours.
 pub const LOCK_FILE_NAME: &str = ".generator.lock";
 
 /// `CURRENT` is written under this name first and then renamed over `CURRENT`.
@@ -54,9 +55,10 @@ const MAX_VERSION_NAME_ATTEMPTS: u32 = 100;
 ///
 /// On Windows the lock file is opened without any sharing, so every other open fails while this
 /// handle exists, and with delete-on-close, so the file disappears with the handle and a
-/// published output folder holds only `CURRENT` and its version folder. Elsewhere, where the
-/// generator is not verified (see the PRD), an advisory [`File::try_lock`] stands in and the lock
-/// file stays.
+/// published output folder holds only `CURRENT` and its version folder. Elsewhere the folder
+/// itself takes an advisory [`File::try_lock`], so nothing is created in it: a lock file there
+/// would outlive the run, and deleting it before the release would let a waiter that had already
+/// opened it hold a lock on a file nobody else sees.
 #[derive(Debug)]
 pub struct OutputLock {
     _file: File,
@@ -74,12 +76,13 @@ pub enum LockError {
 impl OutputLock {
     /// Takes the lock of the existing folder `dir`.
     pub fn acquire(dir: &Path) -> Result<Self, LockError> {
-        open_exclusive(&dir.join(LOCK_FILE_NAME)).map(|file| Self { _file: file })
+        lock_folder(dir).map(|file| Self { _file: file })
     }
 }
 
 #[cfg(windows)]
-fn open_exclusive(path: &Path) -> Result<File, LockError> {
+fn lock_folder(dir: &Path) -> Result<File, LockError> {
+    use std::fs::OpenOptions;
     use std::os::windows::fs::OpenOptionsExt;
 
     /// `FILE_FLAG_DELETE_ON_CLOSE` of the Windows API.
@@ -94,7 +97,7 @@ fn open_exclusive(path: &Path) -> Result<File, LockError> {
         .truncate(false)
         .share_mode(0)
         .custom_flags(DELETE_ON_CLOSE)
-        .open(path)
+        .open(dir.join(LOCK_FILE_NAME))
         .map_err(|error| {
             if error.raw_os_error() == Some(SHARING_VIOLATION) {
                 LockError::Busy
@@ -105,14 +108,8 @@ fn open_exclusive(path: &Path) -> Result<File, LockError> {
 }
 
 #[cfg(not(windows))]
-fn open_exclusive(path: &Path) -> Result<File, LockError> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)
-        .map_err(LockError::Io)?;
+fn lock_folder(dir: &Path) -> Result<File, LockError> {
+    let file = File::open(dir).map_err(LockError::Io)?;
     match file.try_lock() {
         Ok(()) => Ok(file),
         Err(fs::TryLockError::WouldBlock) => Err(LockError::Busy),
