@@ -40,7 +40,7 @@ use crate::log::RunLog;
 use crate::messages;
 
 /// File in the output folder that a running generation holds open exclusively, on Windows. Older
-/// builds also left it behind elsewhere, so the folder inspection still accepts it as ours.
+/// builds also left it behind elsewhere, so the folder inspection takes it there for a leftover.
 pub const LOCK_FILE_NAME: &str = ".generator.lock";
 
 /// `CURRENT` is written under this name first and then renamed over `CURRENT`.
@@ -348,7 +348,12 @@ impl Contents {
             // Only names that are not Unicode change here, and none of ours is such a name.
             let name = entry.file_name().to_string_lossy().into_owned();
             match name.as_str() {
-                LOCK_FILE_NAME if file_type.is_file() => {}
+                // Held by this run on Windows; on Unix only an older build leaves it.
+                LOCK_FILE_NAME if file_type.is_file() => {
+                    if cfg!(not(windows)) {
+                        leftovers.push(name);
+                    }
+                }
                 CURRENT_FILE_NAME if file_type.is_file() => has_current = true,
                 CURRENT_TEMP_FILE_NAME if file_type.is_file() => leftovers.push(name),
                 _ if file_type.is_dir() && is_version_dir_name(&name) => versions.push(name),

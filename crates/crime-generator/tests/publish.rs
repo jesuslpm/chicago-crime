@@ -357,6 +357,26 @@ fn a_failed_first_run_removes_the_output_folder_it_created() {
     assert_eq!(folder_entries(&scenario.temp_dir), Vec::<String>::new());
 }
 
+/// Builds before the Linux support PRD left their lock file in the output folder on Unix; now the
+/// folder itself is locked, so that file is a leftover like any other.
+#[cfg(not(windows))]
+#[test]
+fn a_lock_file_left_by_an_older_unix_build_is_discarded_as_a_leftover() {
+    let scenario = Scenario::new(&[distinct_row(1)]);
+    let config = scenario.config("dataset");
+    fs::create_dir_all(&config.output).expect("the fixture can be created");
+    fs::write(config.output.join(".generator.lock"), b"").expect("the fixture can be written");
+
+    let (_, log) = generate_ok(&config);
+
+    assert_eq!(log.matches(LEFTOVERS).count(), 1, "{log}");
+    let version = version_name(&config.output);
+    assert_eq!(
+        folder_entries(&config.output),
+        ["CURRENT".to_owned(), version]
+    );
+}
+
 #[test]
 fn leftovers_of_an_interrupted_run_are_discarded_with_one_message() {
     let scenario = Scenario::new(&[distinct_row(1)]);
