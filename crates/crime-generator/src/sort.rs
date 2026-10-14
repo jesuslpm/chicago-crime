@@ -50,6 +50,10 @@ pub const SORT_DIR_PREFIX: &str = "crime-generator-sort-";
 /// one process get folders of their own.
 pub const SORT_DIR_RANDOM_CHARS: usize = 6;
 
+/// New sort folders tried when another process takes each one before this one holds it (see
+/// [`FolderHold`]).
+const MAX_HOLD_ATTEMPTS: u32 = 10;
+
 /// Buffer of each segment file while it is written and while it is merged.
 const SEGMENT_BUFFER_BYTES: usize = 64 * 1024;
 
@@ -85,12 +89,25 @@ impl<T: Sortable> ExternalSort<T> {
         segment_size: NonZeroUsize,
         compare: Compare<T>,
     ) -> io::Result<Self> {
-        // `tempfile` appends random ASCII letters and digits and retries on a name collision.
-        let dir = tempfile::Builder::new()
-            .prefix(&format!("{SORT_DIR_PREFIX}{}-", std::process::id()))
-            .rand_bytes(SORT_DIR_RANDOM_CHARS)
-            .tempdir_in(temp_dir)?;
-        let hold = FolderHold::take(dir.path());
+        let mut attempts = 0;
+        let (dir, hold) = loop {
+            // `tempfile` appends random ASCII letters and digits and retries on a name collision.
+            let dir = tempfile::Builder::new()
+                .prefix(&format!("{SORT_DIR_PREFIX}{}-", std::process::id()))
+                .rand_bytes(SORT_DIR_RANDOM_CHARS)
+                .tempdir_in(temp_dir)?;
+            if let Some(hold) = FolderHold::take(dir.path()) {
+                break (dir, hold);
+            }
+            // A run that took this process for ended locked the new folder first, between its
+            // creation and the hold, and is deleting it: leave it and start another one.
+            attempts += 1;
+            if attempts == MAX_HOLD_ATTEMPTS {
+                return Err(io::Error::other(
+                    "another process keeps deleting the new sort folders",
+                ));
+            }
+        };
         Ok(Self {
             compare,
             segment_size: segment_size.get(),
@@ -218,7 +235,7 @@ pub fn discard_stale_sort_dirs(temp_dir: &Path, is_alive: impl Fn(u32) -> bool) 
             continue;
         }
         // Kept until the folder is gone, so no sort can take it in between.
-        let Some(_hold) = FolderHold::take_if_free(&entry.path()) else {
+        let Some(_hold) = FolderHold::take(&entry.path()) else {
             continue;
         };
         match fs::remove_dir_all(entry.path()) {
@@ -239,26 +256,15 @@ struct FolderHold {
 }
 
 impl FolderHold {
-    /// Holds the new folder `dir` of this process. Best effort: on a file system without advisory
-    /// locks the folder is not held, and the process ID still protects it.
+    /// Holds the folder `dir`, or `None` when someone else holds it or it is gone. Best effort:
+    /// on a file system without advisory locks, or a folder that cannot be opened, the result
+    /// holds nothing, and the process ID alone protects the folder.
     #[cfg(not(windows))]
-    fn take(dir: &Path) -> Self {
-        let file = File::open(dir).ok().filter(|file| file.try_lock().is_ok());
-        Self { _file: file }
-    }
-
-    #[cfg(windows)]
-    fn take(_dir: &Path) -> Self {
-        Self {}
-    }
-
-    /// Holds the folder `dir` of an owner that looks ended, or `None` when a running sort holds
-    /// it. A folder that cannot be opened is not held by anyone this process can see, so it is
-    /// returned unheld and its deletion reports any failure as usual.
-    #[cfg(not(windows))]
-    fn take_if_free(dir: &Path) -> Option<Self> {
-        let Ok(file) = File::open(dir) else {
-            return Some(Self { _file: None });
+    fn take(dir: &Path) -> Option<Self> {
+        let file = match File::open(dir) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return None,
+            Err(_) => return Some(Self { _file: None }),
         };
         match file.try_lock() {
             Ok(()) => Some(Self { _file: Some(file) }),
@@ -268,7 +274,8 @@ impl FolderHold {
     }
 
     #[cfg(windows)]
-    fn take_if_free(_dir: &Path) -> Option<Self> {
+    #[expect(clippy::unnecessary_wraps, reason = "the same signature as on Unix")]
+    fn take(_dir: &Path) -> Option<Self> {
         Some(Self {})
     }
 }
@@ -413,3 +420,22 @@ impl<T> PartialEq for Head<T> {
 }
 
 impl<T> Eq for Head<T> {}
+
+#[cfg(all(test, not(windows)))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_folder_held_elsewhere_or_gone_cannot_be_taken() {
+        let dir = tempfile::tempdir().expect("a temporary directory can be created");
+
+        let first = FolderHold::take(dir.path()).expect("a free folder can be taken");
+        assert!(FolderHold::take(dir.path()).is_none(), "held by `first`");
+        drop(first);
+        assert!(FolderHold::take(dir.path()).is_some(), "free again");
+        assert!(
+            FolderHold::take(&dir.path().join("missing")).is_none(),
+            "gone"
+        );
+    }
+}
