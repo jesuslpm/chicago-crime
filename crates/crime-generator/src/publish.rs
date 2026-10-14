@@ -39,8 +39,9 @@ use crate::fail::{self, FailPoint};
 use crate::log::RunLog;
 use crate::messages;
 
-/// File in the output folder that a running generation holds open exclusively, on Windows. Older
-/// builds also left it behind elsewhere, so the folder inspection takes it there for a leftover.
+/// File in the output folder that a running generation holds open exclusively, on Windows, where
+/// the folder inspection accepts it as part of the dataset. On Unix only builds older than the
+/// folder lock created it, so the inspection discards it there as a leftover.
 pub const LOCK_FILE_NAME: &str = ".generator.lock";
 
 /// `CURRENT` is written under this name first and then renamed over `CURRENT`.

@@ -365,7 +365,11 @@ fn a_lock_file_left_by_an_older_unix_build_is_discarded_as_a_leftover() {
     let scenario = Scenario::new(&[distinct_row(1)]);
     let config = scenario.config("dataset");
     fs::create_dir_all(&config.output).expect("the fixture can be created");
-    fs::write(config.output.join(".generator.lock"), b"").expect("the fixture can be written");
+    fs::write(
+        config.output.join(crime_generator::publish::LOCK_FILE_NAME),
+        b"",
+    )
+    .expect("the fixture can be written");
 
     let (_, log) = generate_ok(&config);
 

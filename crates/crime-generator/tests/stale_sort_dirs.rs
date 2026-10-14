@@ -19,7 +19,8 @@ const DEAD: u32 = 7_777;
 
 /// Taken by every test that starts a process and by every test that needs a folder lock to be
 /// free once this process releases it. Between `fork` and `exec` a child shares the open files of
-/// the test process, so a lock released here can stay held by the child for a moment.
+/// the test process, so a lock released here can stay held by the child for a moment. It is not
+/// reentrant: a test that holds it must not build an `EndedProcess`, or it deadlocks.
 #[cfg(not(windows))]
 static SPAWNS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
