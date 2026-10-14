@@ -17,6 +17,19 @@ use crime_generator::sort::{
 /// A process ID that the tests below declare ended.
 const DEAD: u32 = 7_777;
 
+/// Taken by every test that starts a process and by every test that needs a folder lock to be
+/// free once this process releases it. Between `fork` and `exec` a child shares the open files of
+/// the test process, so a lock released here can stay held by the child for a moment.
+#[cfg(not(windows))]
+static SPAWNS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(not(windows))]
+fn no_spawns() -> std::sync::MutexGuard<'static, ()> {
+    SPAWNS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn start_sort(temp_dir: &std::path::Path) -> ExternalSort<PrimaryEntry> {
     let size = NonZeroUsize::new(10).expect("positive");
     ExternalSort::new(temp_dir, size, PrimaryEntry::compare).expect("the sort can start")
@@ -177,6 +190,7 @@ mod liveness {
 
         #[cfg(not(windows))]
         fn new() -> Self {
+            let spawning = no_spawns();
             let child = Command::new("true").spawn().expect("true can be started");
             let stat = format!("/proc/{}/stat", child.id());
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
@@ -184,6 +198,7 @@ mod liveness {
                 assert!(std::time::Instant::now() < deadline, "true ends");
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
+            drop(spawning);
             Self(child)
         }
 
@@ -264,6 +279,8 @@ mod liveness {
         let dir = tempfile::tempdir().expect("a temporary directory can be created");
         let stale = dir.path().join(format!("{SORT_DIR_PREFIX}{DEAD}-ffffff"));
         fs::create_dir(&stale).expect("the fixture folder can be created");
+        #[cfg(not(windows))]
+        let _no_spawns = no_spawns();
         let Some(held) = HeldAgainstRemoval::new(&stale) else {
             eprintln!("skipped: this user can delete any folder");
             return;
@@ -369,6 +386,7 @@ mod folder_lock {
 
     #[test]
     fn a_held_folder_is_left_alone_even_when_its_owner_looks_ended() {
+        let _no_spawns = no_spawns();
         let dir = tempfile::tempdir().expect("a temporary directory can be created");
         let held = dir.path().join(format!("{SORT_DIR_PREFIX}{DEAD}-h0ld3r"));
         fs::create_dir(&held).expect("the fixture folder can be created");
