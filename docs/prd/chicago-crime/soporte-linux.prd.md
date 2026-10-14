@@ -102,7 +102,8 @@ No hay mensajes nuevos. En Linux se aplican las mismas reglas y los mismos mensa
 1. **AC-L1** — Dado el repositorio en Linux (Ubuntu 24.04 sobre WSL2), cuando se pasan las pruebas, entonces
    pasan todas las que se compilan en Linux, sin ningún fallo.
 2. **AC-L2** — Dado el repositorio en Windows, cuando se pasan las pruebas, entonces pasan todas, y ninguna
-   de las 424 que pasaban antes del cambio desaparece ni deja de pasar.
+   de las 423 que pasaban antes del cambio desaparece ni deja de pasar (de las 424 del proyecto, una solo
+   existía fuera de Windows).
 3. **AC-L3** — Dada una generación correcta en Linux, cuando el operador mira la carpeta de salida, entonces
    solo contiene lo mismo que contendría en Windows.
 4. **AC-L4** — Dada en Linux una generación fallida o cancelada que creó la carpeta de salida, cuando
