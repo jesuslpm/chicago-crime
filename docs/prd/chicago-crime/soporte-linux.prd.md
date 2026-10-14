@@ -68,7 +68,7 @@ No hay mensajes nuevos. En Linux se aplican las mismas reglas y los mismos mensa
 | Carpeta de salida con contenido ajeno | Se rechaza sin crear, cambiar ni borrar nada en ella | (mensaje habitual de contenido ajeno) |
 | Fin de la generación | El resumen muestra el pico medido contra el límite, nunca "no disponible" | `Pico de memoria privada comprometida: <cifra> ...` (mismo formato que en Windows) |
 | El pico supera el límite | Se anota un aviso una sola vez y la generación continúa | `Aviso: el pico de memoria privada comprometida (<cifra> MiB) supera el límite de <límite> MiB.` |
-| Restos de ordenación de una generación que ya no está en marcha | Se descartan | `Se han descartado restos de una generación interrumpida anterior.` |
+| Restos de ordenación de una generación que ya no está en marcha | Se descartan | `Se han descartado carpetas temporales de una generación interrumpida anterior.` |
 | Restos de ordenación de una generación que sigue en marcha | Se dejan intactos | (ninguno) |
 
 ## Documentación

@@ -71,7 +71,8 @@ Every option and message is the same as on Windows (see the [README](../../READM
   kernel keeps from the start of the process, as Windows keeps its peak of committed memory ([Linux
   support PRD](../prd/chicago-crime/soporte-linux.prd.md), decision L3). The two are close but not the
   same: the Linux figure also counts the program's own code, and does not count memory the system moved
-  to swap.
+  to swap. On the reference CSV the generator peaked at 103.5 MiB in WSL, against about 93 MiB on
+  Windows, both far below the 512 MiB limit.
 - **Leftovers of interrupted runs.** As on Windows, a run discards the sort folders of a generator that
   is no longer running. On Linux a running sort also holds an advisory lock on its folder, and a held
   folder is never deleted, so the folders of a generator in another container that shares the

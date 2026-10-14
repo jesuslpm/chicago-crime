@@ -25,7 +25,8 @@ Product source: `docs/prd/chicago-crime/soporte-linux.prd.md` **v1.0** (L1–L3,
   "Dado el CSV de referencia completo en Linux, cuando se ejecuta el generador, entonces el pico de memoria
   medido no supera 512 MiB y el resumen final lo muestra."
 - **S3 — Leftover sort folders on Linux (AC-L9).** Leftovers of a run that is no longer running "Se
-  descartan" with `Se han descartado restos de una generación interrumpida anterior.`; those of a run still
+  descartan" with `Se han descartado carpetas temporales de una generación interrumpida anterior.` (the
+  existing sort-folder message; corrected from the output-folder one, see L6); those of a run still
   running "Se dejan intactos".
 - **S4 — Documentation (AC-L7).** README: "un apartado nuevo de un par de párrafos que resume cómo compilar y
   pasar las pruebas en Linux. Distingue entre WSL y Linux normal, y enlaza con las guías detalladas." WSL
@@ -64,6 +65,24 @@ Product source: `docs/prd/chicago-crime/soporte-linux.prd.md` **v1.0** (L1–L3,
 | T4 | S4 | inline | done | `dfb17f9`: README section (two paragraphs) + `docs/linux/wsl.md` + `docs/linux/native.md`; PRD annotations (generator ES/EN, query, parent ES/EN). Link check: 0 bad links. Assess: passive. |
 | T5 | S1–S5 | inline checks + independent verifier | in progress | |
 
+## Acceptance results (reference CSV, Ubuntu 24.04 / WSL 2, 2026-10-14 07:52–08:00)
+
+Script: scratchpad `linux-acceptance.sh` (not committed), commit `0d138bc`, Rust 1.99, kernel
+5.15.133.1-microsoft-standard-WSL2.
+
+| Criterion | Observed |
+|---|---|
+| AC-L1 | `cargo test --workspace`: 428 passed, 0 failed (Linux baseline 420 ran: 407 + 13 failing). |
+| AC-L2 | Windows `cargo test --workspace`: 425 passed, 0 failed (baseline 423, see L5). |
+| AC-L8 | Full CSV: exit 0, `Generación completada: 8.656.904 registros válidos, 0 rechazados`, `Pico de memoria privada comprometida: 103,5 MiB (límite: 512 MiB).`, 1 min 32.2 s. |
+| AC-L3 | Output folder after the run: `CURRENT`, `dataset-20261014-075249-2444`; temp folder empty. |
+| Verifier | `crime-acceptance --reference` on the Linux dataset: `RESULT: PASS (18 checks)`. |
+| AC-L6 | Second run while the first runs: exit 1, `Otra generación está usando la carpeta de salida /home/jesuslpm/acc/ds.` then `Generación cancelada. No se ha modificado el conjunto existente.`; first run exit 0, completed; folder holds `CURRENT` + one version. |
+| AC-L4 | SIGINT 3 s into a run that created its folder: exit 130, folder gone, `Generación cancelada por el operador. No se ha modificado el conjunto existente.`, temp folder empty. |
+| AC-L9 | `kill -9` left `crime-generator-sort-13141-oBRZ2u`; with a fake folder of a live `sleep` (`crime-generator-sort-13332-l1v3ab`), the next run logged `Se han descartado carpetas temporales de una generación interrumpida anterior.` once, removed the dead one and kept the live one. |
+| AC-L5 | Covered by `foreign_files_in_the_output_folder_are_refused_and_left_untouched` and `folders_that_only_look_like_versions_are_refused_and_never_deleted` (both red at baseline on Linux, green now). |
+| AC-L7 | README section + guides; link check 0 bad links. |
+
 ## Log
 
 - **L1 (2026-10-14, user, verbatim)**: "Bien pues hagamos un nuevo cambio empezado por el PRD. El objetivo es
@@ -80,3 +99,6 @@ Product source: `docs/prd/chicago-crime/soporte-linux.prd.md` **v1.0** (L1–L3,
 - **L5 (07:55)**: correction: "424" was a count of `#[test]` in source. At `98c5b4d` one test
   (`the_peak_is_not_available_elsewhere`) is `cfg(not(windows))`, so Windows ran 423. Candidate Windows run:
   425 passed, 0 failed (423 + the `VmHWM` and `/proc` stat parser tests). PRD AC-L2 and S5 corrected.
+- **L6 (08:00)**: Linux acceptance passed (table above). Correction: S3 and the PRD quoted the output-folder
+  message for sort-folder leftovers; the existing sort-folder message is `Se han descartado carpetas
+  temporales de una generación interrumpida anterior.` (unchanged code, Windows included).
