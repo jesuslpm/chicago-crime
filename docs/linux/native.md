@@ -49,8 +49,8 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Every test passes. A few tests need a folder that cannot be deleted; as `root` nothing stops a deletion,
-so they print `skipped: this user can delete any folder` and pass without checking anything. Run the
+Every test passes. One test needs a folder that cannot be deleted; as `root` nothing stops a deletion,
+so it prints `skipped: this user can delete any folder` and passes without checking anything. Run the
 tests as a normal user.
 
 ## 4. Run the applications
