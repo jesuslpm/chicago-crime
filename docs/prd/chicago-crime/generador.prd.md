@@ -91,7 +91,8 @@ quedan para su cambio.
 - Elegir qué índices se generan: el conjunto de índices es el fijado por la decisión D2 del padre.
 - Regenerar un solo índice sin regenerar el conjunto completo.
 - Generar a partir de varios CSV a la vez.
-- Ejecutar o verificar en sistemas distintos de Windows: el equipo de referencia es Windows 11.
+- Ejecutar o verificar en sistemas distintos de Windows: el equipo de referencia es Windows 11. *(Anotación
+  del 2026-10-14: Linux lo cubre el [PRD de soporte para Linux](soporte-linux.prd.md).)*
 - Instaladores o distribución del ejecutable.
 
 ## Criterios de aceptación

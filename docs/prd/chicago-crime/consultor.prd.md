@@ -126,7 +126,8 @@ Se aplican las validaciones del consultor del documento padre, salvo la fila "Co
 - Consultar una versión del conjunto distinta de la activa.
 - Cachés o índices auxiliares creados por el consultor: el consultor nunca escribe en la carpeta del
   conjunto.
-- Ejecutar o verificar en sistemas distintos de Windows.
+- Ejecutar o verificar en sistemas distintos de Windows. *(Anotación del 2026-10-14: Linux lo cubre el [PRD de
+  soporte para Linux](soporte-linux.prd.md).)*
 
 ## Criterios de aceptación
 

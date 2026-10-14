@@ -23,7 +23,9 @@ conjunto de datos no quepa en ese espacio. Es una restricción de diseño delibe
 equipo actual. El límite se refiere al pico de memoria privada comprometida del proceso generador, con el
 runtime y las bibliotecas incluidos y sin contar la caché de archivos del sistema operativo. En Windows se
 mide objetivamente como el máximo de bytes privados comprometidos del proceso. Superar el límite no
-detiene la generación: se anota un aviso en el log y el resumen final lo indica.
+detiene la generación: se anota un aviso en el log y el resumen final lo indica. *(Anotación del 2026-10-14: en
+Linux se mide como la memoria residente máxima del proceso; decisión L3 del [PRD de soporte para
+Linux](soporte-linux.prd.md).)*
 
 ### Estado de partida
 

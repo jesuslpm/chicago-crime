@@ -25,7 +25,9 @@ does not fit in that space. It is a deliberate design constraint, not a limitati
 The limit refers to the peak private committed memory of the generator process, including the runtime and
 the libraries and excluding the operating system's file cache. On Windows it is measured objectively as
 the maximum private committed bytes of the process. Exceeding the limit does not stop the generation: a
-warning is written to the log and the final summary reports it.
+warning is written to the log and the final summary reports it. *(Note added on 2026-10-14: on Linux it
+is measured as the peak resident memory of the process; decision L3 of the [Linux support
+PRD](soporte-linux.prd.md), in Spanish.)*
 
 ### Starting state
 

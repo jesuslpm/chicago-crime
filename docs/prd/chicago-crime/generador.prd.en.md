@@ -95,7 +95,8 @@ AC10 and AC11) are left for its change.
 - Choosing which indexes are generated: the set of indexes is the one fixed by the parent's decision D2.
 - Regenerating a single index without regenerating the complete dataset.
 - Generating from several CSVs at once.
-- Running or verifying on systems other than Windows: the reference machine is Windows 11.
+- Running or verifying on systems other than Windows: the reference machine is Windows 11. *(Note added on
+  2026-10-14: Linux is covered by the [Linux support PRD](soporte-linux.prd.md), in Spanish.)*
 - Installers or distribution of the executable.
 
 ## Acceptance criteria

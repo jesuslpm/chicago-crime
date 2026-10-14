@@ -46,10 +46,12 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
   - [Parent PRD](docs/prd/chicago-crime/chicago-crime.prd.en.md) ([Spanish original](docs/prd/chicago-crime/chicago-crime.prd.md)): the generator and the query app.
   - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): the generator, acceptance criteria AC-G1 to AC-G10.
   - [Query app PRD](docs/prd/chicago-crime/consultor.prd.md) (Spanish): the query app, acceptance criteria AC-C1 to AC-C18.
+  - [Linux support PRD](docs/prd/chicago-crime/soporte-linux.prd.md) (Spanish): building, testing and running on Linux, acceptance criteria AC-L1 to AC-L9.
 - **ODD (Organic Driven Development).** The PRD becomes a feature document with an objective,
   implementation decisions and a task checklist. That document is the single place for progress and
-  evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md) and
-  [`odd/tasks/crime-query.md`](odd/tasks/crime-query.md). Each task:
+  evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md),
+  [`odd/tasks/crime-query.md`](odd/tasks/crime-query.md) and
+  [`odd/tasks/soporte-linux.md`](odd/tasks/soporte-linux.md). Each task:
   - explores the code first;
   - writes a failing test before the implementation (RED → GREEN);
   - closes with one Conventional Commit on the feature branch;
@@ -62,8 +64,8 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
 ## Build
 
 You need a Rust toolchain. The project uses edition 2024, which requires at least Rust 1.85, and it was
-built and verified with Rust 1.99 on Windows 11, the reference platform. Other systems are not verified, because the run lock and the
-memory measurement use Windows APIs.
+built and verified with Rust 1.99 on Windows 11, the reference platform, and on Ubuntu 24.04 under WSL 2
+(see [Build and test on Linux](#build-and-test-on-linux)).
 
 ```powershell
 cargo build --release
@@ -71,6 +73,22 @@ cargo test --workspace
 ```
 
 The binaries end up in `target\release\`.
+
+## Build and test on Linux
+
+The same commands build the project and pass every test on Linux, with the binaries in
+`target/release/` and no `.exe` extension. Both applications behave as on Windows, with the same
+options and messages; the generator reads its memory peak from the Linux kernel instead of Windows,
+and the PowerShell acceptance scripts still run only on Windows. On a Windows machine, the
+[WSL guide](docs/linux/wsl.md) covers getting a Linux distribution, installing the toolchain, keeping
+the code and the datasets in the Linux file system rather than under `/mnt/c`, and copying the
+reference CSV, which is not in the repository and is only needed to run the applications, not the
+tests.
+
+On a machine that runs Linux directly, the [native Linux guide](docs/linux/native.md) gives the
+toolchain packages for the common distributions and the build, test and run commands. It also lists
+what differs from Windows: how the memory figure is measured, how a run tells the leftovers of an
+interrupted generator from those of a running one, and which checks still need Windows.
 
 ## Run the generator
 
@@ -264,4 +282,5 @@ target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where 
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
 | `scripts/acceptance` | Acceptance scripts for the reference CSV (generator and query app). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
+| `docs/linux` | Guides to build, test and run the project on Linux, in WSL or natively. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |
