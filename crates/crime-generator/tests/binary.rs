@@ -354,7 +354,7 @@ fn the_final_summary_lists_counts_duration_peak_memory_every_file_the_folder_and
     assert!(duration.ends_with(" s."), "{duration}");
 
     let peak = line_starting_with(&log, PEAK_MEMORY);
-    if cfg!(windows) {
+    if cfg!(any(windows, target_os = "linux")) {
         let figure = peak
             .strip_prefix(PEAK_MEMORY)
             .and_then(|rest| rest.strip_suffix(" MiB (límite: 512 MiB)."))
@@ -419,7 +419,7 @@ fn a_peak_over_the_memory_limit_is_a_warning_and_the_run_still_exits_with_zero()
         DATASET_FILES
     );
     let peak = line_starting_with(&log, PEAK_MEMORY);
-    if cfg!(windows) {
+    if cfg!(any(windows, target_os = "linux")) {
         let warning = line_starting_with(&log, MEMORY_WARNING);
         let figure = warning
             .strip_prefix(MEMORY_WARNING)

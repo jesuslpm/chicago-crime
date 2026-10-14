@@ -4,8 +4,11 @@
 //! and every library included and the operating system's file cache excluded. Windows keeps that
 //! peak itself: `PROCESS_MEMORY_COUNTERS.PeakPagefileUsage` is the highest commit charge of the
 //! process since it started (what .NET calls `PeakPagedMemorySize64`). Reading it at a few
-//! moments of the run is therefore exact: no peak between two readings is missed. Elsewhere the
-//! figure is not available, and the run says so.
+//! moments of the run is therefore exact: no peak between two readings is missed. Linux keeps a
+//! peak too, `VmHWM` in `/proc/self/status`: the highest resident set of the process since it
+//! started (Linux support PRD, decision L3). It also counts the program's own code and leaves out
+//! memory moved to swap, so it is close to, but not the same as, the Windows figure. Elsewhere
+//! the figure is not available, and the run says so.
 //!
 //! Going over the limit never stops the run: [`MemoryWatch`] logs one warning, and the final
 //! summary shows the peak against the limit.
@@ -50,11 +53,27 @@ pub fn peak_private_bytes() -> Option<u64> {
     u64::try_from(counters.PeakPagefileUsage).ok()
 }
 
-/// Peak private committed bytes of this process: not available outside Windows, where the
-/// generator is not verified (see the PRD).
-#[cfg(not(windows))]
+/// Peak resident bytes of this process since it started, which Linux reports instead of the
+/// committed ones (see the module documentation).
+#[cfg(target_os = "linux")]
+pub fn peak_private_bytes() -> Option<u64> {
+    peak_resident_bytes(&std::fs::read_to_string("/proc/self/status").ok()?)
+}
+
+/// Not available on the remaining systems.
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn peak_private_bytes() -> Option<u64> {
     None
+}
+
+/// The `VmHWM` line of a Linux `/proc/<pid>/status` file, in bytes; the kernel writes it in kB.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn peak_resident_bytes(status: &str) -> Option<u64> {
+    let line = status
+        .lines()
+        .find_map(|line| line.strip_prefix("VmHWM:"))?;
+    let kibibytes = line.trim().strip_suffix("kB")?.trim().parse::<u64>().ok()?;
+    kibibytes.checked_mul(1024)
 }
 
 /// Watches the peak against the limit during one run, and warns once when it goes over.
@@ -143,13 +162,13 @@ mod tests {
         assert_eq!(limit_bytes(u64::MAX), u64::MAX);
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
-    fn windows_reports_a_peak_that_includes_committed_allocations() {
-        let before = peak_private_bytes().expect("Windows reports the peak");
+    fn the_system_reports_a_peak_that_includes_committed_allocations() {
+        let before = peak_private_bytes().expect("the system reports the peak");
         let block = std::hint::black_box(vec![1_u8; 64 * MIB as usize]);
 
-        let after = peak_private_bytes().expect("Windows reports the peak");
+        let after = peak_private_bytes().expect("the system reports the peak");
 
         assert!(after >= before, "a peak never decreases");
         assert!(
@@ -159,7 +178,22 @@ mod tests {
         drop(block);
     }
 
-    #[cfg(not(windows))]
+    #[test]
+    fn the_linux_peak_is_the_vm_hwm_line_in_bytes() {
+        let status = "Name:\tcrime-generator\nVmPeak:\t  900000 kB\nVmHWM:\t  524288 kB\n\
+                      VmRSS:\t  100000 kB\n";
+
+        assert_eq!(peak_resident_bytes(status), Some(512 * MIB));
+        assert_eq!(peak_resident_bytes("VmRSS:\t1 kB\n"), None, "no VmHWM line");
+        assert_eq!(
+            peak_resident_bytes("VmHWM:\t12 MB\n"),
+            None,
+            "an unknown unit"
+        );
+        assert_eq!(peak_resident_bytes("VmHWM:\t-1 kB\n"), None, "not a number");
+    }
+
+    #[cfg(not(any(windows, target_os = "linux")))]
     #[test]
     fn the_peak_is_not_available_elsewhere() {
         assert_eq!(peak_private_bytes(), None);
