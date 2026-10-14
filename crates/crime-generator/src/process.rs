@@ -34,9 +34,47 @@ pub fn is_alive(process_id: u32) -> bool {
     queried == 0 || u32::try_from(STILL_ACTIVE) == Ok(exit_code)
 }
 
-/// Whether the process with ID `process_id` is running: always `true` outside Windows, where the
-/// generator is not verified (see the PRD), so stale sort folders are never deleted there.
-#[cfg(not(windows))]
+/// Whether the process with ID `process_id` is running.
+///
+/// On Linux a process that has ended has no `/proc/<pid>` entry, or is a zombie (`Z`) or dead
+/// (`X`) one waiting for its parent. Any other answer, or a doubt, counts as alive. A generator
+/// in another PID namespace (another container sharing the temporary folder) cannot be seen from
+/// here; the operator gives each one its own temporary folder.
+#[cfg(target_os = "linux")]
+pub fn is_alive(process_id: u32) -> bool {
+    match std::fs::read_to_string(format!("/proc/{process_id}/stat")) {
+        Ok(stat) => !matches!(process_state(&stat), Some('Z' | 'X' | 'x')),
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
+/// Whether the process with ID `process_id` is running: always `true` on the remaining systems,
+/// so stale sort folders are never deleted there.
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn is_alive(_process_id: u32) -> bool {
     true
+}
+
+/// The state letter of a Linux `/proc/<pid>/stat` line. It follows the command name, which is in
+/// parentheses and may itself hold spaces and parentheses, so the last `)` ends it.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn process_state(stat: &str) -> Option<char> {
+    stat.rsplit_once(')')?.1.trim_start().chars().next()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_state_is_the_letter_after_the_command_name() {
+        assert_eq!(process_state("42 (crime-generator) S 1 42 42 0"), Some('S'));
+        assert_eq!(
+            process_state("43 (a) b (c)) Z 1 43"),
+            Some('Z'),
+            "parentheses in the name"
+        );
+        assert_eq!(process_state("44 (no end"), None);
+        assert_eq!(process_state("45 (empty)"), None);
+    }
 }

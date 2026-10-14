@@ -149,10 +149,10 @@ fn a_missing_temp_folder_discards_nothing() {
     assert_eq!(outcome, StaleSortDirs::default());
 }
 
-#[cfg(windows)]
-mod windows {
-    use std::fs::{self, OpenOptions};
-    use std::os::windows::fs::OpenOptionsExt;
+#[cfg(any(windows, target_os = "linux"))]
+mod liveness {
+    use std::fs;
+    use std::path::Path;
     use std::process::{Child, Command};
 
     use super::*;
@@ -160,21 +160,79 @@ mod windows {
     use crime_generator::process::is_alive;
 
     /// A process that has already ended. While its handle is held, Windows keeps its ID from
-    /// being given to another process, so the ID stays the one of an ended process.
+    /// being given to another process, so the ID stays the one of an ended process. Linux hands
+    /// IDs out in increasing order up to a large maximum, so the ID is not reused during a test.
     struct EndedProcess(Child);
 
     impl EndedProcess {
         fn new() -> Self {
-            let mut child = Command::new("cmd")
-                .args(["/C", "exit 0"])
-                .spawn()
-                .expect("cmd can be started");
-            child.wait().expect("cmd ends");
+            #[cfg(windows)]
+            let mut command = {
+                let mut command = Command::new("cmd");
+                command.args(["/C", "exit 0"]);
+                command
+            };
+            #[cfg(not(windows))]
+            let mut command = Command::new("true");
+            let mut child = command.spawn().expect("the process can be started");
+            child.wait().expect("the process ends");
             Self(child)
         }
 
         fn id(&self) -> u32 {
             self.0.id()
+        }
+    }
+
+    /// Keeps `folder` from being deleted while it is alive.
+    struct HeldAgainstRemoval {
+        #[cfg(windows)]
+        _file: fs::File,
+        #[cfg(not(windows))]
+        folder: std::path::PathBuf,
+    }
+
+    impl HeldAgainstRemoval {
+        /// `None` when nothing can keep the folder from being deleted, as for the Linux superuser.
+        #[cfg(windows)]
+        fn new(folder: &Path) -> Option<Self> {
+            use std::os::windows::fs::OpenOptionsExt;
+
+            // Open without any sharing: nobody can delete the file while it is held.
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .share_mode(0)
+                .open(folder.join("segment-000000"))
+                .expect("the fixture segment can be created");
+            Some(Self { _file: file })
+        }
+
+        /// `None` when nothing can keep the folder from being deleted, as for the Linux superuser.
+        #[cfg(not(windows))]
+        fn new(folder: &Path) -> Option<Self> {
+            use std::os::unix::fs::PermissionsExt;
+
+            // A file in a folder without write permission cannot be deleted, nor can the folder.
+            fs::write(folder.join("segment-000000"), b"segment").expect("the segment is written");
+            fs::set_permissions(folder, fs::Permissions::from_mode(0o555))
+                .expect("the folder can be made read-only");
+            let held = Self {
+                folder: folder.to_path_buf(),
+            };
+            match fs::write(folder.join("probe"), b"") {
+                Ok(()) => None,
+                Err(_) => Some(held),
+            }
+        }
+    }
+
+    #[cfg(not(windows))]
+    impl Drop for HeldAgainstRemoval {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+
+            let _ = fs::set_permissions(&self.folder, fs::Permissions::from_mode(0o755));
         }
     }
 
@@ -191,13 +249,10 @@ mod windows {
         let dir = tempfile::tempdir().expect("a temporary directory can be created");
         let stale = dir.path().join(format!("{SORT_DIR_PREFIX}{DEAD}-ffffff"));
         fs::create_dir(&stale).expect("the fixture folder can be created");
-        // Open without any sharing: nobody can delete the file while it is held.
-        let held = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .share_mode(0)
-            .open(stale.join("segment-000000"))
-            .expect("the fixture segment can be created");
+        let Some(held) = HeldAgainstRemoval::new(&stale) else {
+            eprintln!("skipped: this user can delete any folder");
+            return;
+        };
 
         let first = discard_stale_sort_dirs(dir.path(), |owner| owner != DEAD);
         drop(held);
