@@ -75,7 +75,8 @@ def summarize(entries, apart_globs):
     apart = []
     for added, removed, path in entries:
         name = path.rsplit("/", 1)[-1]
-        if added == "-" or name in LOCKFILES or any(fnmatch.fnmatch(path, g) for g in apart_globs):
+        # fnmatchcase: exact case on every OS; note that `*` also matches across `/`.
+        if added == "-" or name in LOCKFILES or any(fnmatch.fnmatchcase(path, g) for g in apart_globs):
             apart.append((path, added, removed))
             continue
         counts = areas[area_of(path)]
@@ -113,8 +114,8 @@ def main(argv=None) -> int:
     sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
     args = parse_args(sys.argv[1:] if argv is None else argv)
     result = subprocess.run(
-        ["git", "diff", "--numstat", "-z", f"{args.base}..{args.head}"],
-        capture_output=True, text=True, encoding="utf-8",
+        ["git", "diff", "--numstat", "-z", "--end-of-options", f"{args.base}..{args.head}"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if result.returncode != 0:
         print(f"git diff failed: {result.stderr.strip()}", file=sys.stderr)

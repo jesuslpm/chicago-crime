@@ -1,6 +1,8 @@
 """Tests for numstat_by_area. Run: python -m unittest discover -s .claude/skills/closing-report/scripts"""
 
+import io
 import unittest
+from unittest import mock
 
 import numstat_by_area as nba
 
@@ -53,6 +55,43 @@ class SummaryTests(unittest.TestCase):
             [path for path, _, _ in apart],
             ["Cargo.lock", "docs/logo.png", "docs/methodology/slides.html"],
         )
+
+
+class RenderTests(unittest.TestCase):
+    def test_table_is_sorted_by_change_size_with_spanish_grouping_and_apart_line(self):
+        areas = {"docs": nba.Counts(10, 0, 1), "crates/a": nba.Counts(1500, 20, 3)}
+        text = nba.render(areas, [("Cargo.lock", "4", "0")], "es")
+        self.assertEqual(
+            text.splitlines(),
+            [
+                "| Área | + | − | Archivos |",
+                "|---|---|---|---|",
+                "| `crates/a` | 1.500 | 20 | 3 |",
+                "| `docs` | 10 | 0 | 1 |",
+                "| **Total** | **1.510** | **20** | **4** |",
+                "",
+                "Aparte (lockfiles, generados o binarios): `Cargo.lock` (+4 −0)",
+            ],
+        )
+
+    def test_english_labels_and_grouping(self):
+        text = nba.render({"docs": nba.Counts(1500, 0, 1)}, [], "en")
+        self.assertIn("| Area | + | − | Files |", text)
+        self.assertIn("| **Total** | **1,500** | **0** | **1** |", text)
+
+
+class MainTests(unittest.TestCase):
+    def test_git_failure_returns_2_without_traceback(self):
+        failed = mock.Mock(returncode=128, stdout="", stderr="fatal: bad revision")
+        with mock.patch.object(nba.subprocess, "run", return_value=failed) as run, \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(nba.main(["nope"]), 2)
+        self.assertIn("fatal: bad revision", err.getvalue())
+        self.assertIn("--end-of-options", run.call_args.args[0])
+
+    def test_apart_globs_match_case_exactly(self):
+        _, apart = nba.summarize([("5", "0", "docs/Slides.HTML")], ["*.html"])
+        self.assertEqual(apart, [])
 
 
 class ArgsTests(unittest.TestCase):

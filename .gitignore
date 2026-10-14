@@ -7,5 +7,8 @@
 # Reference dataset (2.3 GB) — never committed
 /chicago-crime-data.csv
 
+# Python bytecode (skill scripts and their tests)
+__pycache__/
+
 # Personal Claude Code settings
 .claude/settings.local.json
