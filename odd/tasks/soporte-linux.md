@@ -63,7 +63,9 @@ Product source: `docs/prd/chicago-crime/soporte-linux.prd.md` **v1.0** (L1–L3,
 | T3b | S3 | inline | done | `0b13f7c`: a sort that cannot hold its new folder (taken by a cleaner in the creation window) starts another one (max 10). Unit test of `FolderHold::take`. Review approved; warning: the retry loop itself has no test (needs a production test hook; accepted, see Closure). |
 | T3c | S5 | inline | done | `0d138bc`: test-only isolation. 40/200 parallel runs of `stale_sort_dirs` failed (0/100 serial): a child between `fork` and `exec` shares the test process's lock. Process starts and lock-release tests now take one mutex: 0/300 failures. |
 | T4 | S4 | inline | done | `dfb17f9`: README section (two paragraphs) + `docs/linux/wsl.md` + `docs/linux/native.md`; PRD annotations (generator ES/EN, query, parent ES/EN). Link check: 0 bad links. Assess: passive. |
-| T5 | S1–S5 | inline checks + independent verifier | in progress | |
+| T1a | S1 | inline | done | `924f3e9`, from verifier advisory 1: on Unix a `.generator.lock` left by an older build is discarded as a leftover. RED: `a_lock_file_left_by_an_older_unix_build_is_discarded_as_a_leftover` (0 leftover messages); GREEN. Review: high (escalated, item 1), approved; warning (mixed old/new builds side by side) accepted: the two builds lock different objects, so they never excluded each other anyway. |
+| T6 | S4 | inline | done | `6401572` (guides: one test can skip as root, verifier advisory 2) and `f2d8e5f` (readability suggestions of the close-of-feature review). Reviews approved, no findings on the last one. |
+| T5 | S1–S5 | inline checks + independent verifier | done | Acceptance table below. Independent verifier on `0d138bc`: S1–S5 pass; 1 blocker (wrong quoted message in PRD/S3, docs only), already fixed in `0c0aa8f`; Windows baseline 423 confirmed by an actual run, no baseline test lost. Final: Windows 425/425, Linux 429/429, clippy clean on both. |
 
 ## Acceptance results (reference CSV, Ubuntu 24.04 / WSL 2, 2026-10-14 07:52–08:00)
 
@@ -102,3 +104,48 @@ Script: scratchpad `linux-acceptance.sh` (not committed), commit `0d138bc`, Rust
 - **L6 (08:00)**: Linux acceptance passed (table above). Correction: S3 and the PRD quoted the output-folder
   message for sort-folder leftovers; the existing sort-folder message is `Se han descartado carpetas
   temporales de una generación interrumpida anterior.` (unchanged code, Windows included).
+- **L7 (08:13)**: verifier advisories: (1) old lock file never removed on Unix → T1a; (2) "a few tests" skip as
+  root, really one → T6; (3) clone URL unverifiable → disproved, `origin` is
+  `https://github.com/jesuslpm/chicago-crime.git` (the verifier's clone had no remote); (4) two runs in the
+  same second collide on the default log name → baseline design, out of scope, not changed.
+
+## Closure
+
+- **Outcome**: every S# met. AC-L1 Linux 429 passed / 0 failed; AC-L2 Windows 425 passed / 0 failed, all 423
+  baseline tests present and green; AC-L3–AC-L9 observed on the reference CSV (table above); AC-L7 README
+  section and two guides.
+- **Reviews**: T1 (high), T2+T3 (high), T3a (high), T3b, T1a (high), the close-of-feature slice (T3c, T4,
+  T1a, T6) and `f2d8e5f`: all approved and acknowledged; consent granted per the user's standing rule.
+- **Accepted and open items**: the retry loop of T3b has no test (it needs a production test hook to force
+  the race); mixed old/new Unix builds on one output folder do not exclude each other; back-to-back runs in
+  the same second collide on the default log name (baseline behavior); the acceptance PowerShell scripts
+  stay Windows-only (out of scope).
+- **Timing**: estimate 1.5–2.5 h; real 2026-10-14 07:27:41 → 08:15 (about 48 min), no waits for the user.
+  Faster than estimated: the code changes were small, reviews and the full-CSV acceptance ran in the
+  background while other tasks went on.
+- **Change report** (`git diff --numstat 98c5b4d..HEAD`, before this closing edit; no generated files or
+  lockfiles):
+
+| Area | File | + | − |
+|---|---|---:|---:|
+| `crates/crime-generator` | `src/memory.rs` | 44 | 10 |
+| | `src/process.rs` | 41 | 3 |
+| | `src/publish.rs` | 20 | 17 |
+| | `src/sort.rs` | 97 | 7 |
+| | `tests/binary.rs` | 2 | 2 |
+| | `tests/publish.rs` | 24 | 0 |
+| | `tests/stale_sort_dirs.rs` | 159 | 13 |
+| | **subtotal** | **387** | **52** |
+| `docs/linux` | `wsl.md`, `native.md` | 182 | 0 |
+| `docs/prd` | `soporte-linux.prd.md` + 5 annotated PRDs | 157 | 5 |
+| `README.md` | | 23 | 4 |
+| `odd` | `tasks/soporte-linux.md` | 104 | 0 |
+| **total** | | **853** | **61** |
+
+- **Summary**: the project now builds and passes every test on Linux as well as on Windows. On Unix the
+  generator locks the output folder itself instead of leaving a lock file in it, so the output folder ends
+  exactly as on Windows after a successful, failed or cancelled run. It reports its peak memory from the
+  kernel-kept resident peak (103.5 MiB on the reference CSV). It discards the sort folders of ended runs,
+  telling them from running ones by `/proc` and by an advisory lock every running sort holds on its folder,
+  so runs in other containers are safe too. The README gains a two-paragraph Linux section that links a WSL
+  guide and a native Linux guide.
