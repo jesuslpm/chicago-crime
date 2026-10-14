@@ -22,10 +22,11 @@ consultable.
 6. [El proceso vibe coding en detalle](#6-el-proceso-vibe-coding-en-detalle)
 7. [El proceso SDD en detalle](#7-el-proceso-sdd-en-detalle)
 8. [El proceso ODD en detalle](#8-el-proceso-odd-en-detalle)
-9. [Desarrollo en paralelo con worktrees](#9-desarrollo-en-paralelo-con-worktrees)
-10. [Evidencia del experimento](#10-evidencia-del-experimento)
-11. [Qué sabemos y qué no](#11-qué-sabemos-y-qué-no)
-12. [Referencias](#12-referencias)
+9. [Bajo el capó: subagentes, memoria, skills y hooks](#9-bajo-el-capó-subagentes-memoria-skills-y-hooks)
+10. [Desarrollo en paralelo con worktrees](#10-desarrollo-en-paralelo-con-worktrees)
+11. [Evidencia del experimento](#11-evidencia-del-experimento)
+12. [Qué sabemos y qué no](#12-qué-sabemos-y-qué-no)
+13. [Referencias](#13-referencias)
 
 ---
 
@@ -537,7 +538,102 @@ El tamaño de la tarea o el número de archivos, por sí solos, nunca justifican
 
 ---
 
-## 9. Desarrollo en paralelo con worktrees
+## 9. Bajo el capó: subagentes, memoria, skills y hooks
+
+Desde fuera parece una sola conversación con la IA. Por dentro trabajan cuatro mecanismos de Claude Code y de
+Gentle AI, que la sesión principal usa sin que el programador tenga que pedirlos uno a uno. Saber que existen
+ayuda a entender qué está pasando y por qué el agente puede trabajar horas sin perder el hilo.
+
+| Mecanismo | Qué es | Para qué sirve |
+|---|---|---|
+| **Subagentes** | Instancias de la IA con su propio contexto, lanzadas por la sesión principal | Repartir el trabajo sin llenar el contexto del orquestador; revisar con ojos que no escribieron el código |
+| **Memoria persistente** | Información que sobrevive a la sesión: Engram, la memoria de Claude Code y `CLAUDE.md` | Retomar el trabajo, recordar decisiones y preferencias, no repetir errores |
+| **Skills** | Instrucciones empaquetadas que se cargan solo cuando la tarea las necesita | Dar al agente un procedimiento probado (escribir un PRD, cerrar un cambio) sin cargarlo siempre |
+| **Hooks** | Comandos que el entorno ejecuta automáticamente en ciertos momentos | Reglas que no dependen de que el agente se acuerde: bloquear, recordar, verificar |
+
+### 9.1 Subagentes: la sesión principal orquesta
+
+La sesión principal actúa como **orquestador**: entiende el pedido, decide y reparte. El trabajo pesado lo
+hacen subagentes, cada uno con su propio contexto, que devuelven un resumen. Así el orquestador no se llena
+de código leído y puede sostener una conversación larga.
+
+En el experimento se usaron estos papeles:
+
+- **Escritores.** En el generador, cada tarea (T1 a T7) la implementó un subagente escritor, con su lista
+  exacta de archivos permitidos y los comandos de verificación que debía ejecutar. Cada uno devolvió un
+  informe con la evidencia de RED, GREEN y los resultados.
+- **Exploradores**, de solo lectura, para entender código que el orquestador no conoce.
+- **Verificadores independientes**, que no escribieron el código y prueban la especificación contra el
+  resultado.
+- **Revisores**, uno por lente (riesgo, resiliencia, legibilidad, fiabilidad), que Gentle AI lanza en paralelo
+  y en un entorno de solo lectura. Si una revisión detecta un bloqueo dudoso, un **refutador** intenta
+  desmentirlo antes de exigir una corrección.
+
+En el consultor, mientras un verificador comprobaba la T1, un escritor ya implementaba la T2. En SDD pasa lo
+mismo: la sesión principal orquesta y cada fase la ejecuta un subagente.
+
+La versión actual de ODD es más austera: el orquestador escribe directamente por defecto, y solo delega cuando
+hay un motivo concreto (unidades independientes en paralelo, un contexto que se llena o un cambio de alto
+riesgo que pide verificador).
+
+### 9.2 Memoria: tres capas
+
+| Capa | Dónde vive | Qué guarda | Quién la ve |
+|---|---|---|---|
+| **`CLAUDE.md`** | En el repositorio, versionado | Las reglas del proyecto | Todo el que clona el repositorio |
+| **Memoria de Claude Code** | En la máquina del usuario | Preferencias personales: "no me preguntes", "verifica siempre", "estima el tiempo" | Solo ese usuario |
+| **Engram** | Un servidor MCP de memoria persistente | Decisiones, descubrimientos, errores corregidos, resúmenes de sesión y una copia de cada documento de ejecución | Las sesiones de ese usuario en ese proyecto |
+
+Engram es la que más trabajo hace durante un cambio grande:
+
+- **Guarda de forma proactiva** cada decisión y cada hallazgo, sin que se lo pidan. Por ejemplo, que el crate
+  `extsort` perdía datos, o que el formato de tabla de `sstable` es el de LevelDB.
+- **Guarda una copia del documento de ejecución** (`odd/<feature>/tasks`). Si la sesión se corta o el contexto
+  se compacta, el agente retoma con `mem_context`, `mem_search` y `mem_get_observation`, y reconcilia con el
+  archivo del repositorio antes de seguir.
+- **Recoge lo que aprenden los subagentes.** Cada subagente termina su informe con un bloque de aprendizajes
+  clave, que Engram captura sin intervención.
+- **Cierra cada sesión con un resumen** del objetivo, los descubrimientos, lo hecho y los próximos pasos.
+
+Además, Claude Code guarda el historial de cada sesión en la máquina. Este documento lo aprovechó: la
+conversación del PRD del consultor se reconstruyó a partir de ese historial.
+
+### 9.3 Skills: procedimientos que se cargan cuando hacen falta
+
+Una skill es un `SKILL.md` con reglas, pasos y, a veces, plantillas o scripts. Su descripción dice cuándo
+aplica, y el agente la carga solo en ese momento. Esa es la diferencia con `CLAUDE.md`, que se carga siempre
+y por eso tiene que ser corto.
+
+| Skill | Origen | Para qué |
+|---|---|---|
+| `prd` | Propia del proyecto | Escribir el PRD con sus reglas y su plantilla |
+| `closing-report` | Propia del proyecto | Escribir el informe de cierre, con plantilla y un script con tests |
+| `worktree` | Propia, de otro proyecto | Crear, fusionar y eliminar worktrees (sección 10) |
+| `work-unit-commits`, `chained-pr` | Gentle AI | Partir el trabajo en commits y PRs revisables |
+| `judgment-day`, `cognitive-doc-design` | Gentle AI | Revisión adversarial doble; documentos fáciles de leer |
+| `skill-registry` | Gentle AI | Mantener el índice de skills |
+
+El **registro de skills** (`.atl/skill-registry.md`) es un índice que el orquestador consulta antes de delegar.
+Cuando lanza un subagente, le pasa la ruta exacta de las skills que aplican a su tarea, para que las lea antes
+de empezar.
+
+### 9.4 Hooks: reglas que no dependen de la memoria del agente
+
+Un hook es un comando que Claude Code ejecuta automáticamente en un momento dado: antes de cada orden de
+shell, al empezar una sesión, al terminar un turno. En el experimento aparecieron tres:
+
+- **Al empezar la sesión**, Engram inyecta el contexto de las sesiones anteriores.
+- **Al terminar un turno**, Gentle AI comprueba si quedan cambios sin revisar y, si los hay, impide dar el
+  trabajo por terminado hasta pasar la revisión.
+- **Antes de cada orden de shell**, en el proyecto de los worktrees, una guarda bloquea cualquier comando que
+  apunte a la base de datos principal (sección 10.4).
+
+La idea de fondo es la misma que con los scripts: lo que es crítico no se deja a la buena memoria del agente,
+se automatiza.
+
+---
+
+## 10. Desarrollo en paralelo con worktrees
 
 Con un PRD cerrado y las tres reglas de la sección 3, un agente puede trabajar horas sin interrumpir. Eso
 habilita el paso siguiente: **varios cambios a la vez**, cada uno en su propia copia del repositorio y en su
@@ -547,7 +643,7 @@ experimento las revisiones automáticas corrían en worktrees limpios, aparte de
 La guía completa, aplicable a cualquier proyecto con base de datos, es el anexo
 [Desarrollo en paralelo con worktrees](parallel-developing.md). Esta sección resume lo esencial.
 
-### 9.1 El problema
+### 10.1 El problema
 
 `git worktree` aísla **el código**: cada carpeta tiene su rama y sus archivos. Pero casi todo lo demás sigue
 compartido, y ahí se rompe el trabajo en paralelo:
@@ -563,7 +659,7 @@ compartido, y ahí se rompe el trabajo en paralelo:
 La regla de diseño es una sola: **cada copia es un entorno completo y autónomo**. Lo que no se pueda aislar se
 declara como riesgo aceptado, con una regla de uso que lo neutraliza.
 
-### 9.2 El modelo: un nombre, todo derivado
+### 10.2 El modelo: un nombre, todo derivado
 
 El desarrollador dice un solo nombre, el del cambio (por ejemplo `orders-export`), y de él sale todo:
 
@@ -577,7 +673,7 @@ El desarrollador dice un solo nombre, el del cambio (por ejemplo `orders-export`
 obligatorio. Si falta, todo falla nombrando el archivo. Nunca se recurre en silencio a la base principal. Y
 nadie escribe el nombre de la base: ni el desarrollador ni el agente. Un script lo resuelve.
 
-### 9.3 El ciclo de vida
+### 10.3 El ciclo de vida
 
 | Operación | Desde dónde | Regla clave |
 |---|---|---|
@@ -586,7 +682,7 @@ nadie escribe el nombre de la base: ni el desarrollador ni el agente. Un script 
 | Fusionar | El worktree | Primero la integración entra en la rama y se prueba; solo después la rama entra en la integración. Los archivos generados se regeneran; los conflictos escritos a mano se resuelven con el desarrollador |
 | Eliminar | Copia principal | Si se pierde algo (cambios sin commit, commits sin integrar), se rechaza. Nunca se fuerzan ni se matan procesos |
 
-### 9.4 Scripts, skill y guarda
+### 10.4 Scripts, skill y guarda
 
 - **La lógica vive en scripts versionados**, no en el prompt. Un script se prueba, se revisa y funciona igual
   con o sin IA. Los scripts no hacen preguntas, se niegan cuando algo no cuadra, dan mensajes que dicen qué
@@ -598,7 +694,7 @@ nadie escribe el nombre de la base: ni el desarrollador ni el agente. Un script 
   cualquier orden que nombre la base principal y sugiere la alternativa exacta. Es una red contra la costumbre,
   no contra un adversario.
 
-### 9.5 Prompts de cada operación
+### 10.5 Prompts de cada operación
 
 | Desde | Prompt |
 |---|---|
@@ -609,7 +705,7 @@ nadie escribe el nombre de la base: ni el desarrollador ni el agente. Un script 
 
 ---
 
-## 10. Evidencia del experimento
+## 11. Evidencia del experimento
 
 | Cambio | PRD | Ejecución | Resultado |
 |---|---|---|---|
@@ -626,7 +722,7 @@ Lo que muestra el caso:
 
 ---
 
-## 11. Qué sabemos y qué no
+## 12. Qué sabemos y qué no
 
 **Observaciones que el experimento respalda:**
 
@@ -658,11 +754,11 @@ Lo que muestra el caso:
 
 ---
 
-## 12. Referencias
+## 13. Referencias
 
 - Repositorio del experimento: <https://github.com/jesuslpm/chicago-crime>
 - [Cómo se generó el PRD](generacion-del-prd.md): ejemplo paso a paso.
-- [Desarrollo en paralelo con worktrees](parallel-developing.md): guía completa, anexo de la sección 9.
+- [Desarrollo en paralelo con worktrees](parallel-developing.md): guía completa, anexo de la sección 10.
 - [Contexto: PRD + vibe coding, ODD y SDD](contexto_prd_vibe_odd_sdd.md): resumen de la conversación con
   ChatGPT que originó este documento.
 - Skill PRD y plantilla: [`.claude/skills/prd`](../../.claude/skills/prd/SKILL.md) ·

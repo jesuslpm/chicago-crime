@@ -7,8 +7,8 @@ que evita accidentes y los **prompts** de cada operación.
 
 > Implementación de referencia: LandPro, un proyecto privado (`dev-worktrees.md`, `tools/worktree/`,
 > `.claude/skills/worktree/`, `.claude/hooks/block-main-db.mjs`). Esta guía destila de ahí lo que no depende del
-> proyecto. Es el anexo de la sección 9 de [Desarrollo práctico de software asistido por
-> IA](desarrollo-asistido-por-ia.md#9-desarrollo-en-paralelo-con-worktrees).
+> proyecto. Es el anexo de la sección 10 de [Desarrollo práctico de software asistido por
+> IA](desarrollo-asistido-por-ia.md#10-desarrollo-en-paralelo-con-worktrees).
 
 ## 1. El problema
 

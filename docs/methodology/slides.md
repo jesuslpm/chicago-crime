@@ -104,7 +104,7 @@ evaluar.
 | Generador | 230 | 14/14 | 93 MiB de pico (límite 512) |
 | Consultor | 423 | 58/58 | Consulta por ID en 39–51 ms |
 
-<span class="detalle">→ Detalle: [sección 10](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#10-evidencia-del-experimento)</span>
+<span class="detalle">→ Detalle: [sección 11](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#11-evidencia-del-experimento)</span>
 
 <!-- Aviso honesto: es un caso real, no una comparación controlada entre metodologías. -->
 
@@ -329,6 +329,50 @@ propose → design → spec → apply → verify → archive
 
 ---
 
+## Bajo el capó: subagentes
+
+La sesión principal es el **orquestador**: entiende, decide y reparte. Cada subagente tiene **su propio contexto** y devuelve un resumen.
+
+| Papel | Qué hace en el experimento |
+|---|---|
+| **Escritor** | Implementó cada tarea del generador, con sus archivos permitidos y sus comandos de verificación |
+| **Explorador** | Lee código desconocido, solo lectura |
+| **Verificador** | No escribió el código: prueba la especificación contra el resultado |
+| **Revisores** | Uno por lente (riesgo, resiliencia, legibilidad, fiabilidad), en paralelo |
+| **Refutador** | Intenta desmentir un bloqueo dudoso antes de exigir una corrección |
+
+En SDD pasa lo mismo: cada fase la ejecuta un subagente.
+
+<span class="detalle">→ Detalle: [sección 9](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#9-bajo-el-capó-subagentes-memoria-skills-y-hooks)</span>
+
+<!--
+Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2.
+El ODD actual escribe en la sesión principal por defecto y delega solo con un motivo concreto.
+-->
+
+---
+
+## Bajo el capó: memoria, skills y hooks
+
+| Mecanismo | Qué es | En el experimento |
+|---|---|---|
+| **`CLAUDE.md`** | Memoria del proyecto, versionada | Las reglas: PRD primero, estimación, sin interrupciones |
+| **Memoria de Claude Code** | Preferencias del usuario | "No me preguntes, verifica siempre" |
+| **Engram** | Memoria persistente (servidor MCP) | Decisiones, hallazgos, resúmenes y copia del documento de ejecución para retomar |
+| **Skills** | Procedimientos que se cargan cuando hacen falta | `prd`, `closing-report`, `worktree` y las de Gentle AI |
+| **Hooks** | Comandos automáticos del entorno | Contexto al empezar, revisión obligatoria al terminar, guarda de la base de datos |
+
+**Lo crítico no se deja a la memoria del agente: se automatiza.**
+
+<span class="detalle">→ Detalle: [sección 9](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#9-bajo-el-capó-subagentes-memoria-skills-y-hooks)</span>
+
+<!--
+Anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que guarda
+Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cierra cada subagente.
+-->
+
+---
+
 ## Desarrollo en paralelo con worktrees
 
 - `git worktree` aísla el **código**, pero no la base de datos, la configuración ni los puertos
@@ -339,7 +383,7 @@ propose → design → spec → apply → verify → archive
 
 *"Crea un worktree para el cambio `<n>`."* → PRD → ODD → *"Fusiona el cambio."*
 
-<span class="detalle">→ Detalle: [sección 9](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#9-desarrollo-en-paralelo-con-worktrees) · [guía completa](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/parallel-developing.md)</span>
+<span class="detalle">→ Detalle: [sección 10](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#10-desarrollo-en-paralelo-con-worktrees) · [guía completa](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/parallel-developing.md)</span>
 
 <!-- El PRD cerrado y sin interrupciones es lo que habilita tener varios agentes trabajando a la vez. -->
 
@@ -357,7 +401,7 @@ propose → design → spec → apply → verify → archive
 - ¿Cuesta menos tiempo o tokens con la misma calidad?
 - ¿Da vibe coding resultados comparables con pruebas justas?
 
-<span class="detalle">→ Detalle: [sección 11](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#11-qué-sabemos-y-qué-no)</span>
+<span class="detalle">→ Detalle: [sección 12](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#12-qué-sabemos-y-qué-no)</span>
 
 ---
 
