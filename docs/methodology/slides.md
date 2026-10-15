@@ -356,6 +356,27 @@ El ODD actual escribe en la sesión principal por defecto y delega solo con un m
 
 ---
 
+## Bajo el capó: modelos y esfuerzo
+
+| Grupo | Papeles | Se configura en | En el experimento |
+|---|---|---|---|
+| **ODD** | Explorer, Worker, Verify, delegación general | Gentle AI (*Configure Models*) o `.claude/agents/` | Sin definición: **heredaron Opus 5.5** y el esfuerzo de la sesión (xhigh o high) |
+| **RDD** | Cuatro lentes, refutador, validador | Gentle AI → `~/.claude/agents/review-*.md` | Definidos en **Sonnet** |
+| **Judgment Day** | Dos jueces y corrección | Gentle AI → `~/.claude/agents/jd-*.md` | Definidos en **Sonnet** |
+
+Presets: **balanced**, performance, economy, diversity y **custom** (modelo y esfuerzo por papel).
+
+**Recomendación:** escritor fuerte (Opus), exploración y verificación más baratas (Sonnet).
+
+<span class="detalle">→ Detalle: [Agentes de Gentle AI: modelos y esfuerzo](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/agentes-y-modelos.md)</span>
+
+<!--
+Fuente: historiales de 58 subagentes. La configuración custom de los papeles de ODD está pendiente de verificar:
+el primer Confirm falló sin guardar nada.
+-->
+
+---
+
 ## Bajo el capó: memoria, skills y hooks
 
 | Mecanismo | Qué es | En el experimento |

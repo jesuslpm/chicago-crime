@@ -598,6 +598,11 @@ La versión actual de ODD es más austera: el orquestador escribe directamente p
 hay un motivo concreto (unidades independientes en paralelo, un contexto que se llena o un cambio de alto
 riesgo que pide verificador).
 
+Qué modelo y qué esfuerzo usa cada uno de estos papeles, cómo se configuran (en Gentle AI y en Claude Code) y
+qué se observó en el experimento está en [Agentes de Gentle AI: modelos y esfuerzo](agentes-y-modelos.md). En
+resumen: sin una definición propia, un subagente hereda el modelo y el esfuerzo de la sesión principal, y así
+corrieron todos los subagentes del experimento, en Opus 5.5.
+
 ### 9.2 Memoria: tres capas
 
 | Capa | Dónde vive | Qué guarda | Quién la ve |
@@ -781,6 +786,7 @@ Lo que muestra el caso:
 
 - Repositorio del experimento: <https://github.com/jesuslpm/chicago-crime>
 - [Cómo se generó el PRD](generacion-del-prd.md): ejemplo paso a paso.
+- [Agentes de Gentle AI: modelos y esfuerzo](agentes-y-modelos.md): papeles, configuración y lo observado.
 - [Desarrollo en paralelo con worktrees](parallel-developing.md): guía completa, anexo de la sección 10.
 - [Contexto: PRD + vibe coding, ODD y SDD](contexto_prd_vibe_odd_sdd.md): resumen de la conversación con
   ChatGPT que originó este documento.
