@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$PWD}\"; b='\\'; d=\"${d//\"$b\"//}\"; [ -f \"$d/.git\" ] || exit 0; python -I \"$d/.claude/hooks/worktree_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
