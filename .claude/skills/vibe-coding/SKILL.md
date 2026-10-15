@@ -36,7 +36,8 @@ vibe coding instead of a lightweight SDD.
   in step 2, with `gentle-ai review mode status --cwd <repo> --json`; the Decision Gates say what each result
   means. When it is on, keep it as in ODD: after each commit run `gentle-ai review assess --cwd <repo> --agent
   claude-code --base-ref <last reviewed boundary> --committed-only --json`, and when `review_due` is true run
-  the review it returns. The first boundary is the branch point; each reviewed commit becomes the next one.
+  the review it returns. The first boundary is the branch point; each reviewed commit becomes the next one. At closing, the last
+  unreviewed slice is reviewed too (step 11).
   Follow the repository's consent rule (in this project: always granted). RDD works on the git diff and needs
   no execution document. It is the only outside check: no verifier subagents. When RDD is unavailable or off
   there is no outside review: never install or enable it, and record "no outside review" with its reason in
@@ -94,15 +95,25 @@ vibe coding instead of a lightweight SDD.
 
 ### Closing
 
-10. Run the project's full checks (see `CLAUDE.md`).
-11. Review the whole diff for duplicated logic, constants or messages, and fix what repeats existing knowledge.
-12. Check every acceptance criterion against the PRD with executed commands, and build the table criterion →
+10. Review the whole diff for duplicated logic, constants or messages, and fix what repeats existing knowledge.
+11. **Review the last slice.** When RDD is on and commits remain after the last reviewed boundary (the last
+    assessment said `under_budget`), request their review explicitly and take it to its end, so every merged
+    commit has been through RDD:
+
+    ```text
+    gentle-ai review status --cwd <repo> --contract gentle-ai.review-integration/v2 --agent claude-code \
+      --next-transition --base-ref <last reviewed boundary> --committed-only \
+      --lenses <lenses> --lenses-reason "<what changed and how>"
+    ```
+
+12. Run the project's full checks (see `CLAUDE.md`), after the last code change.
+13. Check every acceptance criterion against the PRD with executed commands, and build the table criterion →
     test or check → result.
-13. Record the end time with `date` and compare the real duration with the estimate.
-14. Write the closing report with the `closing-report` skill, including the acceptance criteria coverage
-    table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings (or why there were none), the
-    defaults chosen without asking and the pending items. Commit it.
-15. Merge only if the repository rules say so (in this project: into `main` after full verification).
+14. Record the end time with `date` and compare the real duration with the estimate.
+15. Write the closing report with the `closing-report` skill, including the acceptance criteria coverage
+    table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings (or
+    why there were none), the defaults chosen without asking and the pending items. Commit it.
+16. Merge only if the repository rules say so (in this project: into `main` after full verification).
 
 ## Output Contract
 

@@ -44,6 +44,16 @@ phases or subagents.
 
 ## Closing
 
+- **Review the last slice.** When RDD is on and commits remain after the last reviewed boundary (the last
+  assessment said `under_budget`), request their review before the final checks and the closing report, and
+  follow its transitions to the end, so every merged commit has been through RDD:
+
+  ```text
+  gentle-ai review status --cwd <repo> --contract gentle-ai.review-integration/v2 --agent claude-code \
+    --next-transition --base-ref <last reviewed boundary> --committed-only \
+    --lenses <lenses> --lenses-reason "<what changed and how>"
+  ```
+
 - Write the closing report with the `closing-report` skill and save it in the repository next to the
   execution document (for ODD, `odd/tasks/<feature>-report.md`).
 - Merge the feature branch into `main` after full verification. Do not push until the user asks.
