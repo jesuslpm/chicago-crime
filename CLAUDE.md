@@ -23,9 +23,11 @@ Rust workspace that turns the Chicago crime CSV into SSTables (`crime-generator`
 
 ## Vibe coding from a PRD
 
-- Every acceptance criterion of the PRD ends up covered by a test.
-- A product decision the PRD does not cover is never invented: record it and report it at the close.
-- The closing report includes a table mapping each acceptance criterion to its test and its result.
+When the user asks for vibe coding, follow the `vibe-coding` skill. It sets the bookends: a map of the
+existing code, questions and estimate before the first change; DRY while working (search before writing,
+refactor after each green step); a test per acceptance criterion, verification against the PRD and a closing
+report with the criterion → test → result table and the reuse outcome at the end. No execution document,
+phases or subagents.
 
 ## During the run
 

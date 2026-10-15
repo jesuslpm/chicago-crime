@@ -20,6 +20,12 @@ Product source: <link to the PRD>. Execution document: <link, or "none">.
 |---|---|---|
 | <AC id> | <test name or command> | <PASS / FAIL / not run, with the figure when there is one> |
 
+## Reuse
+
+<Required for vibe coding; optional otherwise. What the change reused, extended or extracted from existing
+code, and what had to be written new, with file references. One line for any similar-looking code left
+separate on purpose, and why.>
+
 ## Time
 
 - Estimate: <range given before starting>. Real start: <date>. End: <date>.
