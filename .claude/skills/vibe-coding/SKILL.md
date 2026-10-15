@@ -89,8 +89,8 @@ vibe coding instead of a lightweight SDD.
 8. After each working step, run the focused tests and commit (Conventional Commit). A commit is the checkpoint
    to return to if the next step goes wrong. When RDD is on, run its assessment (Hard Rules) and, when a
    review is due, take it to its end before the next step.
-9. Keep a running list of defaults chosen, gaps found, reuse decisions and review findings; it goes into the
-   closing report.
+9. Keep a running list of defaults chosen, gaps found, reuse decisions and, for each RDD review when it ends,
+   its commits, lenses, result, findings and lineage; it goes into the closing report.
 
 ### Closing
 

@@ -4,7 +4,7 @@ description: "Trigger: close a feature, closing report, informe de cierre, finis
 license: MIT
 metadata:
   author: inercya
-  version: "1.0"
+  version: "1.1"
 ---
 
 ## Activation Contract
@@ -36,7 +36,10 @@ Link the report from the execution document's closing section and the execution 
 
 ## Execution Steps
 
-1. Collect the evidence: final test and check results, acceptance results, review outcomes, commits.
+1. Collect the evidence: final test and check results, acceptance results, review outcomes, commits. Build the
+   RDD reviews table from the record kept during the run (execution document log, or the running list in
+   vibe coding); Gentle AI keeps no findings after a review is acknowledged. Mark a review with no record as
+   "not recorded" instead of reconstructing it.
 2. Measure time: start time recorded at the beginning, end time from `date`; compute the active duration and
    list the waits apart.
 3. Generate the change table from the branch point (or the commit before the first change):

@@ -36,6 +36,9 @@ phases or subagents.
 - Work on a feature branch with one local commit per task (Conventional Commits, no AI attribution).
 - Write only measured times in logs: `date`, commit times or script reports, never estimates.
 - If the run must wait for the user, log when the wait starts and ends; waits are not active time.
+- Record each RDD review when it ends: commits, lenses, result, findings with severity and resolution, and
+  lineage. Write it in the execution document's log (in vibe coding, the running list). Gentle AI keeps none
+  of it after the review is acknowledged, and the closing report's RDD reviews table is built from this record.
 - Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
   `cargo test --workspace`.
 

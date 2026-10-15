@@ -9,7 +9,8 @@ Product source: <link to the PRD>. Execution document: <link, or "none">.
 
 - **Specification:** <which specs or acceptance criteria were delivered; tests passing, with the count>.
 - **Acceptance:** <acceptance run on real data, with its figures; or "not run" and why>.
-- **Reviews and verification:** <independent verifiers, automated reviews and their outcome>.
+- **Reviews and verification:** <independent verifiers, automated reviews and their outcome; RDD details in
+  the RDD reviews section>.
 - **Findings fixed along the way:** <defects found by tests, verifiers or reviews, and how they were fixed>.
 
 ## Acceptance criteria coverage
@@ -19,6 +20,17 @@ Product source: <link to the PRD>. Execution document: <link, or "none">.
 | Criterion | Test or check | Result |
 |---|---|---|
 | <AC id> | <test name or command> | <PASS / FAIL / not run, with the figure when there is one> |
+
+## RDD reviews
+
+<One row per RDD review, from the record kept during the run: Gentle AI keeps no findings once a review is
+acknowledged. Assessments that started no review (passive, under budget) go in one line below the table. If
+RDD was unavailable or off, write "No outside review" and the reason instead of the table. RDD reviews the diff
+through its lenses; it does not check the PRD, which is the job of the acceptance criteria coverage above.>
+
+| Commits | Lenses | Result | Findings and resolution | Lineage |
+|---|---|---|---|---|
+| <base..head, short SHAs> | <risk, resilience, readability, reliability> | <approved / corrected, then approved / stopped: reason code> | <each finding: severity, one line, how it was resolved; or "none"> | <review-…> |
 
 ## Reuse
 
