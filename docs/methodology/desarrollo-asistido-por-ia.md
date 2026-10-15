@@ -330,10 +330,9 @@ En este repositorio basta con «Implementa `<ruta del PRD>` usando vibe coding.�
 [`vibe-coding`](../../.claude/skills/vibe-coding/SKILL.md) carga el resto de las instrucciones. El prompt
 completo sirve para proyectos que no tienen el skill. El skill fija **los bordes** del trabajo: un mapa del
 código existente, preguntas y estimación antes del primer cambio; código DRY, tests por criterio, verificación
-contra el PRD e informe al final. Además mantiene la revisión automática de RDD, igual que en ODD, así que en
-este repositorio el enfoque completo es **PRD + vibe coding + RDD**. La revisión la lanza Gentle AI sobre el
-diff de git; el skill no añade fases, documento de ejecución ni subagentes, así que el vibe coding sigue siendo
-conversacional. Y la comparación entre enfoques es más justa: los tres cumplen las mismas tres reglas sin
+contra el PRD e informe al final. Si RDD está activo, mantiene además su revisión automática, igual que en
+ODD; la lanza Gentle AI sobre el diff de git. El skill no añade fases, documento de ejecución ni subagentes,
+así que el vibe coding sigue siendo conversacional. Y la comparación entre enfoques es más justa: los tres cumplen las mismas tres reglas sin
 depender de que el prompt se acuerde de pedirlas.
 
 ---
@@ -363,10 +362,11 @@ formales. El PRD hace de ancla y la conversación hace de plan.
 4. **Iterar criterio a criterio.** Cada paso deja su test y un commit que sirve de punto de control. Antes de
    pasar al siguiente, se refactoriza para quitar la duplicación introducida, con los tests en verde. Si un
    paso sale mal, se vuelve al commit anterior en lugar de acumular parches.
-5. **Revisión automática con RDD.** Tras cada commit, Gentle AI evalúa el riesgo del diff, igual que en ODD:
-   un commit de alto riesgo, o un tramo de unas 400 líneas, recibe una revisión externa con las lentes
-   pertinentes, y sus hallazgos se resuelven antes del paso siguiente. No necesita documento de ejecución:
-   trabaja sobre el diff de git.
+5. **Revisión automática con RDD.** Si RDD está activo, tras cada commit Gentle AI evalúa el riesgo del diff,
+   igual que en ODD: un commit de alto riesgo, o un tramo de unas 400 líneas, recibe una revisión externa con
+   las lentes pertinentes, y sus hallazgos se resuelven antes del paso siguiente. No necesita documento de
+   ejecución: trabaja sobre el diff de git. Si Gentle AI no está instalado o RDD está desactivado, no hay
+   revisión externa: el agente lo avisa al empezar y el informe de cierre lo deja anotado.
 6. **Corregir conversando.** El humano señala errores y pide ajustes. La IA no decide el producto: lo que el
    PRD no cubre se anota y se reporta, no se inventa.
 7. **Verificar al final.** La IA ejecuta los tests, revisa el diff completo en busca de duplicación y comprueba

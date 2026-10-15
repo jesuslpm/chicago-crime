@@ -1,6 +1,6 @@
 ---
 name: vibe-coding
-description: "Trigger: vibe coding, usando vibe coding, con vibe coding, implement with vibe coding. Implement a PRD conversationally inside fixed bookends: map the existing code and ask every question before the first change, keep the code DRY while working, and finish with a test per acceptance criterion, verification against the PRD, the RDD review and a closing report. No execution document, phases or subagents."
+description: "Trigger: vibe coding, usando vibe coding, con vibe coding, implement with vibe coding. Implement a PRD conversationally inside fixed bookends: map the existing code and ask every question before the first change, keep the code DRY while working, and finish with a test per acceptance criterion, verification against the PRD, the RDD review when it is on, and a closing report. No execution document, phases or subagents."
 license: MIT
 metadata:
   author: inercya
@@ -37,7 +37,9 @@ vibe coding instead of a lightweight SDD.
   reviewed boundary> --committed-only --json`, and when `review_due` is true run the review it returns. The
   first boundary is the branch point; each reviewed commit becomes the next one. Follow the repository's
   consent rule (in this project: always granted). RDD works on the git diff and needs no execution document.
-  It is the only outside check: no verifier subagents.
+  It is the only outside check: no verifier subagents. If `gentle-ai` is not installed or RDD is off, there is
+  no outside review: say so in one line with the map (step 2), do not install or enable it, and record "no
+  outside review" with its reason in the closing report.
 - **Every acceptance criterion gets a test.** When a criterion cannot be automated, record the exact manual
   check command and its output as its evidence.
 - **Measured times only.** Start and end come from `date`; never write an estimate as if it were a measurement.
@@ -65,7 +67,8 @@ vibe coding instead of a lightweight SDD.
 2. **Map the starting state.** For each criterion, search the code for its domain terms, field names, messages
    and similar functions, types or validations. Classify each criterion as *already done*, *partly done*,
    *similar code to reuse* or *new*, with file:line references. Share the map in the conversation in a few
-   lines; it is not written to a file. Run the existing tests once to know the baseline.
+   lines; it is not written to a file. Run the existing tests once to know the baseline, and check whether RDD
+   is available (`gentle-ai review mode status`).
 3. Ask every open product question in a single message and wait for the answers. If there are none, say so
    in one line of the step 4 message.
 4. Send a message with only a time range for the whole run, calibrated with earlier closing reports when they
@@ -79,8 +82,8 @@ vibe coding instead of a lightweight SDD.
    reused. Write its test first when practical, see it fail, implement, and see it pass.
 7. **Refactor before moving on:** remove any duplication the step introduced or exposed, with the tests green.
 8. After each working step, run the focused tests and commit (Conventional Commit). A commit is the checkpoint
-   to return to if the next step goes wrong. Then run the RDD assessment (Hard Rules) and, when a review is
-   due, take it to its end before the next step.
+   to return to if the next step goes wrong. When RDD is on, run its assessment (Hard Rules) and, when a
+   review is due, take it to its end before the next step.
 9. Keep a running list of defaults chosen, gaps found, reuse decisions and review findings; it goes into the
    closing report.
 
@@ -92,7 +95,7 @@ vibe coding instead of a lightweight SDD.
     test or check → result.
 13. Record the end time with `date` and compare the real duration with the estimate.
 14. Write the closing report with the `closing-report` skill, including the acceptance criteria coverage
-    table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings, the
+    table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings (or why there were none), the
     defaults chosen without asking and the pending items. Commit it.
 15. Merge only if the repository rules say so (in this project: into `main` after full verification).
 
