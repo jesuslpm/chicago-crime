@@ -764,6 +764,20 @@ try {
         Assert-Refused $r "No existe '$r2': ni copia, ni carpeta, ni rama. No se ha eliminado nada." $before $F3 -Code 0
     }
 
+    Test-Case 'remove: a folder without .git that is not what a removal left is never deleted' {
+        $name = "$P-foreign"
+        $folder = Get-Folder -Fixture $F3 -Name $name
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $folder 'notes.txt'), "mine`n")
+        try {
+            $before = Get-State -Fixture $F3
+            $r = Remove-Copy -Fixture $F3 -Name $name
+            Assert-Refused $r "La carpeta '$folder' no es una copia de este repositorio. No se ha eliminado nada." $before $F3
+            Assert-True (Test-Path -LiteralPath (Join-Path $folder 'notes.txt')) 'a foreign file was deleted'
+        }
+        finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     # =========================== Rehearsal ===========================
     $F4 = New-Fixture -Label 'rehearsal'
     $prd = "$P-prd"
@@ -849,6 +863,21 @@ try {
         Assert-Exit $r 0
         Assert-Line $r "No queda nada del ensayo 'ensayo'. No se ha cambiado nada."
         Assert-Unchanged -Before $before -Fixture $F4
+    }
+
+    Test-Case 'rehearsal discard: a name reused on another base is skipped and kept' {
+        $reuse = "$P-reuse"
+        Assert-Exit (Invoke-Script -Fixture $F4 -Script 'New-RehearsalBase.ps1' -Arguments @('-Base', 'ensayo2')) 0
+        Assert-Exit (New-Copy -Fixture $F4 -Name $reuse -Base 'ensayo2') 0
+        Assert-Exit (Remove-Copy -Fixture $F4 -Name $reuse) 0
+        Assert-Exit (New-Copy -Fixture $F4 -Name $reuse) 0
+        $r = Remove-RehearsalOf -Fixture $F4 -Base 'ensayo2'
+        Assert-Exit $r 0
+        Assert-Line $r "Se omite '$reuse': su rama feat/$reuse tiene ahora la base 'main'."
+        Assert-True (Test-Ref -Path $F4.Main -Ref "refs/heads/feat/$reuse") 'the reused branch was deleted'
+        Assert-True (Test-Path -LiteralPath (Get-Folder -Fixture $F4 -Name $reuse)) 'the reused copy was deleted'
+        Assert-True (-not (Test-Ref -Path $F4.Main -Ref 'refs/heads/ensayo2')) 'the rehearsal base is left'
+        Assert-Exit (Remove-Copy -Fixture $F4 -Name $reuse) 0
     }
 }
 catch {

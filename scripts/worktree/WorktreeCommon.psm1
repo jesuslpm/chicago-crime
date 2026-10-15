@@ -490,11 +490,18 @@ function Remove-FolderTree {
 function Test-OwnLeftover {
     <#
     True when a folder that git no longer registers may be deleted as what is left of one of this repository's
-    copies: it has no .git, or its .git file points into this repository's worktrees folder.
+    copies: its .git file points into this repository's worktrees folder, or it has no .git and the copy's base is
+    still recorded (-RecordedBase). A removal deletes the branch, and with it the recorded base, only after the
+    folder, so a recorded base proves an unfinished removal; a folder without .git and without it is someone
+    else's and is never deleted.
     #>
-    param([Parameter(Mandatory = $true)][string]$Folder, [Parameter(Mandatory = $true)][string]$GitCommonDir)
+    param(
+        [Parameter(Mandatory = $true)][string]$Folder,
+        [Parameter(Mandatory = $true)][string]$GitCommonDir,
+        [string]$RecordedBase
+    )
     $dotGit = Join-Path $Folder '.git'
-    if (-not (Test-Path -LiteralPath $dotGit)) { return $true }
+    if (-not (Test-Path -LiteralPath $dotGit)) { return [bool]$RecordedBase }
     if (Test-Path -LiteralPath $dotGit -PathType Container) { return $false }
     $line = @(Get-Content -LiteralPath $dotGit -TotalCount 1)
     if ($line.Count -eq 0 -or $line[0] -notmatch '^gitdir:\s*(.+)$') { return $false }
@@ -511,7 +518,8 @@ function Remove-CopyFolder {
         [Parameter(Mandatory = $true)][string]$MainRoot,
         [Parameter(Mandatory = $true)][string]$GitCommonDir,
         [Parameter(Mandatory = $true)][string]$Folder,
-        [bool]$Registered
+        [bool]$Registered,
+        [string]$RecordedBase
     )
 
     $blocked = Remove-CsvLink -MainRoot $MainRoot -CopyFolder $Folder
@@ -528,7 +536,8 @@ function Remove-CopyFolder {
     }
 
     if (Test-Path -LiteralPath $Folder) {
-        if (-not (Test-OwnLeftover -Folder $Folder -GitCommonDir $GitCommonDir)) {
+        # A copy git just unregistered here was clean, so what is left of it is this removal's own.
+        if (-not $Registered -and -not (Test-OwnLeftover -Folder $Folder -GitCommonDir $GitCommonDir -RecordedBase $RecordedBase)) {
             return [pscustomobject]@{ InUse = $null; Step = 'eliminar la carpeta'; Cause = "'$Folder' no es una copia de este repositorio" }
         }
         $blocked = Remove-FolderTree -Path $Folder

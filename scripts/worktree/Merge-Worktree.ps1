@@ -78,7 +78,15 @@ if ($holder) {
 if ($holder) {
     $step = "avanzar '$base' en '$holder'"
     $result = Invoke-Git -Path $holder -Arguments @('merge', '--ff-only', '-q', $branch)
-    if ($result.ExitCode -ne 0) { Exit-Worktree (Get-WorktreeMessage StepUnchanged $step, "git merge --ff-only: $(Get-NativeText $result)") }
+    if ($result.ExitCode -ne 0) {
+        # The base may have moved in its holder since the checks above: then it is exit 3, as below.
+        $now = Get-GitLine -Path $mainRoot -Arguments @('rev-parse', "refs/heads/$base")
+        if ($now -and (Invoke-Git -Path $copy -Arguments @('merge-base', '--is-ancestor', $now, $headSha)).ExitCode -ne 0) {
+            $missing = Get-GitLine -Path $copy -Arguments @('rev-list', '--count', "$headSha..$now")
+            Exit-Worktree (Get-WorktreeMessage BaseAhead $base, $missing) -Code 3
+        }
+        Exit-Worktree (Get-WorktreeMessage StepUnchanged $step, "git merge --ff-only: $(Get-NativeText $result)")
+    }
 }
 else {
     $step = "avanzar '$base'"

@@ -185,3 +185,13 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
   existed; A7 the creation summary's next step is generic (the first prompt depends on the run: PRD, vibe or
   ODD, see the prompts doc); A8 `worktreebase.main.created` keeps growing; A9 name-based rehearsal cleanup;
   A11 `run-acceptance.ps1` output encoding when redirected (baseline, not this change).
+- **L9** Fixes committed `22e2591`. Review of slice `d6f55e0..22e2591` (2,385 lines, escalated high, consent
+  granted, four lenses risk + resilience + readability + reliability): approved, 5 warnings + 4 suggestions, no
+  blockers; acknowledged, authority burned; reviewed boundary → `22e2591`. Follow-ups fixed (scripts RED: the
+  foreign-folder test failed, its `notes.txt` was deleted → GREEN): R1-001 a folder without `.git` is deleted as
+  a removal's leftover only while the copy's base is still recorded (the branch, and its config, go after the
+  folder), so a folder someone else made is refused with the foreign-folder message; R3-merge-holder-race a
+  fast-forward that fails because the base moved in its holder now exits 3; R4 the rehearsal discard checks
+  that its config section is really gone; R3-rehearsal-skip-untested the reused-name skip now has a test.
+  Accepted: R2-dup-copy-plan (the per-copy checks are duplicated in Remove-Worktree and Remove-Rehearsal;
+  refactor left for later, both paths are tested). No test forces the holder race or a config lock (races).

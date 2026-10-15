@@ -106,7 +106,9 @@ if (-not $registered -and -not $folderExists -and -not $branchExists -and -not $
     # Already removed (or never existed): repeating a removal is harmless.
     Exit-Worktree (Get-WorktreeMessage NothingToRemove $Name) -Code 0
 }
-if (-not $registered -and $folderExists -and -not (Test-OwnLeftover -Folder $folder -GitCommonDir $context.GitCommonDir)) {
+$recordedBase = Get-RecordedBase -MainRoot $mainRoot -Name $Name
+if (-not $registered -and $folderExists -and
+    -not (Test-OwnLeftover -Folder $folder -GitCommonDir $context.GitCommonDir -RecordedBase $recordedBase)) {
     Exit-Worktree (Get-WorktreeMessage ForeignFolder $folder)
 }
 
@@ -152,7 +154,8 @@ try {
 
     if ($registered -or $folderExists) {
         Write-Host "[worktree] eliminar la copia '$folder'..." -ForegroundColor Cyan
-        $failure = Remove-CopyFolder -MainRoot $mainRoot -GitCommonDir $context.GitCommonDir -Folder $folder -Registered ([bool]$registered)
+        $failure = Remove-CopyFolder -MainRoot $mainRoot -GitCommonDir $context.GitCommonDir -Folder $folder -Registered ([bool]$registered) `
+            -RecordedBase $recordedBase
         if ($failure) {
             if ($failure.InUse) { Exit-Worktree (Get-WorktreeMessage InUse $failure.InUse) }
             Stop-Removal $failure.Step $failure.Cause

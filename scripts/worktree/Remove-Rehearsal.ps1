@@ -94,7 +94,8 @@ foreach ($name in $names) {
         Select-Object -First 1
     if ($registered) { $folder = $registered.Path }
     $folderExists = Test-Path -LiteralPath $folder
-    if (-not $registered -and $folderExists -and -not (Test-OwnLeftover -Folder $folder -GitCommonDir $context.GitCommonDir)) {
+    if (-not $registered -and $folderExists -and
+        -not (Test-OwnLeftover -Folder $folder -GitCommonDir $context.GitCommonDir -RecordedBase $recorded)) {
         Exit-Worktree (Get-WorktreeMessage ForeignFolder $folder)
     }
     if ($registered -and $folderExists -and (Test-Path -LiteralPath (Join-Path $folder '.git'))) {
@@ -108,6 +109,7 @@ foreach ($name in $names) {
         BranchExists = $branchExists
         Folder       = $folder
         Registered   = [bool]$registered
+        RecordedBase = $recorded
         FolderExists = $folderExists
         Project      = Get-EngramProjectName -Name $name
         Memory       = @(Get-ClaudeMemoryFolders -ClaudeProjectsDir $ClaudeProjectsDir -CopyFolder $folder)
@@ -135,7 +137,8 @@ try {
     foreach ($item in $plan) {
         if ($item.Registered -or $item.FolderExists) {
             Write-Host "[worktree] eliminar la copia '$($item.Folder)'..." -ForegroundColor Cyan
-            $failure = Remove-CopyFolder -MainRoot $mainRoot -GitCommonDir $context.GitCommonDir -Folder $item.Folder -Registered $item.Registered
+            $failure = Remove-CopyFolder -MainRoot $mainRoot -GitCommonDir $context.GitCommonDir -Folder $item.Folder -Registered $item.Registered `
+                -RecordedBase $item.RecordedBase
             if ($failure) {
                 if ($failure.InUse) { Exit-Worktree (Get-WorktreeMessage InUse $failure.InUse) }
                 Stop-Discard $failure.Step $failure.Cause
@@ -170,6 +173,11 @@ try {
         if ($result.ExitCode -ne 0) { Stop-Discard 'eliminar la base' "git branch -D ${Base}: $(Get-NativeText $result)" }
     }
     $null = Invoke-Git -Path $mainRoot -Arguments @('config', '--remove-section', "worktreebase.$Base")
+    # The section may already be gone (exit code 128), so success is judged by what is left, not by the exit code.
+    $left = Invoke-Git -Path $mainRoot -Arguments @('config', '--get-regexp', "^worktreebase\.$([regex]::Escape($Base))\.")
+    if ($left.ExitCode -eq 0 -and @($left.Out | Where-Object { $_ }).Count -gt 0) {
+        Stop-Discard 'limpiar la configuración del ensayo' "git config --remove-section worktreebase.${Base}: no se pudo quitar"
+    }
 }
 finally {
     Set-MainCsvReadOnly -MainRoot $mainRoot
