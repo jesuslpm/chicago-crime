@@ -177,7 +177,7 @@ trabajar con agentes.
    Ejemplos: [informe del consultor](../../odd/tasks/crime-query-report.md) e
    [informe del soporte Linux](../../odd/tasks/soporte-linux-report.md).
 
-En el repositorio, estas reglas viven en dos piezas:
+En el repositorio, estas reglas viven en tres piezas:
 
 - **[`CLAUDE.md`](../../CLAUDE.md)**, las instrucciones del proyecto que Claude Code carga en cada sesión. Es
   deliberadamente corto: solo lleva las reglas que siempre aplican.
@@ -185,6 +185,9 @@ En el repositorio, estas reglas viven en dos piezas:
   Tiene la [plantilla del informe](../../.claude/skills/closing-report/assets/closing-report-template.md) y un
   [script](../../.claude/skills/closing-report/scripts/numstat_by_area.py) que calcula las líneas por área a
   partir de `git`, para que el agente no tenga que sumarlas a mano.
+- **El skill [`vibe-coding`](../../.claude/skills/vibe-coding/SKILL.md)**, que aplica las tres reglas cuando
+  se pide vibe coding. ODD y SDD ya traen su propio proceso; vibe coding no, y sin el skill dependería de que el
+  prompt las pidiera.
 
 Así las reglas dejan de depender de la memoria personal de quien trabaja: cualquiera que clone el repositorio
 las hereda. `CLAUDE.md` solo lo lee Claude Code; otros agentes, como Codex u OpenCode, leen `AGENTS.md`.
@@ -307,6 +310,7 @@ la comparación entre enfoques deja de ser justa.
 
 ```text
 Implementa lo que pide <ruta del PRD> usando vibe coding.
+Antes de escribir, explora el código existente y reutiliza lo que ya haya: mantén el código DRY.
 Escribe un test por cada criterio de aceptación y, al terminar, verifica cada criterio contra el PRD.
 Si aparece una decisión de producto que el PRD no cubre, no la inventes: anótala y repórtala.
 Antes de empezar, dame una estimación de tiempo; trabaja sin interrupciones; al cerrar, guarda un informe
@@ -314,8 +318,16 @@ de cierre en el repositorio con qué test cubre cada criterio y si pasó.
 ```
 
 Hay que nombrar el enfoque de forma explícita. Si el proyecto usa ODD por defecto, como este, un prompt que
-no diga "vibe coding" termina ejecutándose con ODD. Vibe coding sigue siendo conversacional: el prompt solo fija el mínimo de evidencia, sin agregarle fases. Un
-skill con pasos lo convertiría en un mini-SDD, y se perdería el extremo liviano de la comparación.
+no diga "vibe coding" termina ejecutándose con ODD.
+
+En este repositorio basta con «Implementa `<ruta del PRD>` usando vibe coding.», porque el skill
+[`vibe-coding`](../../.claude/skills/vibe-coding/SKILL.md) carga el resto de las instrucciones. El prompt
+completo sirve para proyectos que no tienen el skill. El skill fija **los bordes** del trabajo: un mapa del código
+existente, preguntas y estimación antes del primer cambio; código DRY, tests por criterio, verificación contra
+el PRD e informe al final. No le
+añade fases, documento de ejecución ni subagentes, así que el vibe coding sigue siendo conversacional. Además,
+la comparación entre enfoques es más justa: los tres cumplen las mismas tres reglas sin depender de que el
+prompt se acuerde de pedirlas.
 
 ---
 
@@ -333,17 +345,26 @@ formales. El PRD hace de ancla y la conversación hace de plan.
 ### 6.2 El ciclo, partiendo de un PRD
 
 1. **Arrancar con el prompt de la sección 5.4.** Le da a la IA el PRD, le pide la estimación de tiempo y le
-   fija el mínimo de evidencia: un test por criterio y una verificación final contra el PRD.
-2. **Pedir un primer corte pequeño.** Por ejemplo, un flujo o un criterio de aceptación, de punta a punta.
-   Se ejecuta y se prueba enseguida.
-3. **Iterar de a un criterio.** Cada paso deja su test y un commit que sirve de punto de control. Si un paso
-   sale mal, se vuelve al commit anterior en lugar de acumular parches.
-4. **Corregir conversando.** El humano señala errores y pide ajustes. La IA no decide el producto: lo que el
+   fija el mínimo de evidencia: un test por criterio y una verificación final contra el PRD. En este
+   repositorio lo hace el skill `vibe-coding`.
+2. **Explorar el estado de partida antes de escribir.** Para cada criterio, la IA busca en el código lo que ya
+   existe: funciones, tipos, validaciones o mensajes parecidos. Clasifica cada criterio como *ya hecho*, *a
+   medias*, *con código parecido para reutilizar* o *nuevo*, y comparte ese mapa en unas líneas. Sin este paso,
+   el vibe coding escribe de cero lo que ya existía en otra carpeta, y el código acaba WET.
+3. **Pedir un primer corte pequeño.** Por ejemplo, un flujo o un criterio de aceptación, de punta a punta,
+   empezando por lo que el mapa dice que se puede reutilizar. Se ejecuta y se prueba enseguida.
+4. **Iterar criterio a criterio.** Cada paso deja su test y un commit que sirve de punto de control. Antes de
+   pasar al siguiente, se refactoriza para quitar la duplicación introducida, con los tests en verde. Si un
+   paso sale mal, se vuelve al commit anterior en lugar de acumular parches.
+5. **Corregir conversando.** El humano señala errores y pide ajustes. La IA no decide el producto: lo que el
    PRD no cubre se anota y se reporta, no se inventa.
-5. **Verificar al final.** La IA ejecuta los tests y comprueba cada criterio de aceptación contra el PRD, con
-   comandos reales y sus resultados, no con un "ya funciona".
-6. **Cerrar con el informe.** Con el skill `closing-report`, incluida la tabla que relaciona cada criterio con
-   su test y su resultado.
+6. **Verificar al final.** La IA ejecuta los tests, revisa el diff completo en busca de duplicación y comprueba
+   cada criterio de aceptación contra el PRD, con comandos reales y sus resultados, no con un "ya funciona".
+7. **Cerrar con el informe.** Con el skill `closing-report`, incluida la tabla que relaciona cada criterio con
+   su test y su resultado, y lo que se reutilizó, se extendió o se extrajo.
+
+DRY significa que **cada regla vive en un solo sitio**, no que haya que unificar todo lo que se parece. Dos
+funciones parecidas que cambian por motivos distintos deben seguir separadas; fusionarlas crea acoplamiento.
 
 ### 6.3 Qué deja escrito
 
@@ -361,6 +382,7 @@ del proceso.
 | Código aceptado sin entender | Pasan los tests de hoy, pero nadie sabe por qué funciona | Revisar cada diff antes de aceptarlo |
 | Verificación optimista | La IA afirma que funciona sin haberlo ejecutado | Exigir los comandos ejecutados y su salida |
 | Alcance que crece | Se agregan cosas "ya que estamos" | El "Fuera de alcance" del PRD es el límite |
+| Código duplicado (WET) | La IA reescribe lo que ya existía en otra parte | Mapa del estado de partida antes de escribir, buscar antes de crear y refactorizar tras cada verde |
 
 ### 6.5 Cuándo conviene otro enfoque
 
@@ -608,6 +630,7 @@ y por eso tiene que ser corto.
 |---|---|---|
 | `prd` | Propia del proyecto | Escribir el PRD con sus reglas y su plantilla |
 | `closing-report` | Propia del proyecto | Escribir el informe de cierre, con plantilla y un script con tests |
+| `vibe-coding` | Propia del proyecto | Fijar los bordes del vibe coding: mapa del código existente, preguntas y estimación antes; DRY, tests por criterio, verificación e informe después |
 | `worktree` | Propia, de otro proyecto | Crear, fusionar y eliminar worktrees (sección 10) |
 | `work-unit-commits`, `chained-pr` | Gentle AI | Partir el trabajo en commits y PRs revisables |
 | `judgment-day`, `cognitive-doc-design` | Gentle AI | Revisión adversarial doble; documentos fáciles de leer |

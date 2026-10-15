@@ -25,6 +25,8 @@ style: |
   }
   strong { color: #312e81; }
   a { color: #0e7490; text-decoration: none; border-bottom: 1px dotted #0e7490; }
+  a code { color: #0e7490; background: #e0f7fa; }
+  a strong { color: inherit; }
   li::marker { color: #06b6d4; font-weight: 800; }
   table { border-collapse: collapse; font-size: 22px; box-shadow: 0 4px 14px rgba(49, 46, 129, 0.12); }
   th { background: #312e81; color: #ffffff; border: none; padding: 10px 16px; }
@@ -97,7 +99,7 @@ evaluar.
 
 - CSV de delitos de Chicago: **8.656.904 registros, 2,4 GB**
 - Objetivo: convertirlo en SSTables consultables, en **Rust**, un lenguaje que el autor no conocía
-- Tres cambios, cada uno con su PRD: **generador**, **consultor**, **soporte Linux**
+- Tres cambios, cada uno con su PRD: [**generador**](https://github.com/jesuslpm/chicago-crime/blob/main/docs/prd/chicago-crime/generador.prd.md), [**consultor**](https://github.com/jesuslpm/chicago-crime/blob/main/docs/prd/chicago-crime/consultor.prd.md), [**soporte Linux**](https://github.com/jesuslpm/chicago-crime/blob/main/docs/prd/chicago-crime/soporte-linux.prd.md)
 
 | | Tests | Aceptación | Dato destacado |
 |---|---|---|---|
@@ -115,7 +117,7 @@ evaluar.
 - **Qué** hace el producto y **por qué**, en lenguaje de negocio
 - **No** lleva clases, endpoints, rutas ni números de línea: eso es el *cómo*
 - No es un prompt desechable: es **documentación duradera**, versionada en el repositorio
-- **Jerárquico**: un PRD padre por aplicación y un PRD hijo por cambio
+- **Jerárquico**: un [PRD padre](https://github.com/jesuslpm/chicago-crime/blob/main/docs/prd/chicago-crime/chicago-crime.prd.md) por aplicación y un [PRD hijo](https://github.com/jesuslpm/chicago-crime/tree/main/docs/prd/chicago-crime) por cambio
 - Si un hijo contradice al padre, el padre se **anota**, no se reescribe
 
 <span class="detalle">→ Detalle: [sección 2](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#2-el-prd)</span>
@@ -209,10 +211,10 @@ Bugs, refactors y tooling sin cambio de producto: **no necesitan PRD**.
 ## Tres reglas antes de ejecutar
 
 1. **Estimación de tiempo** antes de empezar, con la hora real de inicio
-   - Consultor: 4–7 h estimadas, unas 3 h 15 min reales
+   - [Consultor](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-query-report.md): 4–7 h estimadas, unas 3 h 15 min reales
 2. **Sin interrupciones**: todas las preguntas al principio; después, valores por defecto documentados
    - Una sola pregunta a mitad de proceso puede dejarlo parado horas
-3. **Informe de cierre en Markdown, guardado en el repositorio**
+3. **[Informe de cierre](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-query-report.md) en Markdown, guardado en el repositorio**
    - Resultado, tiempo real frente al estimado, líneas por área, resumen y pendientes
 
 <span class="detalle">→ Detalle: [sección 3](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#3-tres-reglas-antes-de-ejecutar)</span>
@@ -223,10 +225,11 @@ Bugs, refactors y tooling sin cambio de producto: **no necesitan PRD**.
 
 ## Las reglas, versionadas en el repositorio
 
-- **`CLAUDE.md`**: instrucciones del proyecto que Claude Code carga en cada sesión. Corto, solo lo que siempre aplica
-- **Skill `closing-report`**: se carga solo al cerrar
-  - plantilla del informe
-  - script que calcula las líneas por área desde `git`
+- **[`CLAUDE.md`](https://github.com/jesuslpm/chicago-crime/blob/main/CLAUDE.md)**: instrucciones del proyecto que Claude Code carga en cada sesión. Corto, solo lo que siempre aplica
+- **Skill [`closing-report`](https://github.com/jesuslpm/chicago-crime/tree/main/.claude/skills/closing-report)**: se carga solo al cerrar
+  - [plantilla del informe](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/closing-report/assets/closing-report-template.md)
+  - [script](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/closing-report/scripts/numstat_by_area.py) que calcula las líneas por área desde `git`
+- **Skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md)**: aplica las tres reglas cuando se pide vibe coding
 - Así no dependen de la memoria personal de nadie: **las hereda quien clona el repositorio**
 
 Otros agentes, como Codex u OpenCode, leen `AGENTS.md`.
@@ -256,13 +259,13 @@ En los tres, **el agente no altera en silencio un requisito**.
 
 ## Prompts para empezar
 
-**PRD:** *"Vamos a escribir el PRD de `<cambio>` con el skill prd… Se admiten todo tipo de sugerencias y preguntas… No implementes nada."*
+**PRD:** *"Vamos a escribir el PRD de `<cambio>` con el skill [prd](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/prd/SKILL.md)… Se admiten todo tipo de sugerencias y preguntas… No implementes nada."*
 
 **ODD:** *"Implementa `<PRD>` con ODD. Antes de empezar, dame una estimación de tiempo… No me interrumpas… Verifica siempre… guarda un informe de cierre."*
 
 **SDD:** *"Ejecuta el flujo SDD completo a partir de `<PRD>` con `<OpenSpec | Spec Kit>`, hasta la verificación incluida…"*
 
-**Vibe coding:** *"Implementa lo que pide `<PRD>` **usando vibe coding**. Escribe un test por cada criterio…"*
+**Vibe coding:** *"Implementa lo que pide `<PRD>` **usando vibe coding**."* El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) pone el resto: mapa del código existente, DRY, tests por criterio, verificación e informe.
 
 <span class="detalle">→ Detalle: [sección 5](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#5-prompts-para-empezar)</span>
 
@@ -279,6 +282,7 @@ SDD necesita la herramienta instalada.
 - Implementación conversacional: el PRD es el ancla y la conversación es el plan
 - Un criterio por vez, con su test y un commit de punto de control
 - No hay documento de ejecución: **los commits son la memoria**
+- El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) fija **los bordes**, no el proceso: explora antes de escribir y exige DRY
 
 **SDD**
 
@@ -286,7 +290,7 @@ SDD necesita la herramienta instalada.
 propose → design → spec → apply → verify → archive
 ```
 
-- Herramientas: **OpenSpec** (`/opsx:*`; `verify` solo en el perfil ampliado) y **Spec Kit** (`/speckit-*`)
+- Herramientas: [**OpenSpec**](https://github.com/Fission-AI/OpenSpec) (`/opsx:*`; `verify` solo en el perfil ampliado) y [**Spec Kit**](https://github.com/github/spec-kit) (`/speckit-*`)
 
 <span class="detalle">→ Detalle: [vibe coding, sección 6](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#6-el-proceso-vibe-coding-en-detalle) · [SDD, sección 7](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#7-el-proceso-sdd-en-detalle)</span>
 
@@ -297,7 +301,7 @@ propose → design → spec → apply → verify → archive
 **Autorizar → explorar → resolver dudas → clasificar → registrar → implementar → cerrar**
 
 - **Pequeño** si se podría terminar solo con el pedido original y el `git diff`. Si no, es **grande**
-- Lo grande va a `odd/tasks/<feature>.md`:
+- Lo grande va a [`odd/tasks/<feature>.md`](https://github.com/jesuslpm/chicago-crime/tree/main/odd/tasks):
 
 | Sección | Contenido |
 |---|---|
@@ -320,7 +324,7 @@ propose → design → spec → apply → verify → archive
 4. **Un commit por tarea**, anotado como evidencia
 5. Evaluar el riesgo: el alto activa un **verificador independiente**
 6. **Revisión automática** con hasta cuatro lentes; los hallazgos se convierten en tareas nuevas
-   - T2a: un `--log` mal puesto podía **borrar el CSV de origen**
+   - [T2a](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-generator.md): un `--log` mal puesto podía **borrar el CSV de origen**
 7. Actualizar el documento antes de la siguiente tarea
 
 <span class="detalle">→ Detalle: [sección 8](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#8-el-proceso-odd-en-detalle)</span>
@@ -335,7 +339,7 @@ La sesión principal es el **orquestador**: entiende, decide y reparte. Cada sub
 
 | Papel | Qué hace en el experimento |
 |---|---|
-| **Escritor** | Implementó cada tarea del generador, con sus archivos permitidos y sus comandos de verificación |
+| **Escritor** | Implementó cada tarea del [generador](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-generator.md), con sus archivos permitidos y sus comandos de verificación |
 | **Explorador** | Lee código desconocido, solo lectura |
 | **Verificador** | No escribió el código: prueba la especificación contra el resultado |
 | **Revisores** | Uno por lente (riesgo, resiliencia, legibilidad, fiabilidad), en paralelo |
@@ -356,10 +360,10 @@ El ODD actual escribe en la sesión principal por defecto y delega solo con un m
 
 | Mecanismo | Qué es | En el experimento |
 |---|---|---|
-| **`CLAUDE.md`** | Memoria del proyecto, versionada | Las reglas: PRD primero, estimación, sin interrupciones |
+| **[`CLAUDE.md`](https://github.com/jesuslpm/chicago-crime/blob/main/CLAUDE.md)** | Memoria del proyecto, versionada | Las reglas: PRD primero, estimación, sin interrupciones |
 | **Memoria de Claude Code** | Preferencias del usuario | "No me preguntes, verifica siempre" |
-| **Engram** | Memoria persistente (servidor MCP) | Decisiones, hallazgos, resúmenes y copia del documento de ejecución para retomar |
-| **Skills** | Procedimientos que se cargan cuando hacen falta | `prd`, `closing-report`, `worktree` y las de Gentle AI |
+| **[Engram](https://github.com/Gentleman-Programming/engram)** | Memoria persistente (servidor MCP) | Decisiones, hallazgos, resúmenes y copia del documento de ejecución para retomar |
+| **Skills** | Procedimientos que se cargan cuando hacen falta | [`prd`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/prd/SKILL.md), [`closing-report`](https://github.com/jesuslpm/chicago-crime/tree/main/.claude/skills/closing-report), [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md), [`worktree`](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/parallel-developing.md#6-la-skill-cómo-se-lo-expone-al-agente) y las de [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) |
 | **Hooks** | Comandos automáticos del entorno | Contexto al empezar, revisión obligatoria al terminar, guarda de la base de datos |
 
 **Lo crítico no se deja a la memoria del agente: se automatiza.**
@@ -378,7 +382,7 @@ Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cie
 - `git worktree` aísla el **código**, pero no la base de datos, la configuración ni los puertos
 - **Un nombre, todo derivado**: rama, carpeta, base `<Proyecto>_wt_<n>` y configuración local
 - **Nadie escribe el nombre de la base**: lo resuelve un script
-- Lógica en **scripts**; la skill es una tabla de enrutado; un **hook** bloquea la base principal
+- Lógica en **scripts**; [la skill](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/parallel-developing.md#6-la-skill-cómo-se-lo-expone-al-agente) es una tabla de enrutado; un **hook** bloquea la base principal
 - Fusionar con prudencia: primero la integración entra en la rama, y solo después al revés
 
 *"Crea un worktree para el cambio `<n>`."* → PRD → ODD → *"Fusiona el cambio."*
