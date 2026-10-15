@@ -32,14 +32,16 @@ vibe coding instead of a lightweight SDD.
 - **Questions only before the start.** After the run starts, do not stop to ask; the user may still steer,
   and their messages are the only interruption.
 - **Always verify.** Never ask whether to run tests or checks: run them.
-- **Outside review with RDD.** When receipt-driven development is on (`gentle-ai review mode status`), keep it
-  as in ODD: after each commit run `gentle-ai review assess --cwd <repo> --agent claude-code --base-ref <last
-  reviewed boundary> --committed-only --json`, and when `review_due` is true run the review it returns. The
-  first boundary is the branch point; each reviewed commit becomes the next one. Follow the repository's
-  consent rule (in this project: always granted). RDD works on the git diff and needs no execution document.
-  It is the only outside check: no verifier subagents. If `gentle-ai` is not installed or RDD is off, there is
-  no outside review: say so in one line with the map (step 2), do not install or enable it, and record "no
-  outside review" with its reason in the closing report.
+- **Outside review with RDD.** RDD (receipt-driven development) runs through `gentle-ai review`. Check it once,
+  in step 2, with `gentle-ai review mode status --cwd <repo> --json`; the Decision Gates say what each result
+  means. When it is on, keep it as in ODD: after each commit run `gentle-ai review assess --cwd <repo> --agent
+  claude-code --base-ref <last reviewed boundary> --committed-only --json`, and when `review_due` is true run
+  the review it returns. The first boundary is the branch point; each reviewed commit becomes the next one.
+  Follow the repository's consent rule (in this project: always granted). RDD works on the git diff and needs
+  no execution document. It is the only outside check: no verifier subagents. When RDD is unavailable or off
+  there is no outside review: never install or enable it, and record "no outside review" with its reason in
+  the closing report. A `gentle-ai review` command that fails mid-run is recorded in the report and never
+  counts as a passed review.
 - **Every acceptance criterion gets a test.** When a criterion cannot be automated, record the exact manual
   check command and its output as its evidence.
 - **Measured times only.** Start and end come from `date`; never write an estimate as if it were a measurement.
@@ -57,6 +59,9 @@ vibe coding instead of a lightweight SDD.
 | A criterion cannot be automated | Manual check command plus its output as evidence |
 | The work needs several sessions or touches high risk (persisted data, security, contracts others consume, concurrency, delivery) | Say in one line that ODD or SDD fits better; continue unless the user stops you; flag it in the report |
 | The user steers mid-run | Follow the user; record the change in the report |
+| `gentle-ai review mode status` is not found (exit 127) or exits non-zero (no `gentle-ai`, or a version without `review`) | RDD unavailable: no outside review; say so in one line with the map |
+| It reports `"effective": "off"` | RDD off: no outside review; say so in one line with the map; never enable it |
+| It reports `"effective": "on"` | RDD on: assess after each commit (Hard Rules) |
 
 ## Execution Steps
 
@@ -67,8 +72,8 @@ vibe coding instead of a lightweight SDD.
 2. **Map the starting state.** For each criterion, search the code for its domain terms, field names, messages
    and similar functions, types or validations. Classify each criterion as *already done*, *partly done*,
    *similar code to reuse* or *new*, with file:line references. Share the map in the conversation in a few
-   lines; it is not written to a file. Run the existing tests once to know the baseline, and check whether RDD
-   is available (`gentle-ai review mode status`).
+   lines; it is not written to a file. Run the existing tests once to know the baseline, and check RDD with
+   `gentle-ai review mode status --cwd <repo> --json` (Decision Gates).
 3. Ask every open product question in a single message and wait for the answers. If there are none, say so
    in one line of the step 4 message.
 4. Send a message with only a time range for the whole run, calibrated with earlier closing reports when they

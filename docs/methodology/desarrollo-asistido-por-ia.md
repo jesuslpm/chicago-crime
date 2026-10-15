@@ -365,8 +365,10 @@ formales. El PRD hace de ancla y la conversación hace de plan.
 5. **Revisión automática con RDD.** Si RDD está activo, tras cada commit Gentle AI evalúa el riesgo del diff,
    igual que en ODD: un commit de alto riesgo, o un tramo de unas 400 líneas, recibe una revisión externa con
    las lentes pertinentes, y sus hallazgos se resuelven antes del paso siguiente. No necesita documento de
-   ejecución: trabaja sobre el diff de git. Si Gentle AI no está instalado o RDD está desactivado, no hay
-   revisión externa: el agente lo avisa al empezar y el informe de cierre lo deja anotado.
+   ejecución: trabaja sobre el diff de git. El agente lo comprueba al empezar con
+   `gentle-ai review mode status`. Si el comando no existe o falla, o si dice que RDD está desactivado, no
+   hay revisión externa: el agente lo avisa, no lo instala ni lo activa, y el informe de cierre lo deja
+   anotado.
 6. **Corregir conversando.** El humano señala errores y pide ajustes. La IA no decide el producto: lo que el
    PRD no cubre se anota y se reporta, no se inventa.
 7. **Verificar al final.** La IA ejecuta los tests, revisa el diff completo en busca de duplicación y comprueba
