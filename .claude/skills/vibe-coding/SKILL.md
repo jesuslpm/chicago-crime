@@ -76,7 +76,7 @@ vibe coding instead of a lightweight SDD.
    lines; it is not written to a file. Run the existing tests once to know the baseline, and check RDD with
    `gentle-ai review mode status --cwd <repo> --json` (Decision Gates).
 3. Ask every open product question in a single message and wait for the answers. If there are none, say so
-   in one line of the step 4 message.
+   in one line at the end of the map (step 2), so the step 4 message stays clean.
 4. Send a message with only a time range for the whole run, calibrated with earlier closing reports when they
    exist, and the question whether to start; nothing else goes in it, so the estimate stands out. Wait for the
    answer, then record the real start time with `date`.
@@ -97,15 +97,8 @@ vibe coding instead of a lightweight SDD.
 
 10. Review the whole diff for duplicated logic, constants or messages, and fix what repeats existing knowledge.
 11. **Review the last slice.** When RDD is on and commits remain after the last reviewed boundary (the last
-    assessment said `under_budget`), request their review explicitly and take it to its end, so every merged
-    commit has been through RDD:
-
-    ```text
-    gentle-ai review status --cwd <repo> --contract gentle-ai.review-integration/v2 --agent claude-code \
-      --next-transition --base-ref <last reviewed boundary> --committed-only \
-      --lenses <lenses> --lenses-reason "<what changed and how>"
-    ```
-
+    assessment said `under_budget`), request their review with the command in `CLAUDE.md` (Closing) and take
+    it to its end, so every merged commit has been through RDD.
 12. Run the project's full checks (see `CLAUDE.md`), after the last code change.
 13. Check every acceptance criterion against the PRD with executed commands, and build the table criterion →
     test or check → result.
