@@ -4,8 +4,8 @@ Frases exactas que el desarrollador escribe al agente para cada operación con c
 en qué sesión se escriben y qué ocurre. Salen del [PRD de copias de trabajo en paralelo](../prd/worktrees/worktrees.prd.md);
 si una frase de este documento y el PRD no coinciden, manda el PRD.
 
-Las frases funcionan cuando las herramientas del PRD estén implementadas. Hasta entonces, el agente no las
-reconoce.
+La skill `worktree` lleva cada frase a su script de `scripts/worktree/`. La [guía de uso](../worktrees.md)
+(en inglés) explica el flujo completo, incluido el ensayo, y qué hacer ante cada mensaje.
 
 ## Antes de empezar
 
