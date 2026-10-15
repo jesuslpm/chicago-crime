@@ -1,6 +1,6 @@
 ---
 name: vibe-coding
-description: "Trigger: vibe coding, usando vibe coding, con vibe coding, implement with vibe coding. Implement a PRD conversationally inside fixed bookends: map the existing code and ask every question before the first change, keep the code DRY while working, and finish with a test per acceptance criterion, verification against the PRD and a closing report. No execution document, phases or subagents."
+description: "Trigger: vibe coding, usando vibe coding, con vibe coding, implement with vibe coding. Implement a PRD conversationally inside fixed bookends: map the existing code and ask every question before the first change, keep the code DRY while working, and finish with a test per acceptance criterion, verification against the PRD, the RDD review and a closing report. No execution document, phases or subagents."
 license: MIT
 metadata:
   author: inercya
@@ -32,6 +32,12 @@ vibe coding instead of a lightweight SDD.
 - **Questions only before the start.** After the run starts, do not stop to ask; the user may still steer,
   and their messages are the only interruption.
 - **Always verify.** Never ask whether to run tests or checks: run them.
+- **Outside review with RDD.** When receipt-driven development is on (`gentle-ai review mode status`), keep it
+  as in ODD: after each commit run `gentle-ai review assess --cwd <repo> --agent claude-code --base-ref <last
+  reviewed boundary> --committed-only --json`, and when `review_due` is true run the review it returns. The
+  first boundary is the branch point; each reviewed commit becomes the next one. Follow the repository's
+  consent rule (in this project: always granted). RDD works on the git diff and needs no execution document.
+  It is the only outside check: no verifier subagents.
 - **Every acceptance criterion gets a test.** When a criterion cannot be automated, record the exact manual
   check command and its output as its evidence.
 - **Measured times only.** Start and end come from `date`; never write an estimate as if it were a measurement.
@@ -73,8 +79,10 @@ vibe coding instead of a lightweight SDD.
    reused. Write its test first when practical, see it fail, implement, and see it pass.
 7. **Refactor before moving on:** remove any duplication the step introduced or exposed, with the tests green.
 8. After each working step, run the focused tests and commit (Conventional Commit). A commit is the checkpoint
-   to return to if the next step goes wrong.
-9. Keep a running list of defaults chosen, gaps found and reuse decisions; it goes into the closing report.
+   to return to if the next step goes wrong. Then run the RDD assessment (Hard Rules) and, when a review is
+   due, take it to its end before the next step.
+9. Keep a running list of defaults chosen, gaps found, reuse decisions and review findings; it goes into the
+   closing report.
 
 ### Closing
 
@@ -84,8 +92,8 @@ vibe coding instead of a lightweight SDD.
     test or check → result.
 13. Record the end time with `date` and compare the real duration with the estimate.
 14. Write the closing report with the `closing-report` skill, including the acceptance criteria coverage
-    table, the reuse map outcome (reused, extended, extracted, new), the defaults chosen without asking and the
-    pending items. Commit it.
+    table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings, the
+    defaults chosen without asking and the pending items. Commit it.
 15. Merge only if the repository rules say so (in this project: into `main` after full verification).
 
 ## Output Contract
