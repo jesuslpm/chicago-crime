@@ -522,24 +522,15 @@ dice "vibe coding", el agente usa ODD.
 
 ---
 
-## Vibe coding y SDD
+## Vibe coding
 
-**Vibe coding**
 - Implementación conversacional: el PRD es el ancla y la conversación es el plan
 - Un criterio por vez, con su test y un commit de punto de control
 - No hay documento de ejecución: **los commits son la memoria**
 - Con RDD activo, **revisión automática** como en ODD: tras cada commit y al cerrar
-- El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) fija **los bordes**, no el proceso: explora el código y exige DRY
+- El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) fija **los bordes**, no el proceso: explora antes de escribir y exige DRY
 
-**SDD**
-
-```text
-propose → design → spec → apply → verify → archive
-```
-
-- Herramientas: [**OpenSpec**](https://github.com/Fission-AI/OpenSpec) (`/opsx:*`; `verify` solo en el perfil ampliado) y [**Spec Kit**](https://github.com/github/spec-kit) (`/speckit-*`)
-
-<span class="detalle">→ Detalle: [vibe coding, sección 6](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#6-el-proceso-vibe-coding-en-detalle) · [SDD, sección 7](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#7-el-proceso-sdd-en-detalle)</span>
+<span class="detalle">→ Detalle: [sección 6](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#6-el-proceso-vibe-coding-en-detalle)</span>
 
 <!--
 Cómo leerla:
@@ -553,11 +544,48 @@ El skill vibe-coding fija los bordes, no el proceso. Antes de escribir explora e
 duplicar lo que ya hay, porque el vibe coding tiene la mala costumbre de dejar el código WET, y al final exige
 la verificación y el informe.
 
-SDD sigue seis fases: proponer, diseñar, especificar, aplicar, verificar y archivar. La lista de tareas se
-genera antes de aplicar. Las herramientas más conocidas son OpenSpec, cuya fase de verificación solo está en
-el perfil ampliado, y Spec Kit, de GitHub.
-
 ⏱ Al terminar esta slide: hacia el minuto 24.
+-->
+
+---
+
+## SDD: desarrollo guiado por especificaciones
+
+Una especificación formal precede al código; cada fase deja un artefacto revisable.
+
+| Fase | Qué produce |
+|---|---|
+| `propose` | La propuesta: por qué hace falta el cambio y qué cambia |
+| `design` | El enfoque técnico |
+| `spec` | Escenarios *cuando / entonces*, como cambios sobre las especificaciones vigentes |
+| `apply` | La implementación, marcando cada tarea al terminarla |
+| `verify` | La comprobación del resultado contra las especificaciones |
+| `archive` | Los cambios integrados en las especificaciones vigentes, listas para el próximo cambio |
+
+- Herramientas: [**OpenSpec**](https://github.com/Fission-AI/OpenSpec) (`/opsx:*`) y [**Spec Kit**](https://github.com/github/spec-kit) (`/speckit-*`), de GitHub
+
+<span class="detalle">→ Detalle: [sección 7](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#7-el-proceso-sdd-en-detalle)</span>
+
+<!--
+Cómo leerla:
+
+SDD es desarrollo guiado por especificaciones: una especificación formal precede al código. El trabajo se
+divide en seis fases, y cada una deja un artefacto que podemos revisar antes de pasar a la siguiente.
+
+Primero, proponer: por qué hace falta el cambio y qué cambia. Después, diseñar: el enfoque técnico. Luego,
+especificar: los requisitos de comportamiento, con escenarios del tipo "cuando pasa esto, entonces el sistema
+hace aquello", escritos como cambios sobre las especificaciones que ya existen. La lista de tareas también se
+genera antes de implementar.
+
+Aplicar es implementar esas tareas y marcar cada una al terminarla. Verificar es comprobar el resultado contra
+las especificaciones. Y archivar integra esos cambios en las especificaciones vigentes, que quedan listas para
+el próximo cambio.
+
+Las herramientas más conocidas son OpenSpec, cuya fase de verificación solo está en el perfil ampliado, y Spec
+Kit, de GitHub. Un detalle importante: las especificaciones no reemplazan al PRD. Si una especificación lo
+contradice, manda el PRD.
+
+⏱ Al terminar esta slide: hacia el minuto 25.
 -->
 
 ---
@@ -596,7 +624,7 @@ El PRD sigue mandando: si una spec lo contradice, gana el PRD.
 
 Mostrar: odd/tasks/crime-query.md.
 
-⏱ Al terminar esta slide: hacia el minuto 26.
+⏱ Al terminar esta slide: hacia el minuto 27.
 -->
 
 ---
@@ -638,7 +666,7 @@ que se fusiona haya pasado por ella.
 Las correcciones tienen límite: una tanda y una recomprobación. No hay ciclos de "revisar hasta que quede
 limpio".
 
-⏱ Al terminar esta slide: hacia el minuto 28.
+⏱ Al terminar esta slide: hacia el minuto 29.
 -->
 
 ---
@@ -677,7 +705,7 @@ En SDD pasa lo mismo: cada fase la ejecuta un subagente.
 Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2. La versión
 actual de ODD es más austera: el orquestador escribe directamente y solo delega con un motivo concreto.
 
-⏱ Al terminar esta slide: hacia el minuto 29.
+⏱ Al terminar esta slide: hacia el minuto 30.
 -->
 
 ---
@@ -719,7 +747,7 @@ independiente.
 Pendiente: la configuración custom de los papeles de ODD todavía no está verificada; el primer intento falló
 sin guardar nada.
 
-⏱ Al terminar esta slide: hacia el minuto 30.
+⏱ Al terminar esta slide: hacia el minuto 31.
 -->
 
 ---
@@ -760,7 +788,7 @@ Mensaje clave: lo crítico no se deja a la memoria del agente; se automatiza.
 Anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que guarda
 Claude Code.
 
-⏱ Al terminar esta slide: hacia el minuto 32.
+⏱ Al terminar esta slide: hacia el minuto 33.
 -->
 
 ---
@@ -797,7 +825,7 @@ en la integración.
 
 El flujo completo cabe en una línea: crear el worktree, PRD, ODD y fusionar.
 
-⏱ Al terminar esta slide: hacia el minuto 33.
+⏱ Al terminar esta slide: hacia el minuto 34.
 -->
 
 ---
@@ -833,7 +861,7 @@ comparables con cada enfoque y medir lo mismo en todos.
 Mensaje clave: no estoy diciendo que ODD sea mejor. Estoy diciendo que, con un buen PRD, las tres formas de
 ejecutar parten de una base sólida y verificable.
 
-⏱ Al terminar esta slide: hacia el minuto 35.
+⏱ Al terminar esta slide: hacia el minuto 36.
 -->
 
 ---
@@ -857,5 +885,5 @@ de PRD, que también está publicado en un Gist para quien quiera usarlo en sus 
 
 Reservar unos 5 minutos para preguntas.
 
-⏱ Al llegar aquí: hacia el minuto 35. En una sesión de 60 minutos quedan unos 25 para preguntas o para una demo en vivo.
+⏱ Al llegar aquí: hacia el minuto 36. En una sesión de 60 minutos quedan unos 24 para preguntas o para una demo en vivo.
 -->
