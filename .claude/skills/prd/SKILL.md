@@ -6,7 +6,7 @@ effort: high
 license: MIT
 metadata:
   author: inercya
-  version: "1.0"
+  version: "1.1"
 ---
 
 ## Activation Contract
@@ -29,6 +29,7 @@ Run inline in the main session so the PRD is agreed with the user in conversatio
 - `Out of scope` is mandatory and explicit — it is the line the next change starts from.
 - Ask one question at a time when a product decision is genuinely the user's; never invent it.
 - Writing a PRD does not authorize implementation.
+- The `Elaboration time` section is written only by `scripts/prd_time.py`, never by hand and never estimated.
 
 ## Decision Gates
 
@@ -46,7 +47,20 @@ Run inline in the main session so the PRD is agreed with the user in conversatio
    evidence budget.
 3. Draft from `assets/prd-template.md`; translate headings consistently when the PRD is not in English.
 4. Review the draft with the user; iterate until no product question is open.
-5. When the user authorizes implementation, open the ODD feature document linked to the PRD:
+5. As the last step of the session, once the PRD and its translations are final, record the elaboration time
+   in every one of them:
+
+   ```
+   python .claude/skills/prd/scripts/prd_time.py <prd.md> [<prd.en.md> ...]
+   ```
+
+   It reads this session's Claude Code history (`CLAUDE_CODE_SESSION_ID`) and splits the time into agent
+   work and the person's time; a wait for the person longer than 10 minutes (`--idle-minutes`) counts only
+   10 and the rest is discarded as idle. Rerun it after any later edit in the same session: it replaces this
+   session's row. A revision in another session adds a row and a total. To measure a past session, pass
+   `--session <id>` (the file name of its history under `~/.claude/projects/`). On exit code 2, report the
+   error and leave the section out.
+6. When the user authorizes implementation, open the ODD feature document linked to the PRD:
 
 | PRD section | ODD feature document |
 |---|---|
@@ -58,8 +72,11 @@ Run inline in the main session so the PRD is agreed with the user in conversatio
 
 ## Output Contract
 
-Return the PRD path, the open product questions (if any), and whether it is ready to start ODD.
+Return the PRD path, the open product questions (if any), the elaboration time (active, agent and person,
+discarded idle time) and whether it is ready to start ODD.
 
 ## References
 
 - `assets/prd-template.md` — PRD skeleton with per-section guidance.
+- `scripts/prd_time.py` — measures the elaboration time from the session history and writes it in the PRD.
+  Tests: `python -m unittest discover -s .claude/skills/prd/scripts`.

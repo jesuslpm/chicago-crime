@@ -42,3 +42,8 @@
 ## References
 
 - <Parent PRD, related PRDs, project docs>
+
+## Elaboration time
+
+<Do not write this section: `scripts/prd_time.py` fills it at the end of the session. Spanish heading:
+"Tiempo de elaboración".>
