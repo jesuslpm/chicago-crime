@@ -68,8 +68,19 @@ style: |
 Un experimento real: [chicago-crime](https://github.com/jesuslpm/chicago-crime)
 
 <!--
-Duración total prevista: 60 min (unos 3 min por slide). Documento de detalle en la otra pantalla:
-desarrollo-asistido-por-ia.md. Ejemplo paso a paso: generacion-del-prd.md.
+Cómo leerla:
+
+Esta sesión trata de cómo desarrollamos software con agentes de IA de forma práctica y verificable, no de
+demos. Vamos a ver tres formas de trabajar que comparten el mismo punto de partida, el PRD: vibe coding, SDD y
+ODD.
+
+Todo lo que veremos sale de un experimento real, chicago-crime, un repositorio público. Cada cifra que aparece
+en las slides se puede comprobar en él.
+
+Organización: unos 60 minutos. Documento de detalle en la otra pantalla: desarrollo-asistido-por-ia.md.
+Ejemplo paso a paso: generacion-del-prd.md.
+
+⏱ Al terminar esta slide: hacia el minuto 1.
 -->
 
 ---
@@ -88,9 +99,31 @@ desarrollo-asistido-por-ia.md. Ejemplo paso a paso: generacion-del-prd.md.
 <span class="detalle">→ Detalle: [sección 1](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#1-introducción)</span>
 
 <!--
-Mensaje clave: no es "la IA sustituye ingenieros". Es que un ingeniero con dominio, algoritmos y arquitectura
-puede dirigir agentes en una tecnología que todavía no domina, y sigue siendo responsable de especificar y
-evaluar.
+Cómo leerla:
+
+La tesis es que el PRD es la fuente permanente de verdad funcional, y que las especificaciones, el diseño, las
+tareas y el código se derivan de él.
+
+En el desarrollo de software asistido por IA distinguimos tres capas: la especificación de los requisitos, la
+generación del código mediante un método de ejecución, y la evidencia que nos da la certeza de que el código
+cumple los requisitos.
+
+El PRD se encarga de los requisitos. Está escrito para personas, no necesariamente técnicas, en lenguaje de
+producto. Su carácter es permanente, pero no inmutable: evoluciona a lo largo de todo el ciclo de vida del
+software, y los cambios se van anotando con fecha en lugar de reescribir su historia.
+
+La ejecución es variable: para cada cambio elegimos el método que mejor encaja, sea vibe coding, SDD u ODD, y las
+herramientas también cambian con el tiempo. Lo que produce cada ejecución pertenece a ese cambio; el PRD
+permanece.
+
+La evidencia es imprescindible: tests, criterios de aceptación comprobados sobre datos reales, revisiones e
+informe de cierre. Sin evidencia, no sabemos si el código hace lo que dice el PRD; solo lo suponemos.
+
+Mensaje clave: no es "la IA sustituye a los ingenieros". Es que un ingeniero con dominio, algoritmos y
+arquitectura puede dirigir agentes en una tecnología que todavía no domina, y sigue siendo responsable de
+especificar y de evaluar.
+
+⏱ Al terminar esta slide: hacia el minuto 3.
 -->
 
 ---
@@ -108,7 +141,25 @@ evaluar.
 
 <span class="detalle">→ Detalle: [sección 11](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#11-evidencia-del-experimento)</span>
 
-<!-- Aviso honesto: es un caso real, no una comparación controlada entre metodologías. -->
+<!--
+Cómo leerla:
+
+El experimento parte de un CSV público de delitos de Chicago: 8.656.904 registros y 2,4 GB. El objetivo era
+convertirlo en un conjunto de datos consultable, ordenado en SSTables, y hacerlo en Rust, un lenguaje que yo
+no conocía al empezar.
+
+Hicimos tres cambios, cada uno con su propio PRD: el generador, que construye el conjunto de datos; el
+consultor, que responde preguntas sobre él; y el soporte para Linux.
+
+La tabla resume los resultados. El generador tiene 230 tests y pasó 14 de 14 criterios de aceptación sobre el
+CSV real, con un pico de memoria de 93 MiB frente a un límite de 512. El consultor tiene 423 tests, pasó 58 de
+58 criterios y responde una consulta por ID en unos 40 o 50 milisegundos.
+
+Mensaje clave: es un caso real, no una comparación controlada entre metodologías. Muestra que el método
+funciona en un problema no trivial, no que un enfoque sea mejor que otro.
+
+⏱ Al terminar esta slide: hacia el minuto 4.
+-->
 
 ---
 
@@ -122,7 +173,25 @@ evaluar.
 
 <span class="detalle">→ Detalle: [sección 2](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#2-el-prd)</span>
 
-<!-- Mostrar en la otra pantalla docs/prd/chicago-crime/: el padre y sus tres hijos. -->
+<!--
+Cómo leerla:
+
+Un PRD describe qué hace el producto y por qué, en lenguaje de negocio. No contiene clases, endpoints, rutas
+de archivos ni números de línea: eso es el cómo, y pertenece al código y a los documentos de ejecución.
+
+No es un prompt desechable que se escribe para arrancar una sesión y se olvida. Es documentación duradera,
+versionada en el repositorio junto al código.
+
+Es jerárquico: un PRD padre por aplicación o módulo grande, que describe el producto completo, y un PRD hijo
+por cada cambio, que nombra a su padre y solo añade lo que ese cambio necesita.
+
+Cuando un hijo contradice al padre, el padre no se reescribe: se anota con fecha. Así se conserva la historia
+de cada decisión.
+
+Mostrar en la otra pantalla: docs/prd/chicago-crime/, el padre y sus tres hijos.
+
+⏱ Al terminar esta slide: hacia el minuto 6.
+-->
 
 ---
 
@@ -138,7 +207,28 @@ evaluar.
 
 <span class="detalle">→ Detalle: [sección 2](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#2-el-prd)</span>
 
-<!-- "Decisiones" no estaba en la plantilla original: nació en el experimento porque resultó la más útil. -->
+<!--
+Cómo leerla:
+
+La plantilla tiene más secciones, pero estas cinco son las que marcan la diferencia.
+
+El estado de partida se verifica en el código y en los datos; nunca se supone. En el experimento, medir el CSV
+antes de escribir cambió varias decisiones.
+
+Las validaciones y mensajes recogen el texto exacto que verá el usuario, de modo que nadie lo improvisa al
+programar.
+
+El fuera de alcance es obligatorio: delimita el cambio y marca dónde empieza el siguiente. Sin él, el alcance
+crece solo.
+
+Los criterios de aceptación llevan cifras reales, por ejemplo que el índice de tipo principal tenga 1.838.502
+entradas THEFT. Así "funciona" deja de ser una opinión y pasa a ser algo comprobable.
+
+Las decisiones registran cada elección con su motivo y su consecuencia aceptada. Esta sección no estaba en la
+plantilla original: nació en el experimento porque resultó la más útil.
+
+⏱ Al terminar esta slide: hacia el minuto 7.
+-->
 
 ---
 
@@ -156,8 +246,26 @@ evaluar.
 <span class="detalle">→ Detalle: [sección 2](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#2-el-prd) · [ejemplo completo](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/generacion-del-prd.md)</span>
 
 <!--
-El skill prd fija estas reglas. Ejemplo de medición: recorrer el CSV encontró que no venía ordenado, que el
-número de caso se repetía y 253 horas inexistentes por el cambio de horario. Las tres cambiaron decisiones.
+Cómo leerla:
+
+El PRD se escribe conversando con la IA, y el skill prd le fija las reglas.
+
+Empieza el programador: pide el PRD de un cambio y explica qué quiere y por qué, con el contexto que tenga. En
+el experimento, ese contexto fue un resumen de una conversación previa con ChatGPT.
+
+La IA lee el PRD padre y la documentación, y mide el estado de partida en el código y en los datos. Recorrer
+el CSV completo reveló que no venía ordenado, que el número de caso se repetía y que había 253 horas
+inexistentes por el cambio de horario. Las tres cosas cambiaron decisiones.
+
+Con eso redacta un borrador con las decisiones abiertas, cada una con su recomendación, y las cerramos de una
+en una. Si afirmo algo técnico, la IA lo verifica antes de darme la razón.
+
+Iteramos hasta que no queda nada abierto. Y un detalle importante: escribir el PRD no autoriza a implementar;
+la implementación se pide aparte.
+
+Mostrar, si hay tiempo: generacion-del-prd.md.
+
+⏱ Al terminar esta slide: hacia el minuto 10.
 -->
 
 ---
@@ -174,7 +282,27 @@ En los tres casos la evidencia fueron **código y números**, no opiniones.
 
 <span class="detalle">→ Detalle: [Cómo se generó el PRD, sección 4](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/generacion-del-prd.md#4-las-decisiones-una-por-una)</span>
 
-<!-- Leer las citas literales del documento: muestran que el pedido real del usuario no fue perfecto. -->
+<!--
+Cómo leerla:
+
+Esta slide muestra el paso de verificación en acción, con tres decisiones reales del PRD del generador.
+
+En D1 afirmé que el crate sstable era compatible con LevelDB. La IA no me dio la razón sin más: leyó el código
+fuente del crate y comprobó que el formato coincide. Tenía razón.
+
+En D4 propuse guardar el ID también en el valor, porque ocupaba poco y ahorraba memoria. La IA midió: 33 MiB,
+un 2,9 %. Era más simple, pero no ahorraba RAM. Tenía razón a medias.
+
+En D5 dije que detectar duplicados lejanos sería difícil. La IA explicó que, después de la ordenación externa,
+los duplicados quedan contiguos por lejos que estuvieran en el CSV. La premisa era incorrecta.
+
+Mensaje clave: en los tres casos la evidencia fueron código y números, no opiniones. La IA no está para darnos
+la razón, sino para comprobarla.
+
+Mostrar: las citas literales del documento; enseñan que el pedido real no fue perfecto.
+
+⏱ Al terminar esta slide: hacia el minuto 12.
+-->
 
 ---
 
@@ -189,7 +317,26 @@ En los tres casos la evidencia fueron **código y números**, no opiniones.
 
 <span class="detalle">→ Detalle: [Cómo se generó el PRD, sección 8](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/generacion-del-prd.md#8-segundo-ejemplo-el-prd-del-consultor)</span>
 
-<!-- También el caso de mayúsculas: un supuesto que nadie había medido obligó a cambiar el generador (esquema 2). -->
+<!--
+Cómo leerla:
+
+Ahora el caso contrario, del PRD del consultor.
+
+La IA defendió que los resultados salieran ordenados por ID, con el argumento de que cada índice ya los
+entrega ordenados. Le respondí que no era cierto: con varios valores, el índice los agrupa por valor, no por
+ID. La IA lo comprobó contra el contrato del conjunto de datos, reconoció el error y cambió su recomendación.
+
+Después recorté el alcance: dejamos la ordenación para un cambio posterior, para ir más poco a poco. Así nació
+la versión 1.1 del PRD.
+
+Lección: recomendar no es decidir. Las mejores decisiones del consultor salieron de mis respuestas libres, no
+de las opciones que proponía la IA.
+
+También pasó con las mayúsculas: un supuesto que nadie había medido obligó a cambiar el generador y a subir el
+esquema a la versión 2.
+
+⏱ Al terminar esta slide: hacia el minuto 13.
+-->
 
 ---
 
@@ -206,6 +353,25 @@ Bugs, refactors y tooling sin cambio de producto: **no necesitan PRD**.
 
 <span class="detalle">→ Detalle: [sección 2](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#2-el-prd)</span>
 
+<!--
+Cómo leerla:
+
+Resumimos por qué merece la pena el esfuerzo de escribir el PRD.
+
+Separa decidir de construir: las decisiones de producto se cierran antes de programar, y por eso el agente
+puede trabajar horas sin parar, porque no le queda nada de negocio por preguntar.
+
+Es un contrato verificable, con criterios que llevan cifras reales. Limita el alcance: el agente no amplía el
+cambio por su cuenta. Lo lee cualquiera, también quien nunca va a abrir el código. Dura más que el código:
+cuando cambia una regla, se cambia primero el PRD y después el código. Y hace auditable el trabajo con IA:
+cualquiera puede revisar qué se pidió, qué se decidió y qué se comprobó.
+
+Eso sí, no todo necesita un PRD: los bugs, las refactorizaciones y el tooling que no cambian el comportamiento
+del producto van directos a la ejecución.
+
+⏱ Al terminar esta slide: hacia el minuto 15.
+-->
+
 ---
 
 ## Tres reglas antes de ejecutar
@@ -219,7 +385,27 @@ Bugs, refactors y tooling sin cambio de producto: **no necesitan PRD**.
 
 <span class="detalle">→ Detalle: [sección 3](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#3-tres-reglas-antes-de-ejecutar)</span>
 
-<!-- Mostrar odd/tasks/crime-query-report.md como ejemplo de informe. -->
+<!--
+Cómo leerla:
+
+Estas tres reglas valen para cualquier forma de ejecutar el PRD, y atacan los problemas que más tiempo nos
+hacen perder.
+
+La primera es pedir una estimación de tiempo antes de empezar y anotar la hora real de inicio. Sin esa
+referencia no hay forma de calibrar ni de planificar. En el consultor se estimaron entre 4 y 7 horas, y se
+tardaron unas 3 horas y cuarto.
+
+La segunda es que no haya interrupciones. Todas las preguntas se hacen al principio, y después el agente no se
+detiene: ante una duda menor toma un valor razonable, lo documenta y lo informa al final. Una sola pregunta a
+mitad de proceso puede dejarlo parado horas mientras nadie mira la pantalla, y eso nos pasó.
+
+La tercera es exigir un informe de cierre en Markdown, guardado en el repositorio, con el resultado, el tiempo
+real frente al estimado, las líneas por área, un resumen y los pendientes.
+
+Mostrar: odd/tasks/crime-query-report.md.
+
+⏱ Al terminar esta slide: hacia el minuto 17.
+-->
 
 ---
 
@@ -236,7 +422,27 @@ Otros agentes, como Codex u OpenCode, leen `AGENTS.md`.
 
 <span class="detalle">→ Detalle: [sección 3](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#3-tres-reglas-antes-de-ejecutar)</span>
 
-<!-- Abrir CLAUDE.md y .claude/skills/closing-report/ en la otra pantalla. -->
+<!--
+Cómo leerla:
+
+Las tres reglas no se quedan en buenas intenciones: viven en el repositorio.
+
+CLAUDE.md son las instrucciones del proyecto que Claude Code carga en cada sesión. Es deliberadamente corto:
+solo lleva lo que siempre aplica.
+
+El skill closing-report se carga solo al cerrar. Trae la plantilla del informe y un script que calcula las
+líneas por área a partir de git, para que el agente no tenga que sumarlas a mano.
+
+El skill vibe-coding aplica las tres reglas cuando se pide vibe coding, que es el único enfoque que no trae un
+proceso propio.
+
+Mensaje clave: así las reglas no dependen de la memoria personal de nadie; cualquiera que clone el repositorio
+las hereda. Otros agentes, como Codex u OpenCode, leen AGENTS.md en lugar de CLAUDE.md.
+
+Mostrar: CLAUDE.md y .claude/skills/closing-report/.
+
+⏱ Al terminar esta slide: hacia el minuto 19.
+-->
 
 ---
 
@@ -253,7 +459,29 @@ En los tres, **el agente no altera en silencio un requisito**.
 
 <span class="detalle">→ Detalle: [sección 4](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#4-tres-formas-de-ejecutar-un-prd)</span>
 
-<!-- Es un encuadre conceptual, no una comparación medida. -->
+<!--
+Cómo leerla:
+
+Después del PRD tenemos tres formas de ejecutar. Conviene aclarar que no son tres frameworks equivalentes: el
+PRD es común a las tres, y lo que cambia es cómo se implementa, se coordina y se verifica.
+
+Con vibe coding implementamos conversando directamente con la IA, y la formalidad depende de nuestra
+disciplina. Sirve para prototipos y cambios sencillos; su riesgo es la deriva de requisitos y la pérdida de
+contexto en sesiones largas.
+
+SDD sigue fases formales, cada una con su artefacto. Es más estructurado y encaja con cambios de alto riesgo o
+complejidad, a cambio de más sobrecarga documental.
+
+ODD adapta la ceremonia al tamaño y al riesgo de cada cambio. Sirve para funcionalidad real con poca
+ceremonia; su riesgo es que los requisitos se reinterpreten al pasar de un agente a otro.
+
+En los tres casos, el agente no altera en silencio un requisito: si encuentra una decisión de negocio abierta,
+vuelve a preguntar.
+
+Aviso: es un encuadre conceptual, no una comparación medida.
+
+⏱ Al terminar esta slide: hacia el minuto 20.
+-->
 
 ---
 
@@ -270,8 +498,24 @@ En los tres, **el agente no altera en silencio un requisito**.
 <span class="detalle">→ Detalle: [sección 5](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#5-prompts-para-empezar)</span>
 
 <!--
-Hay que nombrar el enfoque: en un proyecto con ODD por defecto, sin decir "vibe coding" el agente usa ODD.
-SDD necesita la herramienta instalada.
+Cómo leerla:
+
+Estos son los prompts para arrancar cada forma de trabajar; están completos en la sección 5 del documento.
+
+El del PRD invita expresamente a hacer sugerencias y preguntas, y deja claro que no se implementa nada. Esa
+invitación funcionó en el experimento: de ahí salieron el manifiesto, la publicación atómica y la indexación
+de los valores vacíos.
+
+Los de ODD y SDD repiten las tres reglas: estimación, sin interrupciones e informe de cierre. El de SDD
+necesita además una herramienta instalada, como OpenSpec o Spec Kit.
+
+El de vibe coding es el más corto porque el skill vibe-coding pone el resto: el mapa del código existente, el
+código DRY, los tests por criterio, la verificación y el informe.
+
+Detalle importante: hay que nombrar el enfoque. En un proyecto con ODD por defecto, como este, si el prompt no
+dice "vibe coding", el agente usa ODD.
+
+⏱ Al terminar esta slide: hacia el minuto 22.
 -->
 
 ---
@@ -294,6 +538,24 @@ propose → design → spec → apply → verify → archive
 
 <span class="detalle">→ Detalle: [vibe coding, sección 6](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#6-el-proceso-vibe-coding-en-detalle) · [SDD, sección 7](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#7-el-proceso-sdd-en-detalle)</span>
 
+<!--
+Cómo leerla:
+
+Vibe coding es una implementación conversacional: el PRD hace de ancla y la conversación hace de plan.
+Avanzamos criterio a criterio, cada uno con su test y un commit que sirve de punto de control. Como no hay
+documento de ejecución, los commits son la memoria del proceso.
+
+El skill vibe-coding fija los bordes, no el proceso. Antes de escribir explora el código existente para no
+duplicar lo que ya hay, porque el vibe coding tiene la mala costumbre de dejar el código WET, y al final exige
+la verificación y el informe.
+
+SDD sigue seis fases: proponer, diseñar, especificar, aplicar, verificar y archivar. La lista de tareas se
+genera antes de aplicar. Las herramientas más conocidas son OpenSpec, cuya fase de verificación solo está en
+el perfil ampliado, y Spec Kit, de GitHub.
+
+⏱ Al terminar esta slide: hacia el minuto 23.
+-->
+
 ---
 
 ## ODD: protocolo y documento de ejecución
@@ -312,7 +574,26 @@ propose → design → spec → apply → verify → archive
 
 <span class="detalle">→ Detalle: [sección 8](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#8-el-proceso-odd-en-detalle)</span>
 
-<!-- Abrir odd/tasks/crime-query.md en la otra pantalla. -->
+<!--
+Cómo leerla:
+
+ODD sigue siete pasos en cada pedido: autorizar, explorar, resolver dudas, clasificar, registrar, implementar
+y cerrar.
+
+El paso clave es clasificar. Una tarea es pequeña si alguien podría terminarla solo con el pedido original y
+el git diff; si no, es grande. El número de archivos o de líneas nunca decide el tamaño.
+
+Lo pequeño se resuelve directamente, sin documentos. Lo grande se registra en un documento de ejecución,
+odd/tasks/<feature>.md, con cuatro secciones: un encabezado con el objetivo, la rama, la estimación y la hora
+real de inicio; las specs, que citan textualmente el PRD; las tareas, con el commit que cierra cada una; y el
+log, cuya primera entrada es el pedido original, palabra por palabra.
+
+El PRD sigue mandando: si una spec lo contradice, gana el PRD.
+
+Mostrar: odd/tasks/crime-query.md.
+
+⏱ Al terminar esta slide: hacia el minuto 25.
+-->
 
 ---
 
@@ -329,7 +610,27 @@ propose → design → spec → apply → verify → archive
 
 <span class="detalle">→ Detalle: [sección 8](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#8-el-proceso-odd-en-detalle)</span>
 
-<!-- Las correcciones tienen límite: una tanda y una recomprobación. No hay ciclos de "revisar hasta limpio". -->
+<!--
+Cómo leerla:
+
+Cada tarea sigue el mismo ciclo. Primero el agente lee el documento y sabe qué specs tiene que cubrir.
+
+Después, test primero: escribe el test, lo ve fallar, implementa hasta que pasa y refactoriza con los tests en
+verde. Ejecuta el test enfocado, la batería completa, el formato y el lint, y cierra la tarea con un commit
+que queda anotado como evidencia.
+
+Luego evalúa el riesgo del cambio. Si es alto, porque toca datos persistidos, seguridad, contratos que otros
+consumen u otros puntos delicados, un verificador independiente, que no escribió el código, comprueba la
+especificación contra el resultado.
+
+Además, una revisión automática con hasta cuatro lentes revisa el commit, y sus hallazgos se convierten en
+tareas nuevas. Así nació T2a: un --log mal puesto podía borrar el CSV de origen, y la revisión lo detectó.
+
+Las correcciones tienen límite: una tanda y una recomprobación. No hay ciclos de "revisar hasta que quede
+limpio".
+
+⏱ Al terminar esta slide: hacia el minuto 27.
+-->
 
 ---
 
@@ -350,8 +651,24 @@ En SDD pasa lo mismo: cada fase la ejecuta un subagente.
 <span class="detalle">→ Detalle: [sección 9](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#9-bajo-el-capó-subagentes-memoria-skills-y-hooks)</span>
 
 <!--
-Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2.
-El ODD actual escribe en la sesión principal por defecto y delega solo con un motivo concreto.
+Cómo leerla:
+
+Desde fuera parece una sola conversación, pero por dentro la sesión principal actúa como orquestador: entiende
+el pedido, decide y reparte el trabajo. Cada subagente tiene su propio contexto y devuelve un resumen; así el
+orquestador no se llena de código y puede sostener una conversación larga.
+
+En el experimento vimos cinco papeles. Los escritores implementaron cada tarea del generador, con su lista de
+archivos permitidos y los comandos de verificación que debían ejecutar. Los exploradores leen código
+desconocido sin modificarlo. Los verificadores no escribieron el código y prueban la especificación contra el
+resultado. Los revisores miran el cambio desde una lente cada uno, en paralelo. Y el refutador intenta
+desmentir un bloqueo dudoso antes de exigir una corrección.
+
+En SDD pasa lo mismo: cada fase la ejecuta un subagente.
+
+Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2. La versión
+actual de ODD es más austera: el orquestador escribe directamente y solo delega con un motivo concreto.
+
+⏱ Al terminar esta slide: hacia el minuto 28.
 -->
 
 ---
@@ -371,8 +688,29 @@ Presets: **balanced**, performance, economy, diversity y **custom** (modelo y es
 <span class="detalle">→ Detalle: [Agentes de Gentle AI: modelos y esfuerzo](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/agentes-y-modelos.md)</span>
 
 <!--
-Fuente: historiales de 58 subagentes. La configuración custom de los papeles de ODD está pendiente de verificar:
-el primer Confirm falló sin guardar nada.
+Cómo leerla:
+
+Cada papel puede correr con un modelo y un esfuerzo distintos, y eso afecta directamente al coste y a la
+calidad.
+
+Los papeles de ODD, explorador, escritor y verificador, se pueden configurar desde Gentle AI o con
+definiciones propias en .claude/agents. En el experimento no tenían definición, así que heredaron el modelo y
+el esfuerzo de la sesión principal: Opus 5.5, con esfuerzo alto o extra alto. Lo comprobamos en los
+historiales de 58 subagentes.
+
+Los revisores de RDD y de Judgment Day tienen definiciones propias en Sonnet.
+
+Gentle AI ofrece cinco presets: balanced, performance, economy, diversity y custom, que permite elegir el
+modelo y el esfuerzo de cada papel.
+
+Recomendación: un escritor fuerte, en Opus, porque escribir es lo más difícil, y exploración y verificación
+más baratas, en Sonnet. Un verificador con un modelo distinto al del escritor aporta además una mirada más
+independiente.
+
+Pendiente: la configuración custom de los papeles de ODD todavía no está verificada; el primer intento falló
+sin guardar nada.
+
+⏱ Al terminar esta slide: hacia el minuto 29.
 -->
 
 ---
@@ -392,8 +730,28 @@ el primer Confirm falló sin guardar nada.
 <span class="detalle">→ Detalle: [sección 9](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#9-bajo-el-capó-subagentes-memoria-skills-y-hooks)</span>
 
 <!--
+Cómo leerla:
+
+La memoria tiene tres capas, y cada una cumple un papel distinto.
+
+CLAUDE.md es la memoria del proyecto: está versionada y la hereda cualquiera que clone el repositorio. La
+memoria de Claude Code guarda mis preferencias personales, como "no me preguntes, verifica siempre". Y Engram,
+un servidor MCP, guarda de forma proactiva decisiones, hallazgos y resúmenes de sesión, además de una copia
+del documento de ejecución para poder retomar si la sesión se corta.
+
+Los skills son procedimientos que se cargan solo cuando hacen falta: prd, closing-report, vibe-coding,
+worktree y los de Gentle AI. Esa es la diferencia con CLAUDE.md, que se carga siempre.
+
+Los hooks son comandos que el entorno ejecuta automáticamente: inyectan contexto al empezar la sesión, obligan
+a pasar la revisión antes de dar el trabajo por terminado y bloquean el acceso a la base de datos principal
+desde un worktree.
+
+Mensaje clave: lo crítico no se deja a la memoria del agente; se automatiza.
+
 Anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que guarda
-Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cierra cada subagente.
+Claude Code.
+
+⏱ Al terminar esta slide: hacia el minuto 31.
 -->
 
 ---
@@ -410,7 +768,28 @@ Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cie
 
 <span class="detalle">→ Detalle: [sección 10](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#10-desarrollo-en-paralelo-con-worktrees) · [guía completa](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/parallel-developing.md)</span>
 
-<!-- El PRD cerrado y sin interrupciones es lo que habilita tener varios agentes trabajando a la vez. -->
+<!--
+Cómo leerla:
+
+Con un PRD cerrado y sin interrupciones, el agente puede trabajar horas solo, y eso habilita el paso
+siguiente: varios cambios a la vez, cada uno en su propia copia del repositorio.
+
+git worktree aísla el código, pero no la base de datos, la configuración ni los puertos. La regla de diseño es
+que cada copia sea un entorno completo y autónomo.
+
+Todo se deriva de un solo nombre: la rama, la carpeta, la base de datos y la configuración local. Y nadie
+escribe el nombre de la base: lo resuelve un script, para que nunca se toque la principal por error.
+
+La lógica vive en scripts versionados; el skill es solo una tabla que traduce cada frase del equipo a un
+script; y un hook bloquea cualquier comando que apunte a la base principal desde un worktree.
+
+Al fusionar, primero la rama de integración entra en la del cambio y se prueba; solo después el cambio entra
+en la integración.
+
+El flujo completo cabe en una línea: crear el worktree, PRD, ODD y fusionar.
+
+⏱ Al terminar esta slide: hacia el minuto 32.
+-->
 
 ---
 
@@ -428,6 +807,26 @@ Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cie
 
 <span class="detalle">→ Detalle: [sección 12](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#12-qué-sabemos-y-qué-no)</span>
 
+<!--
+Cómo leerla:
+
+Para terminar, conviene separar lo que el experimento respalda de lo que todavía son hipótesis.
+
+Respaldado: un PRD bien trabajado alcanza para que ODD genere un plan de implementación detallado; un agente
+produjo una implementación en Rust que no es trivial sin que yo conociera el lenguaje; y tener artefactos
+persistentes, como el PRD, los documentos de ejecución, los tests y los informes, hace que el trabajo sea
+auditable.
+
+Falta medir: si ODD requiere menos intervención humana que SDD, si cuesta menos tiempo o tokens con la misma
+calidad, y si el vibe coding da resultados comparables con pruebas justas. Para eso habría que repetir cambios
+comparables con cada enfoque y medir lo mismo en todos.
+
+Mensaje clave: no estoy diciendo que ODD sea mejor. Estoy diciendo que, con un buen PRD, las tres formas de
+ejecutar parten de una base sólida y verificable.
+
+⏱ Al terminar esta slide: hacia el minuto 34.
+-->
+
 ---
 
 <!-- _class: lead -->
@@ -441,4 +840,13 @@ Claude Code. Engram, por su parte, recoge los aprendizajes clave con los que cie
 
 **Preguntas**
 
-<!-- Reservar unos 5 minutos al final para preguntas. -->
+<!--
+Cómo leerla:
+
+Todo el material está en el repositorio: el documento completo, el ejemplo de cómo se generó el PRD y el skill
+de PRD, que también está publicado en un Gist para quien quiera usarlo en sus proyectos.
+
+Reservar unos 5 minutos para preguntas.
+
+⏱ Al llegar aquí: hacia el minuto 34. En una sesión de 60 minutos quedan unos 26 para preguntas o para una demo en vivo.
+-->
