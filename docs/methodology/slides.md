@@ -562,7 +562,7 @@ Una especificación formal precede al código; cada fase deja un artefacto revis
 | `verify` | La comprobación del resultado contra las especificaciones |
 | `archive` | Los cambios integrados en las especificaciones vigentes, listas para el próximo cambio |
 
-- Herramientas: [**OpenSpec**](https://github.com/Fission-AI/OpenSpec) (`/opsx:*`) y [**Spec Kit**](https://github.com/github/spec-kit) (`/speckit-*`), de GitHub
+- Herramientas: [**OpenSpec**](https://github.com/Fission-AI/OpenSpec) (`/opsx:*`; `verify` solo en el perfil ampliado) y [**Spec Kit**](https://github.com/github/spec-kit) (`/speckit-*`)
 
 <span class="detalle">→ Detalle: [sección 7](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#7-el-proceso-sdd-en-detalle)</span>
 
