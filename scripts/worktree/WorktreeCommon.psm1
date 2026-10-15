@@ -58,7 +58,8 @@ $script:Messages = @{
     SessionInside   = "Esta sesión está dentro de '{0}'. Elimínala desde la copia principal."
     InUse           = "No se pudo borrar '{0}': está en uso. Cierra el editor, la aplicación o las pruebas que lo usan y repite. No se ha cerrado ningún proceso."
     TagExists       = 'Ya existe la etiqueta exp/{0}. No se ha eliminado nada.'
-    NotRehearsal    = "'{0}' no es una base de ensayo. No se ha cambiado nada."
+    InvalidNameRm   = "Nombre '{0}' no válido: solo minúsculas, dígitos y guiones simples (por ejemplo, startswith-odd). No se ha eliminado nada."
+    NotRehearsal    ="'{0}' no es una base de ensayo. No se ha cambiado nada."
     BaseExists      = "La base '{0}' ya existe. No se ha creado nada."
     NoWorktrees     = 'No hay worktrees (solo la copia principal).'
 
@@ -147,11 +148,13 @@ function Invoke-NativeTool {
 }
 
 function Get-NativeText {
-    <# One line with what a failed tool said (stderr first), for a message. #>
+    <# The first line a failed tool said (stderr first), at most 200 characters, for a message: a tool's
+       usage or help text after it would bury the message. #>
     param([Parameter(Mandatory = $true)]$Result)
-    $lines = @(@($Result.Err) + @($Result.Out) | Where-Object { $_ -and $_ -notmatch '^(Update available|To update:|\s+go install|\s+or: https)' })
-    $text = ($lines -join ' ').Trim()
+    $lines = @(@($Result.Err) + @($Result.Out) | Where-Object { $_ -and $_.Trim() -and $_ -notmatch '^(Update available|To update:|\s+go install|\s+or: https)' })
+    $text = if ($lines.Count -gt 0) { "$($lines[0])".Trim() } else { '' }
     if (-not $text) { $text = "código de salida $($Result.ExitCode)" }
+    if ($text.Length -gt 200) { $text = $text.Substring(0, 200) + '…' }
     return $text.TrimEnd('.')
 }
 

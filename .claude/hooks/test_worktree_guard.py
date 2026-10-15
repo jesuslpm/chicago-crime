@@ -269,6 +269,17 @@ class BaseMoveTests(GuardTestCase):
             with self.subTest(command=command):
                 self.assertBlocked(self.bash(self.copy_b, command), base_block("ensayo"))
 
+    def test_base_names_are_matched_without_regard_to_case(self):
+        # Windows refs ignore case: `git checkout ENSAYO` checks out `ensayo` and later commits move it.
+        for command, branch in (
+            ("git checkout ENSAYO", "ensayo"),
+            ("git branch -f Ensayo HEAD", "ensayo"),
+            ("git push . HEAD:Main", "main"),
+            ("git update-ref refs/heads/MAIN HEAD", "main"),
+        ):
+            with self.subTest(command=command):
+                self.assertBlocked(self.bash(self.copy_b, command), base_block(branch))
+
     def test_the_rehearsal_base_stays_protected_when_git_cannot_run(self):
         no_git = os.path.dirname(sys.executable)
         outcome = run_guard(self.copy_b, payload("Bash", self.copy_b, command="git checkout ensayo"), path=no_git)

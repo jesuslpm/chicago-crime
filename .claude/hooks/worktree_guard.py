@@ -330,16 +330,17 @@ def option_value(args, names):
 
 def moved_branch(sub, args, layout):
     """The protected branch this git command would move, or None."""
-    protected = layout.protected()
+    # Windows refs ignore case (`git checkout ENSAYO` checks out `ensayo`), so names are compared in lower case.
+    protected = {name.lower(): name for name in layout.protected()}
 
     def hit(*names):
         for name in names:
-            if name is not None and ref_name(name) in protected:
-                return ref_name(name)
+            if name is not None and ref_name(name).lower() in protected:
+                return protected[ref_name(name).lower()]
         return None
 
-    if sub in GIT_MOVES_HEAD and layout.branch in protected:
-        return layout.branch
+    if sub in GIT_MOVES_HEAD and layout.branch and layout.branch.lower() in protected:
+        return protected[layout.branch.lower()]
     if sub == "checkout":
         new = option_value(args, ("-b", "-B", "--orphan"))
         if new is not None:
@@ -370,8 +371,8 @@ def moved_branch(sub, args, layout):
         return None
     if sub == "update-ref":
         for arg in positionals(args, ("-m",)):
-            if arg.startswith("refs/heads/") and ref_name(arg) in protected:
-                return ref_name(arg)
+            if arg.startswith("refs/heads/") and hit(arg):
+                return hit(arg)
         return None
     if sub in ("push", "fetch", "pull"):
         pos = positionals(args, ("-o", "--push-option", "--receive-pack", "--upload-pack", "--repo", "--exec"))

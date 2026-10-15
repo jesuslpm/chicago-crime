@@ -489,6 +489,12 @@ try {
         }
     }
 
+    Test-Case 'remove: an invalid name is refused with the removal wording' {
+        $before = Get-State -Fixture $F1
+        $r = Remove-Copy -Fixture $F1 -Name 'Bad_X'
+        Assert-Refused $r "Nombre 'Bad_X' no válido: solo minúsculas, dígitos y guiones simples (por ejemplo, startswith-odd). No se ha eliminado nada." $before $F1
+    }
+
     Test-Case 'create: a name too long for Windows paths is refused (AC-W3)' {
         $longest = 0
         foreach ($path in (Invoke-GitIn -Path $F1.Main -Arguments @('ls-tree', '-r', '--name-only', 'main'))) { if ($path.Length -gt $longest) { $longest = $path.Length } }
@@ -565,7 +571,7 @@ try {
         $folder = Get-Folder -Fixture $F1 -Name $name
         $fakeBin = Join-Path $TestRoot 'fake-bin'
         New-Item -ItemType Directory -Path $fakeBin -Force | Out-Null
-        $fake = "@echo off`r`nif `"%1`"==`"projects`" (`r`n  echo No projects found.`r`n  exit /b 0`r`n)`r`necho engram init is broken 1>&2`r`nexit /b 1`r`n"
+        $fake = "@echo off`r`nif `"%1`"==`"projects`" (`r`n  echo No projects found.`r`n  exit /b 0`r`n)`r`necho engram init is broken 1>&2`r`necho usage: engram ^<command^> [arguments] 1>&2`r`nexit /b 1`r`n"
         [System.IO.File]::WriteAllText((Join-Path $fakeBin 'engram.cmd'), $fake)
         $r = New-Copy -Fixture $F1 -Name $name -Environment @{ PATH = "$fakeBin;$env:PATH" }
         Assert-Exit $r 1

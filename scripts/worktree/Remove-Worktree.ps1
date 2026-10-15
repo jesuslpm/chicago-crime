@@ -86,7 +86,7 @@ if ($validName) {
 
 $session = Get-SessionCopy -Context $context -Worktrees $worktrees
 if ($session) { Exit-Worktree (Get-WorktreeMessage CopyContext $session) }
-if (-not $validName) { Exit-Worktree (Get-WorktreeMessage InvalidName $Name) }
+if (-not $validName) { Exit-Worktree (Get-WorktreeMessage InvalidNameRm $Name) }
 
 $branchExists = Test-GitRef -Path $mainRoot -Ref "refs/heads/$branch"
 $folderExists = Test-Path -LiteralPath $folder

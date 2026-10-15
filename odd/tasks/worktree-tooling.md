@@ -94,8 +94,10 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
   parent of `git rev-parse --git-common-dir`.
 - **Recorded base**: `git config branch.feat/<n>.worktreebase <base>` in the shared repository config. Every
   copy ever created on a base is also appended to the multi-valued `worktreebase.<base>.created`, so the
-  rehearsal discard also finds copies already removed (their Engram projects and Claude memory) and exactly the
-  `exp/` tags made from that base.
+  rehearsal discard also finds copies already removed (their Engram projects and Claude memory) and the `exp/`
+  tags of those names. It goes by name: it skips a name whose live branch records another base, but a tag,
+  Engram project or memory of the same name made outside the rehearsal is not told apart (verifier A9; the
+  documented order — discard the rehearsal before the demo — prevents it).
 - **Name length**: max = 259 − length of `C:\wt\chicago-crime-` prefix path − 1 − max(longest tracked path in
   the base, 100 reserved for build output).
 - **CSV**: NTFS hard link to the main copy's CSV; the read-only attribute is shared by all links. Deleting a
@@ -130,7 +132,7 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
 | T1 | S1–S6, S8 | delegated writer A (parallel with T2/T3: disjoint surfaces) | done | RED: every script test failed with `-File ... does not exist` (12:20:42); GREEN 39/39 (writer 12:37–12:39; parent rerun 39/39). Extra script messages added to the guide (L6). |
 | T2 | S7 | delegated writer B (parallel) | done | `5d5d366`. RED: `Ran 29 tests … FAILED (failures=82, errors=2)`; GREEN: 29/29 (parent rerun OK); closing-report tests 16/16; settings pre-check run under Git Bash. |
 | T3 | S9 | delegated writer C (parallel; interfaces fixed above) | done | `d6f55e0`. 22/22 PRD messages verbatim in the guide; 8/8 phrases in skill and guide. Parent fix L3. |
-| T4 | all | independent verifier + real rehearsal on copies | pending | |
+| T4 | all | independent verifier + real rehearsal on copies | in progress | Verifier: S1–S9 and AC-W1…AC-W15 PASS, no blockers, 11 advisories (L8). AC-W5: two copies, release builds 80 s each and generator acceptance 576 s each (15/15 PASS each) at the same time. Fixes A1, A4, A5, A10 (L8). |
 | T5 | — | close: closing report, merge into `main` | pending | |
 
 ## Log
@@ -165,3 +167,21 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
   checked out, nothing left) — added to the guide's message table. Found in the real repo: a worktree
   `C:\wt\chicago-crime-start-confirmation` (`feat/start-confirmation`, created 12:10 by another session of the
   user, not by this run); left untouched and excluded from verification.
+- **L7** (12:44:30) T1 committed `43b7965`. Assess `d6f55e0..43b7965`: medium/under budget, escalated to high
+  (item 1: deletes copies, branches, tags, Engram projects, Claude memory; toggles the CSV attribute; moves
+  refs). Independent verifier launched first (whole document, baseline `e7efa04`, real rehearsal on a scratch
+  clone with the real CSV hard-linked, AC-W5 parallel builds + acceptance); the four-lens review runs on the
+  final slice after its corrections.
+- **L8** Verifier report (scratch clone with `main` at `43b7965`, real CSV hard-linked, `ENGRAM_DATA_DIR`
+  isolated): every S# and AC passes. AC-W5 measured: builds 12:54:49–12:56:09, acceptance 12:56:22–13:05:58,
+  both copies exit 0. Real CSV SHA-256 `5CB5FA41…AE35D`, 2,406,401,982 bytes before and after, now read-only
+  (set by the first copy, as designed). Checks: scripts 39/39, guard 30/30, cargo fmt/clippy OK, cargo test 425
+  passed. Advisories fixed as regression tests (RED → GREEN): A1 the guard compares branch names without case
+  (`git checkout ENSAYO` moved the base on Windows; guard RED 4 → 31/31); A4 a failed step's cause is the
+  tool's first line, at most 200 characters (a help text followed it); A5 an invalid name on removal ends
+  with `No se ha eliminado nada.`; A10 guide rows fixed (`git` is not checked; new rows for the generalised
+  rehearsal-base refusal and the removal invalid name). Accepted: A2 8.3 short names of a protected folder pass
+  the guard; A3 textual limit (R1-001); A6 a plain removal names the kept Engram project even if it never
+  existed; A7 the creation summary's next step is generic (the first prompt depends on the run: PRD, vibe or
+  ODD, see the prompts doc); A8 `worktreebase.main.created` keeps growing; A9 name-based rehearsal cleanup;
+  A11 `run-acceptance.ps1` output encoding when redirected (baseline, not this change).

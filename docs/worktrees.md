@@ -269,7 +269,7 @@ The PRD does not list these; the scripts print them in the same style.
 
 | Message | Meaning | What to do |
 |---|---|---|
-| `No se encuentra '<herramienta>' en el PATH. No se ha creado nada.` (or `… No se ha eliminado nada.`) | A tool the script needs (`git`, `engram`, `code`) is not on the PATH. | Install it or fix the PATH, then repeat. |
+| `No se encuentra '<herramienta>' en el PATH. No se ha creado nada.` (or `… No se ha eliminado nada.`) | A tool the script checks for (`engram`, or `code` when it opens the editor) is not on the PATH. | Install it or fix the PATH, then repeat. |
 | `No se pudo consultar Engram: <causa>. No se ha creado nada.` (or `… No se ha eliminado nada.`) | The Engram query that checks or deletes the copy's project failed. | Fix Engram (`engram doctor`) and repeat. |
 | `No existe el CSV de referencia '<ruta>' en la copia principal. No se ha creado nada.` | The main copy has no reference CSV to link. | Put `chicago-crime-data.csv` at the main copy's root and repeat. |
 | `El CSV de referencia '<ruta>' y la carpeta '<carpeta>' están en unidades distintas, y el enlace necesita la misma. No se ha creado nada.` | A hard link needs the CSV and the copy on the same drive. | Use a copies root on the same drive as the main copy (the default `C:\wt`). |
@@ -282,3 +282,5 @@ The PRD does not list these; the scripts print them in the same style.
 | `La carpeta '<carpeta>' no es una copia de este repositorio. No se ha eliminado nada.` | The folder exists but is not a copy of this repository, so it is never deleted. | Check the folder by hand. |
 | `La base '<base>' está abierta en '<carpeta>'. Cambia allí a otra rama y repite. No se ha cambiado nada.` | The rehearsal base is checked out in a copy, so it cannot be deleted. | Switch that copy to another branch and repeat. |
 | `No queda nada del ensayo '<base>'. No se ha cambiado nada.` | The rehearsal was already discarded. | Nothing. |
+| `'<base>' no es una base de ensayo. No se ha cambiado nada.` | The branch was not created with `Crea la base de ensayo`, so the rehearsal discard never deletes it (the PRD message for `main`, applied to any unmarked branch). | Check the name; delete a branch made by hand with git yourself. |
+| `Nombre '<n>' no válido: … No se ha eliminado nada.` | The name given to a removal or discard is not a valid change name. | Check the name with `¿Qué worktrees tengo?`. |
