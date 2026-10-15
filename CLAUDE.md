@@ -54,6 +54,10 @@ phases or subagents.
     --lenses <lenses> --lenses-reason "<what changed and how>"
   ```
 
+  Generated files (for example `docs/methodology/slides.html`) go in a commit of their own, after their source
+  has been reviewed or assessed. A last slice made only of generated files needs no review: it is reviewed
+  through its source.
+
 - Write the closing report with the `closing-report` skill and save it in the repository next to the
   execution document (for ODD, `odd/tasks/<feature>-report.md`).
 - Merge the feature branch into `main` after full verification. Do not push until the user asks.

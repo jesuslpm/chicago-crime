@@ -97,7 +97,7 @@ vibe coding instead of a lightweight SDD.
 
 10. Review the whole diff for duplicated logic, constants or messages, and fix what repeats existing knowledge.
 11. **Review the last slice.** When RDD is on and commits remain after the last reviewed boundary (the last
-    assessment said `under_budget`), request their review with the command in `CLAUDE.md` (Closing) and take
+    assessment said `under_budget`), request their review with the command and the generated-files rule in `CLAUDE.md` (Closing) and take
     it to its end, so every merged commit has been through RDD.
 12. Run the project's full checks (see `CLAUDE.md`), after the last code change.
 13. Check every acceptance criterion against the PRD with executed commands, and build the table criterion →
