@@ -126,10 +126,10 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
 
 | ID | Specs | Route | Status | Evidence |
 |---|---|---|---|---|
-| T0 | S1, S9 | inline | in progress | PRD, prompts doc, `.gitignore` (`.engram/`, `/work/`), this document. |
-| T1 | S1–S6, S8 | delegated writer A (parallel with T2/T3: disjoint surfaces) | pending | |
-| T2 | S7 | delegated writer B (parallel) | pending | |
-| T3 | S9 | delegated writer C (parallel; interfaces fixed above) | pending | |
+| T0 | S1, S9 | inline | done | `6d679b4`: PRD, prompts doc, `.gitignore` (`.engram/`, `/work/`), this document. Assess: medium, under budget (reviewed with the slice). |
+| T1 | S1–S6, S8 | delegated writer A (parallel with T2/T3: disjoint surfaces) | done | RED: every script test failed with `-File ... does not exist` (12:20:42); GREEN 39/39 (writer 12:37–12:39; parent rerun 39/39). Extra script messages added to the guide (L6). |
+| T2 | S7 | delegated writer B (parallel) | done | `5d5d366`. RED: `Ran 29 tests … FAILED (failures=82, errors=2)`; GREEN: 29/29 (parent rerun OK); closing-report tests 16/16; settings pre-check run under Git Bash. |
+| T3 | S9 | delegated writer C (parallel; interfaces fixed above) | done | `d6f55e0`. 22/22 PRD messages verbatim in the guide; 8/8 phrases in skill and guide. Parent fix L3. |
 | T4 | all | independent verifier + real rehearsal on copies | pending | |
 | T5 | — | close: closing report, merge into `main` | pending | |
 
@@ -141,3 +141,27 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
   una de las operaciones posibles en el worktree".
 - **L2** (11:59:02) Branch created from `e7efa04`. Risk: high (deletes branches, folders, Engram projects and
   Claude memory; adds a guard) → independent verifier at close and RDD review per commit.
+- **L3** Writer C found that "merge after verification" in a copy would make both experiment runs merge,
+  contradicting "Solo se fusiona la copia de ODD" and the PRD actor rule "decide qué se fusiona y qué se
+  descarta" (the developer). Decision: in a copy the run closes without merging; the merge happens only on the
+  developer's `Fusiona el cambio en la base` (CLAUDE.md *Working in a worktree*, guide). Guard deviations
+  accepted: PowerShell aliases count as read-only; `pull`, `cherry-pick`, `revert`, `am`, `branch -C` and
+  `rebase <up> <base>` also count as base moves; commands that name the base without moving it pass.
+- **L4** Slice `e7efa04..d6f55e0` (T0, T2, T3; 12 files, 2,123 lines) assessed high (process start in the
+  guard) → review granted, lenses risk + reliability + readability, lineage `review-58899355a41ea11e`.
+  Approved with 14 advisory findings (no blockers); acknowledged, authority burned; reviewed boundary →
+  `d6f55e0`.
+- **L5** Advisory follow-ups fixed in `923e15a` (RED 3 failures → GREEN 30/30): spaced redirects
+  (`git checkout ensayo > nul`) no longer hide a base move (R2-redirect); the base is read from the shared
+  config file when git cannot run, so a rehearsal base stays protected (R3-002). Accepted as documented
+  limitation: the shell rule is textual (relative paths, variables, nested shells pass; R1-001). The "docs
+  route to absent scripts" findings close with T1.
+- **L6** T1 deviations accepted: Claude memory folder name maps every non-alphanumeric character to `-` (what
+  Claude Code does); New-RehearsalBase marks the base (`worktreebase.<b>.rehearsal=true`) and Remove-Rehearsal
+  refuses unmarked branches with the PRD message generalised to `'<b>' no es una base de ensayo. No se ha
+  cambiado nada.`; Remove-Rehearsal skips a reused name whose live branch records another base; tests isolate
+  Engram with `ENGRAM_DATA_DIR`; 16 extra messages in the PRD style (tool missing, Engram failure, CSV missing
+  or on another drive, merge preconditions, partial removal, nothing to remove, foreign folder, rehearsal base
+  checked out, nothing left) — added to the guide's message table. Found in the real repo: a worktree
+  `C:\wt\chicago-crime-start-confirmation` (`feat/start-confirmation`, created 12:10 by another session of the
+  user, not by this run); left untouched and excluded from verification.

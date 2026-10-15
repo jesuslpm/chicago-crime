@@ -262,3 +262,23 @@ Every message the tools show, verbatim. The placeholders (`<n>`, `<base>`, `<car
 | `Bloqueado: esta sesión trabaja en '<carpeta>' y no escribe fuera de ella.` | The guard stopped the agent of a copy from writing in the main copy or another copy. | Keep the work inside the copy. Operations on copies are asked in the main copy's session. |
 | `Bloqueado: la base '<base>' solo avanza con la fusión del worktree.` | The guard stopped the agent of a copy from moving the base by hand. | Use `Fusiona el cambio en la base`. |
 | (the usual application or system error) | A write to the reference CSV failed: it is read-only on purpose. | Write outputs to the copy's `work` folder. Never remove the read-only attribute. |
+
+### Other messages from the scripts
+
+The PRD does not list these; the scripts print them in the same style.
+
+| Message | Meaning | What to do |
+|---|---|---|
+| `No se encuentra '<herramienta>' en el PATH. No se ha creado nada.` (or `… No se ha eliminado nada.`) | A tool the script needs (`git`, `engram`, `code`) is not on the PATH. | Install it or fix the PATH, then repeat. |
+| `No se pudo consultar Engram: <causa>. No se ha creado nada.` (or `… No se ha eliminado nada.`) | The Engram query that checks or deletes the copy's project failed. | Fix Engram (`engram doctor`) and repeat. |
+| `No existe el CSV de referencia '<ruta>' en la copia principal. No se ha creado nada.` | The main copy has no reference CSV to link. | Put `chicago-crime-data.csv` at the main copy's root and repeat. |
+| `El CSV de referencia '<ruta>' y la carpeta '<carpeta>' están en unidades distintas, y el enlace necesita la misma. No se ha creado nada.` | A hard link needs the CSV and the copy on the same drive. | Use a copies root on the same drive as the main copy (the default `C:\wt`). |
+| `La copia no está en una rama feat/<nombre> (está en '<rama>'). No se ha cambiado nada.` | The merge runs only on the copy's `feat/<n>` branch. | Switch the copy back to its `feat/<n>` branch and repeat. |
+| `La rama 'feat/<n>' no tiene base registrada. No se ha cambiado nada.` | The branch was not created by `New-Worktree.ps1`, so it has no base to merge into. | Merge it by hand from the main copy under the usual project rules. |
+| `La base '<base>' no existe. No se ha cambiado nada.` | The copy's recorded base was deleted. | Check with `¿Qué worktrees tengo?`; recreate the base or discard the copy. |
+| `Falló el paso '<paso>': <causa>. No se ha cambiado nada.` (or `… No se ha creado nada.`) | A step failed before anything was changed or created. | Fix the cause and repeat. |
+| `Falló el paso '<paso>': <causa>. Ya eliminado: <lista>. Corrige la causa y repite.` | A removal stopped halfway; the list says what is already gone. | Fix the cause and say the same phrase again: removal can be repeated. |
+| `No existe '<n>': ni copia, ni carpeta, ni rama. No se ha eliminado nada.` | There is nothing with that name. | Check the name with `¿Qué worktrees tengo?`. |
+| `La carpeta '<carpeta>' no es una copia de este repositorio. No se ha eliminado nada.` | The folder exists but is not a copy of this repository, so it is never deleted. | Check the folder by hand. |
+| `La base '<base>' está abierta en '<carpeta>'. Cambia allí a otra rama y repite. No se ha cambiado nada.` | The rehearsal base is checked out in a copy, so it cannot be deleted. | Switch that copy to another branch and repeat. |
+| `No queda nada del ensayo '<base>'. No se ha cambiado nada.` | The rehearsal was already discarded. | Nothing. |
