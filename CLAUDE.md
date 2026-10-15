@@ -13,11 +13,13 @@ Rust workspace that turns the Chicago crime CSV into SSTables (`crime-generator`
 
 ## Before starting any execution (ODD, SDD or vibe coding)
 
-1. **Questions first.** Ask every open product question before the run starts. After that, do not stop to
+1. **Questions first.** Ask every open product question before the run starts. Once it starts, do not stop to
    ask: take a reasonable default, record it in the execution document and list it in the closing report.
-2. **Estimate.** Give a time range for the whole run before the first change and record it with the real
-   start time from `date`. Past runs finished in about half the estimated time; calibrate with the earlier
-   closing reports in `odd/tasks/*-report.md`.
+2. **Estimate, then ask to start.** When no questions are left, send a message with only the time range for
+   the whole run and the question whether to start, then stop and wait. Nothing else goes in that message (no
+   plan, map or progress), so the estimate does not get lost in the agent's activity. After the user confirms,
+   record the estimate and the real start time from `date`. Past runs finished in about half the estimated
+   time; calibrate with the earlier closing reports in `odd/tasks/*-report.md`.
 3. **Always verify.** Never ask whether to run tests, verifiers or reviews: run them. Automated review
    consent is always granted.
 

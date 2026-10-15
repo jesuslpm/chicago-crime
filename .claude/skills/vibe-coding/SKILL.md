@@ -4,7 +4,7 @@ description: "Trigger: vibe coding, usando vibe coding, con vibe coding, impleme
 license: MIT
 metadata:
   author: inercya
-  version: "1.1"
+  version: "1.2"
 ---
 
 ## Activation Contract
@@ -60,9 +60,11 @@ vibe coding instead of a lightweight SDD.
    and similar functions, types or validations. Classify each criterion as *already done*, *partly done*,
    *similar code to reuse* or *new*, with file:line references. Share the map in the conversation in a few
    lines; it is not written to a file. Run the existing tests once to know the baseline.
-3. Ask every open product question in a single message and wait for the answers. If there are none, say so.
-4. Give a time range for the whole run, calibrated with earlier closing reports when they exist, and record the
-   real start time with `date`.
+3. Ask every open product question in a single message and wait for the answers. If there are none, say so
+   in one line of the step 4 message.
+4. Send a message with only a time range for the whole run, calibrated with earlier closing reports when they
+   exist, and the question whether to start; nothing else goes in it, so the estimate stands out. Wait for the
+   answer, then record the real start time with `date`.
 5. Create a branch for the change from the integration branch.
 
 ### During the run

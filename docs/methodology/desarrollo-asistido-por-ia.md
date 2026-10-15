@@ -159,10 +159,12 @@ para cada commit.
 Valen para cualquiera de los tres enfoques, porque atacan los problemas que más tiempo hacen perder al
 trabajar con agentes.
 
-1. **Pedir una estimación de tiempo antes de empezar.** El agente da un rango para todo el trabajo y anota la
-   hora real de inicio. Al cerrar, compara el tiempo real con el estimado. Sin esa referencia no hay forma de
-   calibrar ni de planificar. En el experimento, las estimaciones salieron altas: el consultor se estimó en
-   4–7 h y llevó unas 3 h 15 min, y el soporte para Linux se estimó en 1,5–2,5 h y llevó unos 48 min.
+1. **Pedir una estimación de tiempo antes de empezar.** Cuando ya no quedan preguntas, el agente envía un
+   mensaje que solo trae el rango para todo el trabajo y la pregunta de si empieza, y espera. Así la estimación
+   no se pierde entre la actividad del agente. Cuando el programador confirma, anota la hora real de inicio. Al
+   cerrar, compara el tiempo real con el estimado. Sin esa referencia no hay forma de calibrar ni de
+   planificar. En el experimento, las estimaciones salieron altas: el consultor se estimó en 4–7 h y llevó unas
+   3 h 15 min, y el soporte para Linux se estimó en 1,5–2,5 h y llevó unos 48 min.
 2. **Que no haya interrupciones.** Todas las preguntas se hacen **al principio**, durante el PRD o antes de
    arrancar. Después, el agente no se detiene: ante una duda menor toma un valor razonable, lo documenta y lo
    informa al final. Tampoco pregunta si debe verificar, porque verifica siempre. Una sola pregunta a mitad de
@@ -287,7 +289,8 @@ publicación atómica y la indexación de los valores vacíos.
 
 ```text
 Implementa <ruta del PRD> con ODD.
-Antes de empezar, dame una estimación de tiempo en rango y anota la hora real de inicio.
+Antes de empezar, dame en un mensaje aparte una estimación de tiempo en rango y pregúntame si empiezas.
+Cuando lo confirme, anota la hora real de inicio.
 No me interrumpas: si surge una duda menor, elige un valor razonable, documéntalo y repórtalo al final.
 Verifica siempre, sin preguntar.
 Al cerrar, comprueba cada criterio de aceptación contra el PRD y guarda un informe de cierre en el repositorio.
@@ -298,7 +301,8 @@ Al cerrar, comprueba cada criterio de aceptación contra el PRD y guarda un info
 ```text
 Ejecuta el flujo SDD completo a partir de <ruta del PRD> con <OpenSpec | Spec Kit>, desde la propuesta
 hasta la verificación incluida.
-Antes de empezar, dame una estimación de tiempo en rango y anota la hora real de inicio.
+Antes de empezar, dame en un mensaje aparte una estimación de tiempo en rango y pregúntame si empiezas.
+Cuando lo confirme, anota la hora real de inicio.
 Sin interrupciones: las dudas menores se resuelven con valores por defecto documentados.
 Al cerrar, comprueba cada criterio de aceptación contra el PRD y guarda un informe de cierre en el repositorio.
 ```
@@ -313,8 +317,9 @@ Implementa lo que pide <ruta del PRD> usando vibe coding.
 Antes de escribir, explora el código existente y reutiliza lo que ya haya: mantén el código DRY.
 Escribe un test por cada criterio de aceptación y, al terminar, verifica cada criterio contra el PRD.
 Si aparece una decisión de producto que el PRD no cubre, no la inventes: anótala y repórtala.
-Antes de empezar, dame una estimación de tiempo; trabaja sin interrupciones; al cerrar, guarda un informe
-de cierre en el repositorio con qué test cubre cada criterio y si pasó.
+Antes de empezar, dame en un mensaje aparte una estimación de tiempo y pregúntame si empiezas; después,
+trabaja sin interrupciones; al cerrar, guarda un informe de cierre en el repositorio con qué test cubre cada
+criterio y si pasó.
 ```
 
 Hay que nombrar el enfoque de forma explícita. Si el proyecto usa ODD por defecto, como este, un prompt que
