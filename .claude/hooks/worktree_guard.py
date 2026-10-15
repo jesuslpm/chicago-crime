@@ -111,6 +111,7 @@ class Layout:
         except OSError:
             common = os.path.dirname(os.path.dirname(admin))
         self.main = os.path.dirname(common)
+        self.common = common
         self.others = []
         worktrees = os.path.join(common, "worktrees")
         for entry in os.listdir(worktrees):
@@ -146,10 +147,31 @@ class Layout:
                 ["git", "-C", self.copy, "config", "--get", f"branch.{self.branch}.worktreebase"],
                 capture_output=True, text=True, timeout=5,
             )
+            value = result.stdout.strip()
+            if result.returncode == 0 and value:
+                return value
         except (OSError, subprocess.SubprocessError):
+            pass
+        return self.base_from_config_file()
+
+    def base_from_config_file(self):
+        """Reads the recorded base straight from the shared config when git cannot run, so a rehearsal base stays
+        protected; it understands the plain `[branch "<name>"]` / `worktreebase = <base>` lines git writes."""
+        try:
+            lines = read_text(os.path.join(self.common, "config")).splitlines()
+        except OSError:
             return None
-        value = result.stdout.strip()
-        return value if result.returncode == 0 and value else None
+        section = f'[branch "{self.branch}"]'
+        inside = False
+        for line in lines:
+            line = line.strip()
+            if line.startswith("["):
+                inside = line == section
+            elif inside:
+                key, _, value = line.partition("=")
+                if key.strip().lower() == "worktreebase" and value.strip():
+                    return value.strip()
+        return None
 
     def protected(self):
         """The branches only the worktree merge may move: the base first, then `main`."""
@@ -206,7 +228,21 @@ def git_parts(words):
         i += 2 if words[i] in GIT_GLOBAL_WITH_VALUE else 1
     if i >= len(words):
         return None
-    return words[i].lower(), [w for w in words[i + 1:] if not re.match(r"^[0-9*]?>", w)]
+    return words[i].lower(), without_redirects(words[i + 1:])
+
+
+def without_redirects(words):
+    """Drops output redirections, attached (`>f`, `2>&1`) or spaced (`> f`), so their targets are not arguments."""
+    out = []
+    skip_target = False
+    for word in words:
+        if skip_target:
+            skip_target = False
+        elif re.fullmatch(r"[0-9*]?>>?", word):
+            skip_target = True
+        elif not re.match(r"^[0-9*]?>", word):
+            out.append(word)
+    return out
 
 
 def git_is_read_only(sub, args):

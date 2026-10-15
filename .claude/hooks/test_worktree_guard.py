@@ -41,11 +41,13 @@ def payload(tool, cwd, **tool_input):
     }
 
 
-def run_guard(project_dir, data):
-    """Runs the guard like Claude Code does; `data` is a dict (sent as JSON) or raw text."""
+def run_guard(project_dir, data, path=None):
+    """Runs the guard like Claude Code does; `data` is a dict (sent as JSON) or raw text. `path` replaces PATH."""
     raw = data if isinstance(data, str) else json.dumps(data)
     env = dict(os.environ)
     env["CLAUDE_PROJECT_DIR"] = project_dir
+    if path is not None:
+        env["PATH"] = path
     result = subprocess.run(
         [sys.executable, "-I", GUARD],
         input=raw.encode("utf-8"),
@@ -260,9 +262,17 @@ class BaseMoveTests(GuardTestCase):
             "git checkout -B ensayo",
             "git switch -C ensayo HEAD",
             f"git -C {self.copy_b} checkout ensayo",
+            "git checkout ensayo > nul",
+            "git checkout ensayo 2> /dev/null",
+            "git switch ensayo >> log.txt 2>&1",
         ):
             with self.subTest(command=command):
                 self.assertBlocked(self.bash(self.copy_b, command), base_block("ensayo"))
+
+    def test_the_rehearsal_base_stays_protected_when_git_cannot_run(self):
+        no_git = os.path.dirname(sys.executable)
+        outcome = run_guard(self.copy_b, payload("Bash", self.copy_b, command="git checkout ensayo"), path=no_git)
+        self.assertBlocked(outcome, base_block("ensayo"))
 
     def test_branch_forms_naming_the_base_are_blocked(self):
         for command in (
