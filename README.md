@@ -272,6 +272,22 @@ rows themselves, in the same CSV form as `crime-query --format csv`:
 target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where "Primary Type=THEFT" --where District=008
 ```
 
+## Work on several changes at once
+
+Each change can live in its own copy of the repository (a git worktree) with its own agent session, so two
+changes, for example the same PRD implemented with vibe coding and with ODD, can run side by side without
+touching each other. A copy named `<n>` gets the branch `feat/<n>`, the folder `C:\wt\chicago-crime-<n>`, a
+read-only link to the reference CSV, its own git-ignored `work` folder for acceptance runs and generated
+datasets, and its own Engram project. The main copy creates, lists and removes copies; each copy merges its
+branch into its base, which advances without a merge commit and is never pushed. A guard hook keeps the agent
+of a copy from writing outside it or moving the base by hand.
+
+You ask the agent with fixed Spanish phrases, such as `Crea un worktree para el cambio <n>` in the main copy or
+`Fusiona el cambio en la base` in the copy; the project's `worktree` skill runs the matching script in
+`scripts/worktree`. The whole flow can be rehearsed on a throwaway base and discarded without changing `main`.
+The [worktree guide](docs/worktrees.md) covers every phrase, the rehearsal and what to do for each message;
+the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-worktrees.md). Windows only.
+
 ## Repository layout
 
 | Path | Contents |
@@ -281,6 +297,7 @@ target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where 
 | `crates/crime-query` | The query app. |
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
 | `scripts/acceptance` | Acceptance scripts for the reference CSV (generator and query app). |
+| `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `docs/linux` | Guides to build, test and run the project on Linux, in WSL or natively. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |

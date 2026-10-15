@@ -60,7 +60,26 @@ phases or subagents.
 
 - Write the closing report with the `closing-report` skill and save it in the repository next to the
   execution document (for ODD, `odd/tasks/<feature>-report.md`).
-- Merge the feature branch into `main` after full verification. Do not push until the user asks.
+- Merge the feature branch into `main` after full verification (in a worktree copy, see *Working in a
+  worktree*). Do not push until the user asks.
+
+## Working in a worktree
+
+A worktree copy holds one change at `C:\wt\chicago-crime-<n>` on branch `feat/<n>`; its `.git` is a file, while
+in the main copy (`C:\rust\chicago-crime`) it is a folder. Create, list, merge and remove copies only with the
+`worktree` skill. Guide: `docs/worktrees.md`.
+
+- **Merge into the base, only when asked.** In a copy, the developer decides what is merged and what is
+  discarded, so every rule that says "merge into `main`" (the Closing section above, the `vibe-coding` skill)
+  becomes: close the run without merging, and merge into the copy's base only when the developer says
+  `Fusiona el cambio en la base`, through the worktree merge (`worktree` skill), never with git by hand.
+  Nothing is pushed.
+- **Acceptance work folder.** Acceptance runs and generated datasets use the copy's `work` folder (ignored by
+  git), for example `-WorkDir work\acceptance`, never a fixed folder such as `D:\acceptance`.
+- **Stay inside the copy.** Never write in the main copy or in other copies; a guard hook blocks it.
+- **Never Claude Code's built-in worktrees** (`EnterWorktree`, `--worktree`, worktree isolation), neither in
+  the main copy nor in a worktree copy.
+- The main copy keeps every rule above unchanged.
 
 ## Repository rules
 
