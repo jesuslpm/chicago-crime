@@ -376,12 +376,12 @@ del producto van directos a la ejecución.
 
 ## Tres reglas antes de ejecutar
 
-1. **Estimación de tiempo** antes de empezar, con la hora real de inicio
+1. **Estimación de tiempo** en un mensaje propio, junto con «¿comienzo?»; la hora real de inicio, al confirmar
    - [Consultor](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-query-report.md): 4–7 h estimadas, unas 3 h 15 min reales
 2. **Sin interrupciones**: todas las preguntas al principio; después, valores por defecto documentados
    - Una sola pregunta a mitad de proceso puede dejarlo parado horas
 3. **[Informe de cierre](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-query-report.md) en Markdown, guardado en el repositorio**
-   - Resultado, tiempo real frente al estimado, líneas por área, resumen y pendientes
+   - Resultado, revisiones con sus hallazgos, tiempo real frente al estimado, líneas por área, resumen y pendientes
 
 <span class="detalle">→ Detalle: [sección 3](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#3-tres-reglas-antes-de-ejecutar)</span>
 
@@ -391,16 +391,18 @@ Cómo leerla:
 Estas tres reglas valen para cualquier forma de ejecutar el PRD, y atacan los problemas que más tiempo nos
 hacen perder.
 
-La primera es pedir una estimación de tiempo antes de empezar y anotar la hora real de inicio. Sin esa
-referencia no hay forma de calibrar ni de planificar. En el consultor se estimaron entre 4 y 7 horas, y se
+La primera es pedir una estimación de tiempo antes de empezar. El agente nos la da en un mensaje propio, junto
+con la pregunta de si empieza, para que no se pierda entre todo lo que va haciendo. Cuando confirmamos, anota
+la hora real de inicio. Sin esa referencia no hay forma de calibrar ni de planificar. En el consultor se estimaron entre 4 y 7 horas, y se
 tardaron unas 3 horas y cuarto.
 
 La segunda es que no haya interrupciones. Todas las preguntas se hacen al principio, y después el agente no se
 detiene: ante una duda menor toma un valor razonable, lo documenta y lo informa al final. Una sola pregunta a
 mitad de proceso puede dejarlo parado horas mientras nadie mira la pantalla, y eso nos pasó.
 
-La tercera es exigir un informe de cierre en Markdown, guardado en el repositorio, con el resultado, el tiempo
-real frente al estimado, las líneas por área, un resumen y los pendientes.
+La tercera es exigir un informe de cierre en Markdown, guardado en el repositorio, con el resultado, las
+revisiones automáticas con sus hallazgos, el tiempo real frente al estimado, las líneas por área, un resumen y
+los pendientes. Los hallazgos hay que anotarlos en el momento, porque la herramienta de revisión no los guarda.
 
 Mostrar: odd/tasks/crime-query-report.md.
 
@@ -489,11 +491,11 @@ Aviso: es un encuadre conceptual, no una comparación medida.
 
 **PRD:** *"Vamos a escribir el PRD de `<cambio>` con el skill [prd](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/prd/SKILL.md)… Se admiten todo tipo de sugerencias y preguntas… No implementes nada."*
 
-**ODD:** *"Implementa `<PRD>` con ODD. Antes de empezar, dame una estimación de tiempo… No me interrumpas… Verifica siempre… guarda un informe de cierre."*
+**ODD:** *"Implementa `<PRD>` con ODD. Antes de empezar, dame en un mensaje aparte una estimación de tiempo y pregúntame si empiezas… No me interrumpas… Verifica siempre… guarda un informe de cierre."*
 
 **SDD:** *"Ejecuta el flujo SDD completo a partir de `<PRD>` con `<OpenSpec | Spec Kit>`, hasta la verificación incluida…"*
 
-**Vibe coding:** *"Implementa lo que pide `<PRD>` **usando vibe coding**."* El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) pone el resto: mapa del código existente, DRY, tests por criterio, verificación e informe.
+**Vibe coding:** *"Implementa lo que pide `<PRD>` **usando vibe coding**."* El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) pone el resto: mapa del código existente, DRY, tests por criterio, verificación, revisión con RDD si está activo e informe.
 
 <span class="detalle">→ Detalle: [sección 5](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#5-prompts-para-empezar)</span>
 
@@ -510,7 +512,7 @@ Los de ODD y SDD repiten las tres reglas: estimación, sin interrupciones e info
 necesita además una herramienta instalada, como OpenSpec o Spec Kit.
 
 El de vibe coding es el más corto porque el skill vibe-coding pone el resto: el mapa del código existente, el
-código DRY, los tests por criterio, la verificación y el informe.
+código DRY, los tests por criterio, la verificación, la revisión automática si RDD está activo y el informe.
 
 Detalle importante: hay que nombrar el enfoque. En un proyecto con ODD por defecto, como este, si el prompt no
 dice "vibe coding", el agente usa ODD.
@@ -526,7 +528,8 @@ dice "vibe coding", el agente usa ODD.
 - Implementación conversacional: el PRD es el ancla y la conversación es el plan
 - Un criterio por vez, con su test y un commit de punto de control
 - No hay documento de ejecución: **los commits son la memoria**
-- El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) fija **los bordes**, no el proceso: explora antes de escribir y exige DRY
+- Con RDD activo, **revisión automática** como en ODD: tras cada commit y al cerrar
+- El skill [`vibe-coding`](https://github.com/jesuslpm/chicago-crime/blob/main/.claude/skills/vibe-coding/SKILL.md) fija **los bordes**, no el proceso: explora el código y exige DRY
 
 **SDD**
 
@@ -543,7 +546,8 @@ Cómo leerla:
 
 Vibe coding es una implementación conversacional: el PRD hace de ancla y la conversación hace de plan.
 Avanzamos criterio a criterio, cada uno con su test y un commit que sirve de punto de control. Como no hay
-documento de ejecución, los commits son la memoria del proceso.
+documento de ejecución, los commits son la memoria del proceso. Si RDD está activo, la revisión automática
+funciona igual que en ODD: revisa el diff después de cada commit y, al cerrar, el último tramo.
 
 El skill vibe-coding fija los bordes, no el proceso. Antes de escribir explora el código existente para no
 duplicar lo que ya hay, porque el vibe coding tiene la mala costumbre de dejar el código WET, y al final exige
@@ -553,7 +557,7 @@ SDD sigue seis fases: proponer, diseñar, especificar, aplicar, verificar y arch
 genera antes de aplicar. Las herramientas más conocidas son OpenSpec, cuya fase de verificación solo está en
 el perfil ampliado, y Spec Kit, de GitHub.
 
-⏱ Al terminar esta slide: hacia el minuto 23.
+⏱ Al terminar esta slide: hacia el minuto 24.
 -->
 
 ---
@@ -592,7 +596,7 @@ El PRD sigue mandando: si una spec lo contradice, gana el PRD.
 
 Mostrar: odd/tasks/crime-query.md.
 
-⏱ Al terminar esta slide: hacia el minuto 25.
+⏱ Al terminar esta slide: hacia el minuto 26.
 -->
 
 ---
@@ -606,6 +610,7 @@ Mostrar: odd/tasks/crime-query.md.
 5. Evaluar el riesgo: el alto activa un **verificador independiente**
 6. **Revisión automática** con hasta cuatro lentes; los hallazgos se convierten en tareas nuevas
    - [T2a](https://github.com/jesuslpm/chicago-crime/blob/main/odd/tasks/crime-generator.md): un `--log` mal puesto podía **borrar el CSV de origen**
+   - Busca defectos del cambio, **no compara con la especificación**; al cerrar revisa también el último tramo
 7. Actualizar el documento antes de la siguiente tarea
 
 <span class="detalle">→ Detalle: [sección 8](https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/desarrollo-asistido-por-ia.md#8-el-proceso-odd-en-detalle)</span>
@@ -626,10 +631,14 @@ especificación contra el resultado.
 Además, una revisión automática con hasta cuatro lentes revisa el commit, y sus hallazgos se convierten en
 tareas nuevas. Así nació T2a: un --log mal puesto podía borrar el CSV de origen, y la revisión lo detectó.
 
+Un matiz: esta revisión no compara el código con la especificación, eso lo hace el verificador. Busca defectos
+que introdujo el cambio. Y al cerrar se revisa también el último tramo, aunque sea pequeño, para que todo lo
+que se fusiona haya pasado por ella.
+
 Las correcciones tienen límite: una tanda y una recomprobación. No hay ciclos de "revisar hasta que quede
 limpio".
 
-⏱ Al terminar esta slide: hacia el minuto 27.
+⏱ Al terminar esta slide: hacia el minuto 28.
 -->
 
 ---
@@ -668,7 +677,7 @@ En SDD pasa lo mismo: cada fase la ejecuta un subagente.
 Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2. La versión
 actual de ODD es más austera: el orquestador escribe directamente y solo delega con un motivo concreto.
 
-⏱ Al terminar esta slide: hacia el minuto 28.
+⏱ Al terminar esta slide: hacia el minuto 29.
 -->
 
 ---
@@ -710,7 +719,7 @@ independiente.
 Pendiente: la configuración custom de los papeles de ODD todavía no está verificada; el primer intento falló
 sin guardar nada.
 
-⏱ Al terminar esta slide: hacia el minuto 29.
+⏱ Al terminar esta slide: hacia el minuto 30.
 -->
 
 ---
@@ -751,7 +760,7 @@ Mensaje clave: lo crítico no se deja a la memoria del agente; se automatiza.
 Anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que guarda
 Claude Code.
 
-⏱ Al terminar esta slide: hacia el minuto 31.
+⏱ Al terminar esta slide: hacia el minuto 32.
 -->
 
 ---
@@ -788,7 +797,7 @@ en la integración.
 
 El flujo completo cabe en una línea: crear el worktree, PRD, ODD y fusionar.
 
-⏱ Al terminar esta slide: hacia el minuto 32.
+⏱ Al terminar esta slide: hacia el minuto 33.
 -->
 
 ---
@@ -824,7 +833,7 @@ comparables con cada enfoque y medir lo mismo en todos.
 Mensaje clave: no estoy diciendo que ODD sea mejor. Estoy diciendo que, con un buen PRD, las tres formas de
 ejecutar parten de una base sólida y verificable.
 
-⏱ Al terminar esta slide: hacia el minuto 34.
+⏱ Al terminar esta slide: hacia el minuto 35.
 -->
 
 ---
@@ -848,5 +857,5 @@ de PRD, que también está publicado en un Gist para quien quiera usarlo en sus 
 
 Reservar unos 5 minutos para preguntas.
 
-⏱ Al llegar aquí: hacia el minuto 34. En una sesión de 60 minutos quedan unos 26 para preguntas o para una demo en vivo.
+⏱ Al llegar aquí: hacia el minuto 35. En una sesión de 60 minutos quedan unos 25 para preguntas o para una demo en vivo.
 -->

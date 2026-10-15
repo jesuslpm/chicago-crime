@@ -171,6 +171,8 @@ trabajar con agentes.
    proceso puede dejar la ejecución parada durante horas mientras nadie está mirando la pantalla.
 3. **Exigir un informe de cierre en Markdown, guardado en el repositorio.** El informe recoge:
    - el resultado y qué se verificó;
+   - una fila por cada revisión automática, con sus hallazgos y cómo se resolvieron. Se anotan en el momento,
+     porque Gentle AI no guarda los hallazgos una vez reconocida la revisión;
    - el tiempo real frente al estimado, con las esperas aparte;
    - las líneas añadidas y eliminadas por área;
    - un resumen de un párrafo;
@@ -364,7 +366,8 @@ formales. El PRD hace de ancla y la conversación hace de plan.
    paso sale mal, se vuelve al commit anterior en lugar de acumular parches.
 5. **Revisión automática con RDD.** Si RDD está activo, tras cada commit Gentle AI evalúa el riesgo del diff,
    igual que en ODD: un commit de alto riesgo, o un tramo de unas 400 líneas, recibe una revisión externa con
-   las lentes pertinentes, y sus hallazgos se resuelven antes del paso siguiente. Al cerrar se revisa también
+   las lentes pertinentes, y sus hallazgos se resuelven antes del paso siguiente. Busca defectos que introdujo
+   el cambio; el cumplimiento del PRD lo comprueba la verificación del paso 7. Al cerrar se revisa también
    el último tramo, aunque no llegue a ese tamaño, así que todo lo que se fusiona pasó por RDD. No necesita
    documento de ejecución: trabaja sobre el diff de git. El agente lo comprueba al empezar con
    `gentle-ai review mode status`. Si el comando no existe o falla, o si dice que RDD está desactivado, no
@@ -543,8 +546,9 @@ Ejemplos reales:
    El riesgo alto activa un **verificador independiente**: otro agente, que no escribió el código, prueba la
    especificación contra el resultado.
 6. **Revisión automática.** Con el modo RDD de Gentle AI, cada commit de alto riesgo, o cada tramo de unas 400
-   líneas, recibe una revisión con hasta cuatro lentes: riesgo, resiliencia, legibilidad y fiabilidad. Al cerrar
-   se revisa también el último tramo, aunque no llegue a ese tamaño. Los
+   líneas, recibe una revisión con hasta cuatro lentes: riesgo, resiliencia, legibilidad y fiabilidad. No compara
+   el código con la especificación, que es tarea del verificador: busca defectos que introdujo el cambio. Al
+   cerrar se revisa también el último tramo, aunque no llegue a ese tamaño. Los
    hallazgos se convierten en tareas nuevas. En el generador así nacieron T2a, cuando un `--log` mal puesto
    podía borrar el CSV de origen, y T5a, cuando se podían borrar carpetas del usuario.
 7. **Actualizar el documento y su copia** antes de pasar a la siguiente tarea.
