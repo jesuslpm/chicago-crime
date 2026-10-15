@@ -132,8 +132,8 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
 | T1 | S1–S6, S8 | delegated writer A (parallel with T2/T3: disjoint surfaces) | done | RED: every script test failed with `-File ... does not exist` (12:20:42); GREEN 39/39 (writer 12:37–12:39; parent rerun 39/39). Extra script messages added to the guide (L6). |
 | T2 | S7 | delegated writer B (parallel) | done | `5d5d366`. RED: `Ran 29 tests … FAILED (failures=82, errors=2)`; GREEN: 29/29 (parent rerun OK); closing-report tests 16/16; settings pre-check run under Git Bash. |
 | T3 | S9 | delegated writer C (parallel; interfaces fixed above) | done | `d6f55e0`. 22/22 PRD messages verbatim in the guide; 8/8 phrases in skill and guide. Parent fix L3. |
-| T4 | all | independent verifier + real rehearsal on copies | in progress | Verifier: S1–S9 and AC-W1…AC-W15 PASS, no blockers, 11 advisories (L8). AC-W5: two copies, release builds 80 s each and generator acceptance 576 s each (15/15 PASS each) at the same time. Fixes A1, A4, A5, A10 (L8). |
-| T5 | — | close: closing report, merge into `main` | pending | |
+| T4 | all | independent verifier + real rehearsal on copies | done | Verifier: S1–S9 and AC-W1…AC-W15 PASS, no blockers, 11 advisories (L8). AC-W5: two copies, release builds 80 s each and generator acceptance 576 s each (15/15 PASS each) at the same time. Fixes A1, A4, A5, A10 (L8). |
+| T5 | — | close: closing report, merge into `main` | done | [worktree-tooling-report.md](worktree-tooling-report.md); fast-forward merge into `main`, no push. |
 
 ## Log
 
@@ -195,3 +195,10 @@ must be printed exactly (placeholders filled). Read the PRD whole before writing
   that its config section is really gone; R3-rehearsal-skip-untested the reused-name skip now has a test.
   Accepted: R2-dup-copy-plan (the per-copy checks are duplicated in Remove-Worktree and Remove-Rehearsal;
   refactor left for later, both paths are tested). No test forces the holder race or a config lock (races).
+- **L10** Fixes committed `bacac19` (scripts 42/42). Slice `22e2591..bacac19` (87 lines): medium, under
+  budget, reviewed at close by the user's rule (lenses risk + resilience + reliability): approved, 1 warning
+  (no test forces the merge race) + 4 suggestions, left as pending in the report; acknowledged, authority
+  burned. Final checks at `bacac19`: cargo fmt OK, clippy no warnings, cargo test 425 passed, guard 31/31,
+  closing-report 16/16.
+- **L11** (13:28:13) Close. Active time 1 h 29 min against 2–3.5 h; no waits. Closing report:
+  [worktree-tooling-report.md](worktree-tooling-report.md).
