@@ -89,8 +89,8 @@ $Invariant = [System.Globalization.CultureInfo]::InvariantCulture
 $Utf8 = New-Object System.Text.UTF8Encoding $false
 
 # Fixed figures of the reference extract (parent PRD, AC4 and AC5); -1 on another CSV (no figure).
-$TheftCount = 1838502
-$NoCommunityAreaCount = 613720
+$TheftFigure = 1838502
+$NoCommunityAreaFigure = 613720
 # Queries shared by several criteria: a month whose first and last minutes both hold records on
 # the reference CSV, a day inside it, the spring-forward hour of 2019 and a rare primary type.
 $Month = 'Date=2019-08-01..2019-08-31'
@@ -647,7 +647,9 @@ foreach ($path in @($Csv, $CtrlCHelper)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing file: $path" }
 }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
-$DatasetDir = Join-Path $WorkDir 'reference'
+$DatasetDir = Join-Path $WorkDir 'full'
+# The folder earlier versions of this script gave the full dataset; it is only cleaned.
+$LegacyDatasetDir = Join-Path $WorkDir 'reference'
 $SmallDir = Join-Path $WorkDir 'small'
 $Schema1Dir = Join-Path $WorkDir 'schema1'
 $DamagedDir = Join-Path $WorkDir 'damaged'
@@ -660,7 +662,7 @@ $InputDir = Join-Path $WorkDir 'inputs'
 $OutDir = Join-Path $WorkDir 'outputs'
 $ReportPath = Join-Path $WorkDir 'query-acceptance-report.md'
 Write-Step "Cleaning the entries of a previous query acceptance in $WorkDir"
-foreach ($path in @($DatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)) {
+foreach ($path in @($DatasetDir, $LegacyDatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
 }
 foreach ($dir in @($TempDir, $LogDir, $InputDir, $OutDir, $EmptyDir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
@@ -688,9 +690,9 @@ $memoryGiB = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalM
 $os = (Get-CimInstance Win32_OperatingSystem).Caption
 $csvSize = (Get-Item -LiteralPath $Csv).Length
 
-# The full dataset, schema 2. Its folder keeps the name `reference` that earlier runs created.
+# The full dataset, schema 2.
 Write-Step "Generating the full dataset into $DatasetDir"
-$generation = Invoke-Generator -Source $Csv -Output $DatasetDir -Log (Join-Path $LogDir 'reference.log')
+$generation = Invoke-Generator -Source $Csv -Output $DatasetDir -Log (Join-Path $LogDir 'full.log')
 if ($generation.ExitCode -ne 0) { throw "The generator failed (exit $($generation.ExitCode)):`n$($generation.Stderr)" }
 $current = Get-CurrentName $DatasetDir
 $manifest = Get-Content -LiteralPath (Join-Path (Join-Path $DatasetDir $current) 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -698,10 +700,18 @@ Write-Step ('Full dataset {0}: schema {1}, {2} records, {3}' -f $current, $manif
 $SourceSha256 = [string]$manifest.source.sha256
 $IsReference = Test-ReferenceExtract $SourceSha256
 Write-Step (Format-CsvMode $SourceSha256)
-if (-not $IsReference) {
-    $TheftCount = -1
-    $NoCommunityAreaCount = -1
+if (-not (Test-Sha256 $SourceSha256)) {
+    Add-Result 'Full dataset: source SHA-256' $false ('the manifest records no valid source SHA-256: "{0}"' -f $SourceSha256)
 }
+if (-not $IsReference) {
+    $TheftFigure = -1
+    $NoCommunityAreaFigure = -1
+}
+# Every CSV must give 0 rejected records (PRD aceptacion-cualquier-csv, flow step 4); on another CSV
+# the verifier runs without --reference, which is what required it there.
+$rejected = [long]$manifest.records.rejected
+Add-Result 'Full dataset: 0 rejected' ($rejected -eq 0) ('manifest of {0}: {1} valid, {2} rejected' -f `
+        $current, (Format-Count $manifest.records.valid), (Format-Count $rejected))
 
 # The slices of the CSV behind the small datasets.
 Write-Step "Writing the CSV slices ($SliceRows rows each) and the small CSV"
@@ -980,8 +990,8 @@ function Test-Count([string]$Criterion, [string[]]$Arguments, [string]$Select, [
 }
 
 Write-Step 'Counts'
-Test-Count 'AC-C2' @('--where', 'Primary Type=THEFT') 'theft' $TheftCount | Out-Null
-Test-Count 'AC-C3' @('--where', 'Community Area=') 'no-community-area' $NoCommunityAreaCount | Out-Null
+Test-Count 'AC-C2' @('--where', 'Primary Type=THEFT') 'theft' $TheftFigure | Out-Null
+Test-Count 'AC-C3' @('--where', 'Community Area=') 'no-community-area' $NoCommunityAreaFigure | Out-Null
 
 # --- AC-C4: a month, with its first and last instants ---
 
@@ -1020,7 +1030,7 @@ Add-Result 'AC-C9 (filter alone rejected)' ($arrestAlone.ExitCode -eq 1 -and $ar
 $theftSet = [QueryAcceptance]::ReadIds($TheftIds)
 $limitRuns = @(1..2 | ForEach-Object { Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--limit', '100', '--format', 'csv') })
 $limitParts = @()
-$limitOk = $theftSet.Count -eq (Get-SelectCount 'theft') -and ($TheftCount -lt 0 -or $theftSet.Count -eq $TheftCount)
+$limitOk = $theftSet.Count -eq (Get-SelectCount 'theft') -and ($TheftFigure -lt 0 -or $theftSet.Count -eq $TheftFigure)
 $limitSets = @()
 foreach ($run in $limitRuns) {
     $records = Read-CsvRecords $run.Stdout
@@ -1059,10 +1069,10 @@ $spellings = foreach ($spelling in @('theft', 'Theft', 'THEFT')) {
     $run = Invoke-Query -Arguments @('--where', "Primary Type=$spelling", '--count')
     [pscustomobject]@{ Spelling = $spelling; Count = Get-QueryCount $run }
 }
-$spellingsOk = @($spellings | Where-Object { ($TheftCount -ge 0 -and $_.Count -ne $TheftCount) -or $_.Count -ne (Get-SelectCount 'theft') }).Count -eq 0
-$theftFigure = if ($TheftCount -ge 0) { Format-Count $TheftCount } else { 'none (not the reference extract)' }
+$spellingsOk = @($spellings | Where-Object { ($TheftFigure -ge 0 -and $_.Count -ne $TheftFigure) -or $_.Count -ne (Get-SelectCount 'theft') }).Count -eq 0
+$theftFigureText = if ($TheftFigure -ge 0) { Format-Count $TheftFigure } else { 'none (not the reference extract)' }
 Add-Result 'AC-C17 (primary type spellings)' $spellingsOk ('{0}; PRD figure {1}, select {2}' -f `
-    (($spellings | ForEach-Object { '{0} -> {1}' -f $_.Spelling, (Format-Count $_.Count) }) -join ', '), $theftFigure, (Format-Count (Get-SelectCount 'theft')))
+    (($spellings | ForEach-Object { '{0} -> {1}' -f $_.Spelling, (Format-Count $_.Count) }) -join ', '), $theftFigureText, (Format-Count (Get-SelectCount 'theft')))
 $listing = Invoke-Query -Arguments @('--where', 'Primary Type=theft', '--limit', '20', '--format', 'csv')
 $listingRecords = Read-CsvRecords $listing.Stdout
 $listingOk = $listing.ExitCode -eq 0 -and $null -ne $listingRecords -and $listingRecords.Count -eq 20 -and @($listingRecords | Where-Object { $_[5] -cne 'THEFT' }).Count -eq 0
@@ -1211,12 +1221,12 @@ $named = foreach ($criterion in @('AC-C18-LOWERCASE', 'AC-G3', 'AC-G3-SAMPLE', '
 }
 $verifierOk = $verifier.ExitCode -eq 0 -and $verdicts.Count -gt 0 -and $notPassed.Count -eq 0 -and $verdicts.ContainsKey('AC-C18-LOWERCASE') -and $verdicts.ContainsKey('AC-G3')
 $verifierFlag = if ($IsReference) { ' --reference' } else { '' }
-Add-Result 'AC-C18 (verifier)' $verifierOk ('`crime-acceptance --csv <csv> --dataset reference{0}`: exit {1} in {2}, {3} checks, not PASS: {4}; {5}' -f `
+Add-Result 'AC-C18 (verifier)' $verifierOk ('`crime-acceptance --csv <csv> --dataset full{0}`: exit {1} in {2}, {3} checks, not PASS: {4}; {5}' -f `
         $verifierFlag, $verifier.ExitCode, (Format-Seconds $verifier.WallSeconds), $verdicts.Count, $(if ($notPassed.Count -eq 0) { 'none' } else { $notPassed -join ', ' }), ($named -join ' / '))
 Add-Section (@(
         '## Independent verifier on the full dataset'
         ''
-        ('`crime-acceptance --csv <CSV> --dataset reference{0}`: exit {1}.' -f $verifierFlag, $verifier.ExitCode)
+        ('`crime-acceptance --csv <CSV> --dataset full{0}`: exit {1}.' -f $verifierFlag, $verifier.ExitCode)
         ''
         (Format-Code $verifier.Stdout)
     ) -join "`n")

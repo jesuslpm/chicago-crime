@@ -412,6 +412,9 @@ if ($firstRun.ExitCode -eq 0) {
 else { $SourceSha256 = (Get-FileHash -LiteralPath $Csv -Algorithm SHA256).Hash.ToLowerInvariant() }
 $IsReference = Test-ReferenceExtract $SourceSha256
 Write-Step (Format-CsvMode $SourceSha256)
+if ($runAManifest -and -not (Test-Sha256 $SourceSha256)) {
+    Add-Result 'Run A: source SHA-256' $false ('the manifest records no valid source SHA-256: "{0}"' -f $SourceSha256)
+}
 
 # --- The independent verifier on Run A: AC-G1, AC-G3, AC-G4 ---
 
@@ -594,7 +597,7 @@ Add-Section (@(
 # --- AC-G5 (parent AC13): three bad rows are rejected and the run completes ---
 
 Write-Step 'AC-G5: CSV with a 21-column row, an invalid date and a repeated ID'
-$sample = $firstLines[1]
+$sample = $firstDataRow
 $sampleId = $SampleFields.Groups['id'].Value
 function New-SampleRow([string]$Id, [string]$Date) {
     '"{0}",{1},"{2}",{3}' -f $Id, $SampleFields.Groups['case'].Value, $Date, $SampleFields.Groups['rest'].Value
