@@ -1249,7 +1249,7 @@ $failed = @($Results | Where-Object { $_.Result -ne 'PASS' })
 $resultRows = foreach ($result in $ordered) {
     '| {0} | {1} | {2} |' -f $result.Criterion, $result.Result, $result.Evidence.Replace('|', '\|')
 }
-$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-C[0-9]+').Value } | Sort-Object -Unique)
+$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-C[0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
 $overall = if ($failed.Count -eq 0) { "PASS: all $($Results.Count) checks passed ($($criteriaSeen.Count) criteria)" } else { "FAIL: $($failed.Count) of $($Results.Count) checks failed" }
 $duration = ((Get-Date) - $started).TotalSeconds
 $report = @(
