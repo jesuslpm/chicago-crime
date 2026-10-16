@@ -200,11 +200,37 @@ public static class QueryAcceptance {
         return written;
     }
 
+    // The values of one CSV line, unquoted, joined by the unit separator: two lines that differ only
+    // in their quoting give the same text.
+    public static string CanonicalRow(string line) {
+        var fields = new List<string>();
+        var field = new StringBuilder();
+        bool quoted = false;
+        for (int i = 0; i < line.Length; i++) {
+            char c = line[i];
+            if (quoted) {
+                if (c != '"') field.Append(c);
+                else if (i + 1 < line.Length && line[i + 1] == '"') { field.Append('"'); i++; }
+                else quoted = false;
+            }
+            else if (c == '"') quoted = true;
+            else if (c == ',') { fields.Add(field.ToString()); field.Clear(); }
+            else field.Append(c);
+        }
+        fields.Add(field.ToString());
+        return String.Join("\u001F", fields);
+    }
+
     // Compares two CSV files as sets of rows: the same first line and the same other lines, in
-    // any order. Returns null when equal, otherwise the first difference in words.
-    public static string CompareRowSets(string left, string right) {
+    // any order, byte for byte or, with byValue, field value by field value. Returns null when
+    // equal, otherwise the first difference in words.
+    public static string CompareRowSets(string left, string right, bool byValue) {
         string[] a = File.ReadAllLines(left, Utf8);
         string[] b = File.ReadAllLines(right, Utf8);
+        if (byValue) {
+            a = Array.ConvertAll(a, CanonicalRow);
+            b = Array.ConvertAll(b, CanonicalRow);
+        }
         if (a.Length == 0 || b.Length == 0) return "a file is empty";
         if (a[0] != b[0]) return "the header lines differ";
         if (a.Length != b.Length) return String.Format("{0} rows against {1}", a.Length - 1, b.Length - 1);
@@ -214,7 +240,7 @@ public static class QueryAcceptance {
         Array.Sort(x, StringComparer.Ordinal);
         Array.Sort(y, StringComparer.Ordinal);
         for (int i = 0; i < x.Length; i++) {
-            if (x[i] != y[i]) return "first different row: " + x[i] + " / " + y[i];
+            if (x[i] != y[i]) return ("first different row: " + x[i] + " / " + y[i]).Replace('\u001F', ',');
         }
         return null;
     }
@@ -527,6 +553,15 @@ function Read-CsvRecords([string]$Text) {
     finally { $parser.Close() }
 }
 
+# Whether two CSV texts hold the same lines: byte for byte, or field by field when $ByValue (another
+# CSV than the reference extract, which may quote its fields differently from the query app).
+function Test-SameCsvText([string]$Left, [string]$Right) {
+    if (-not $ByValue) { return $Left -ceq $Right }
+    $l = @($Left -split "`n" | Where-Object { $_ -ne '' } | ForEach-Object { [QueryAcceptance]::CanonicalRow($_) })
+    $r = @($Right -split "`n" | Where-Object { $_ -ne '' } | ForEach-Object { [QueryAcceptance]::CanonicalRow($_) })
+    ($l -join "`n") -ceq ($r -join "`n")
+}
+
 # The data rows of a table output: the header line, a separator line, then one line per record.
 function Read-TableRows([string]$Text) {
     $lines = @(Get-Lines $Text)
@@ -707,6 +742,11 @@ if (-not $IsReference) {
     $TheftFigure = -1
     $NoCommunityAreaFigure = -1
 }
+# The query app's CSV rows against the source rows: byte for byte on the reference extract, which
+# quotes every field like the query app does; field by field on another CSV, which may quote less
+# (the portal's downloads quote only the fields that need it).
+$ByValue = -not $IsReference
+$RowMatch = if ($ByValue) { 'field by field' } else { 'byte for byte' }
 # Every CSV must give 0 rejected records (PRD aceptacion-cualquier-csv, flow step 4); on another CSV
 # the verifier runs without --reference, which is what required it there.
 $rejected = [long]$manifest.records.rejected
@@ -1010,11 +1050,11 @@ Add-Result 'AC-C5 (indexes reported)' ($null -ne $c5.Stats -and $c5.Stats.Indexe
 $caseRun = Invoke-Query -Arguments @('--where', "Case Number=$sharedCase", '--format', 'csv')
 $caseFile = Join-Path $OutDir 'query-case.csv'
 Write-Utf8 $caseFile $caseRun.Stdout
-$caseDiff = if ($caseRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($caseFile, $CaseRows) } else { 'the query failed' }
+$caseDiff = if ($caseRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($caseFile, $CaseRows, $ByValue) } else { 'the query failed' }
 $caseCount = @(Get-Lines $caseRun.Stdout).Count - 1
 Add-Result 'AC-C6' ($null -eq $caseDiff -and $caseCount -ge 2 -and (Get-SelectCount 'case') -eq $caseCount) `
-('case number {0}, the first one the CSV repeats (found by a scan of the CSV''s second column): `{1}` returns {2} records; select returns {3}; the same rows byte for byte, in any order: {4}' -f `
-        $sharedCase, (Format-Query $caseRun), $caseCount, (Get-SelectCount 'case'), $(if ($null -eq $caseDiff) { 'yes' } else { $caseDiff }))
+('case number {0}, the first one the CSV repeats (found by a scan of the CSV''s second column): `{1}` returns {2} records; select returns {3}; the same rows {5}, in any order: {4}' -f `
+        $sharedCase, (Format-Query $caseRun), $caseCount, (Get-SelectCount 'case'), $(if ($null -eq $caseDiff) { 'yes' } else { $caseDiff }), $RowMatch)
 
 # --- AC-C9: a filter without an index on top of two indexed conditions ---
 
@@ -1125,9 +1165,9 @@ Test-Formats 'THEFT on one day' @('--where', 'Primary Type=THEFT', '--range', $D
 $dayRun = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--range', $Day, '--format', 'csv')
 $dayFile = Join-Path $OutDir 'query-day.csv'
 Write-Utf8 $dayFile $dayRun.Stdout
-$dayDiff = [QueryAcceptance]::CompareRowSets($dayFile, $DayRows)
+$dayDiff = [QueryAcceptance]::CompareRowSets($dayFile, $DayRows, $ByValue)
 Add-Result 'AC-C8 (THEFT on one day equals the CSV rows)' ($dayRun.ExitCode -eq 0 -and $null -eq $dayDiff) `
-('`{0}`: {1} rows; select: {2}; the same rows byte for byte, in any order: {3}' -f (Format-Query $dayRun), (@(Get-Lines $dayRun.Stdout).Count - 1), (Get-SelectCount 'theft-day'), $(if ($null -eq $dayDiff) { 'yes' } else { $dayDiff }))
+('`{0}`: {1} rows; select: {2}; the same rows {4}, in any order: {3}' -f (Format-Query $dayRun), (@(Get-Lines $dayRun.Stdout).Count - 1), (Get-SelectCount 'theft-day'), $(if ($null -eq $dayDiff) { 'yes' } else { $dayDiff }), $RowMatch)
 
 # --- AC-C12: a new version is published while a query runs ---
 
@@ -1154,19 +1194,19 @@ $swapDone = Wait-Program $swapQuery
 $queryEnd = Get-Date
 $duringFile = Join-Path $OutDir 'query-swap-during.csv'
 Write-Utf8 $duringFile $held.ToString()
-$duringDiff = if ($swapDone.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($duringFile, $Slice1Rows) } else { 'the query failed' }
+$duringDiff = if ($swapDone.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($duringFile, $Slice1Rows, $ByValue) } else { 'the query failed' }
 $duringStats = Get-Stats $swapDone.Stderr
 $afterFile = Join-Path $OutDir 'query-swap-after.csv'
 $afterRun = Invoke-Query -Dataset $SwapDir -Arguments @('--range', $Everything, '--format', 'csv', '--output', $afterFile)
-$afterDiff = if ($afterRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($afterFile, $Slice2Rows) } else { 'the query failed' }
+$afterDiff = if ($afterRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($afterFile, $Slice2Rows, $ByValue) } else { 'the query failed' }
 $switched = $publish.ExitCode -eq 0 -and $v2Name -ne $v1Name
 Add-Result 'AC-C12 (query in flight)' ($switched -and $v1Gone -and $runningAtPublish -and $runningAfterPublish -and $swapDone.ExitCode -eq 0 -and $null -eq $duringDiff) `
-('`crime-query --dataset swap --range "{0}" --format csv` on version 1 ({1}, {2} rows of slice 1) held after its first 1,000 rows; generator --overwrite with slice 2 exit {3}, CURRENT {1} -> {4}, old version folder gone: {5}; query still running when the generator ended: {6}; then exit {7}, {8} rows, equal to select on slice 1 ({9}) byte for byte in any order: {10}' -f `
+('`crime-query --dataset swap --range "{0}" --format csv` on version 1 ({1}, {2} rows of slice 1) held after its first 1,000 rows; generator --overwrite with slice 2 exit {3}, CURRENT {1} -> {4}, old version folder gone: {5}; query still running when the generator ended: {6}; then exit {7}, {8} rows, equal to select on slice 1 ({9}) {11} in any order: {10}' -f `
         $Everything, $v1Name, (Format-Count $slice1Count), $publish.ExitCode, $v2Name, $v1Gone, $runningAfterPublish, $swapDone.ExitCode, $(if ($duringStats) { Format-Count $duringStats.Count } else { '-' }), `
-    (Format-Count (Get-SelectCount 'slice-1')), $(if ($null -eq $duringDiff) { 'yes' } else { $duringDiff }))
+    (Format-Count (Get-SelectCount 'slice-1')), $(if ($null -eq $duringDiff) { 'yes' } else { $duringDiff }), $RowMatch)
 Add-Result 'AC-C12 (next query)' ($switched -and $afterRun.ExitCode -eq 0 -and $null -eq $afterDiff) `
-('a new query afterwards: exit {0}, equal to select on slice 2 ({1} rows) byte for byte in any order: {2}' -f `
-        $afterRun.ExitCode, (Format-Count (Get-SelectCount 'slice-2')), $(if ($null -eq $afterDiff) { 'yes' } else { $afterDiff }))
+('a new query afterwards: exit {0}, equal to select on slice 2 ({1} rows) {3} in any order: {2}' -f `
+        $afterRun.ExitCode, (Format-Count (Get-SelectCount 'slice-2')), $(if ($null -eq $afterDiff) { 'yes' } else { $afterDiff }), $RowMatch)
 Add-Section (@(
         '## AC-C12: timeline'
         ''
@@ -1188,13 +1228,13 @@ $c1Rows = New-Object System.Collections.Generic.List[string]
 $c1Ok = $sampleLines.Count -eq 6
 foreach ($sample in $sampleIds) {
     $run = Invoke-Query -Arguments @('--where', "ID=$($sample.Id)", '--format', 'csv')
-    # select copies the source line byte for byte; the first and last rows are also read from
-    # the CSV directly.
-    $sourceLine = @($sampleLines | Where-Object { $_.StartsWith('"' + $sample.Id + '",') }) | Select-Object -First 1
+    # select copies the source line byte for byte, its ID quoted or not; the first and last rows are
+    # also read from the CSV directly.
+    $sourceLine = @($sampleLines | Where-Object { $_.StartsWith('"' + $sample.Id + '",') -or $_.StartsWith($sample.Id + ',') }) | Select-Object -First 1
     if ($sample.Id -eq $firstId -and $sourceLine -cne $edgeRows[0]) { $sourceLine = $null }
     if ($sample.Id -eq $lastId -and $sourceLine -cne $edgeRows[1]) { $sourceLine = $null }
-    $expected = if ($sourceLine -and $sampleLines[0] -ceq $Header) { $Header + "`n" + $sourceLine + "`n" } else { $null }
-    $identical = $run.ExitCode -eq 0 -and $null -ne $expected -and $run.Stdout -ceq $expected
+    $expected = if ($sourceLine -and (Test-SameCsvText $sampleLines[0] $Header)) { $sampleLines[0] + "`n" + $sourceLine + "`n" } else { $null }
+    $identical = $run.ExitCode -eq 0 -and $null -ne $expected -and (Test-SameCsvText $run.Stdout $expected)
     $bare = if ($sourceLine -and $sourceLine.Contains(',,')) { ' (with bare empty fields)' } else { '' }
     $queried = Read-CsvRecords $run.Stdout
     $source = if ($expected) { Read-CsvRecords $expected } else { $null }
@@ -1202,7 +1242,8 @@ foreach ($sample in $sampleIds) {
     $dateExact = $null -ne $source -and $dateText -ceq $source[0][2]
     $spring = $sample.Label -ne 'spring-forward hour' -or $dateText -like '03/10/2019 02:*'
     $c1Ok = $c1Ok -and $identical -and $dateExact -and $spring
-    $c1Rows.Add(('{0} ID {1}: header and row byte-identical to the source line{2}: {3}, Date "{4}" as published: {5}' -f $sample.Label, $sample.Id, $bare, $identical, $dateText, $dateExact))
+    $sameText = if ($ByValue) { 'equal field by field to' } else { 'byte-identical to' }
+    $c1Rows.Add(('{0} ID {1}: header and row {6} the source line{2}: {3}, Date "{4}" as published: {5}' -f $sample.Label, $sample.Id, $bare, $identical, $dateText, $dateExact, $sameText))
 }
 Add-Result 'AC-C1' $c1Ok (($c1Rows -join '; ') + ' (each queried alone with `--format csv`; the source lines copied by `crime-acceptance select --where ID=... --rows-out`, the first and last also read from the CSV directly)')
 

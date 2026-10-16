@@ -60,6 +60,7 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
 | T5 | S1, S2, S4 | inline | done | Fixes from the RDD review of `407d43d..9ea8828` (see L6): query script requires 0 rejected in both modes, both scripts fail on a malformed manifest fingerprint, `$TheftFigure`/`$NoCommunityAreaFigure` names, full dataset folder `full` (old `reference` folder cleaned), one source for the AC-G5 sample row, README anchor name. Parse 0 errors; `Test-Sha256` true for the reference hash, false for a prefixed or empty value. |
 | T5a | S5 | inline | done | `d14d901`: the query summary counted the new non-AC row as a criterion ("19 criteria"); now only `AC-C<n>` rows count. |
 | T6 | S3, S7 | inline | done | From the real download (L7): `Split-CsvLine` keeps each field as written, quoted or not; AC-G5 rows and the AC-G9 header are rebuilt field by field. Check (functions taken from the script's AST): download first row 22 fields → 21/22/22, header field 5 `IUCR_ALTERADA`; reference extract: rows and altered header byte-identical to the pre-change construction. |
+| T7 | S2, S7 | inline | done | From the GREEN query run on the download (L12): AC-C1, AC-C6, AC-C8 and AC-C12 compared query CSV output with source lines byte for byte, which holds only when the source quotes like the query app. The PRD asks for values ("equivalente en valor", C4 "la misma cabecera"), so on another CSV rows are compared field by field (`CanonicalRow`, `CompareRowSets(..., byValue)`, `Test-SameCsvText`); byte for byte on the reference extract, unchanged. Check on that run's real outputs: the four row sets "header lines differ" by bytes, equal by values; reference outputs equal both ways; AC-C1 first download row equal by value, unequal by bytes, and a changed field is detected. |
 | T4 | S1–S7 | inline checks; acceptance runs in the background | pending | AC-A1 on the reference extract, AC-A2/AC-A3 on the portal download, last-slice review, closing report |
 
 ## Log
@@ -110,3 +111,24 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
   figures of the PRDs are required.", AC-G1 summary `8.656.904 registros válidos, 0 rechazados`. Query acceptance
   on `e9891f4`: PASS 59/59 (the "19 criteria" text led to T5a), `--dataset full --reference`, THEFT 1,838,502 =
   select = PRD figure, community area nil 613,720, `Full dataset: 0 rejected` PASS.
+- **L9** 07:31: Rust checks (no Rust change in this feature): `cargo fmt --all --check` OK, `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, `cargo test --workspace` 425 passed, 0 failed (07:31:49–07:32:27).
+- **L10** 07:31–07:34, agent mistake: the first acceptance chain wrote `-WorkDir "C:\\...\\work\\$3"` inside bash
+  double quotes, which reached PowerShell as the literal `C:\rust\chicago-crime\work$3`, a folder in the repository
+  root outside the ignored `work/`. Stopped the chain and its processes by PID (a first command-line filter also
+  matched the agent's own shells; all of them were the agent's). Deleting the folder was denied twice by the tool
+  permissions, so the run **waited for the user from 07:34:19 to 08:01:20** (not active time); the user deleted it.
+  The new `work/chain.sh` uses forward-slash work folders (`C:/rust/chicago-crime/work/<name>`).
+- **L11** 08:01:21: chain restarted: RED (scripts of `407d43d`, untracked copies) and GREEN on the portal download,
+  then the final runs on the reference extract.
+- **L12** chain results (08:01:23–08:32:45; reports in `work/<name>/`):
+  - RED generator (`407d43d`) on the download, 08:01:24–08:06:45: **FAIL 5 of 15**.
+  - RED query (`407d43d`) on the download, 08:06:45–08:11:13: **FAIL 9 of 58**.
+  - GREEN generator (`7cc3a83`) on the download, 08:11:13–08:17:18: **PASS 15/15**.
+  - GREEN query (`7cc3a83`) on the download, 08:17:18–08:21:27: **FAIL 5 of 59**: AC-C1, AC-C6, AC-C8, AC-C12 ×2,
+    all "byte-identical"/"header lines differ" between the query app's quoted CSV and the unquoted source rows.
+    Fixed in T7.
+  - Final generator (`7cc3a83`) on the reference extract, 08:21:27–08:27:02: **PASS 15/15**.
+  - Final query (`7cc3a83`) on the reference extract, 08:27:02–08:32:45: **PASS 59/59 (18 criteria)**.
+  - The feature document was modified but uncommitted during the GREEN and final runs, so those reports say
+    "7cc3a83 with uncommitted changes"; no script differed from `7cc3a83`.
