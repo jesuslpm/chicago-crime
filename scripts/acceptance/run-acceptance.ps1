@@ -1,15 +1,19 @@
 ﻿<#
 .SYNOPSIS
-    Acceptance of the crime generator on the reference CSV (child PRD, AC-G1 to AC-G10).
+    Acceptance of the crime generator on any compatible CSV (child PRD, AC-G1 to AC-G10).
 
 .DESCRIPTION
+    On the reference extract, recognized by the source SHA-256 in Run A's manifest, it requires the
+    exact figures of the PRDs; on any other CSV it counts the expected figures on that CSV.
+
     Builds the generator and the independent verifier in release mode and, inside -WorkDir:
 
       Run A      a full generation into a fresh folder: exit code, wall time, the generator's own
                  peak memory line and an external PeakPagedMemorySize64 sample (AC-G2);
       Run B      a second full generation into another fresh folder: its six tables must be byte
                  identical to Run A's (AC-G10);
-      verifier   crime-acceptance --reference on Run A (AC-G1, AC-G3, AC-G4, manifest);
+      verifier   crime-acceptance on Run A, with --reference on the reference extract (AC-G1,
+                 AC-G3, AC-G4, manifest);
       AC-G8      a rerun on Run A without --overwrite is refused and changes nothing;
       AC-G9      a CSV with an altered header aborts, the dataset stays intact and the log explains
                  the cause (also parent AC9, part of AC-G5);
@@ -21,18 +25,19 @@
                  follows the run's state, not the clock: it fires as soon as the log shows the
                  primary sort finished, the run's sort folder is in the temp folder and its new
                  version folder exists;
-      AC-G5      a CSV with a 21-column row, an invalid date and a repeated ID completes with 3
-                 rejected (parent AC13).
+      AC-G5      a CSV with a 21-column row, an invalid date and a repeated ID, all made from the
+                 first data row of the CSV, completes with 3 rejected (parent AC13).
 
     It writes acceptance-report.md to -WorkDir and exits with 1 when any check fails. The
-    reference CSV is only read. Only the entries this script creates in -WorkDir are deleted when
+    CSV is only read. Only the entries this script creates in -WorkDir are deleted when
     it starts.
 
 .PARAMETER WorkDir
     Folder for the datasets, the logs and the report. It needs about 6 GB of free space.
 
 .PARAMETER Csv
-    The reference CSV. By default, chicago-crime-data.csv at the repository root.
+    The CSV: the reference extract or any later download. By default, chicago-crime-data.csv at
+    the repository root.
 
 .PARAMETER KillTimeoutSeconds
     How long AC-G6 waits for its run to reach the merge of the primary table. If the run has not
@@ -45,7 +50,7 @@
     Use the release binaries already built.
 
 .EXAMPLE
-    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir D:\acceptance
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir C:\acceptance
 #>
 [CmdletBinding()]
 param(
@@ -67,8 +72,11 @@ $WorkDir = [System.IO.Path]::GetFullPath($WorkDir)
 $GeneratorExe = Join-Path $RepoRoot 'target\release\crime-generator.exe'
 $VerifierExe = Join-Path $RepoRoot 'target\release\crime-acceptance.exe'
 $CtrlCHelper = Join-Path $PSScriptRoot 'send-ctrl-c.ps1'
+. (Join-Path $PSScriptRoot 'reference-extract.ps1')
 $Invariant = [System.Globalization.CultureInfo]::InvariantCulture
 $MemoryLimitBytes = 512MB
+# Valid records of the reference extract (generator PRD, AC-G1).
+$ReferenceValidRecords = 8656904
 $TableFiles = @(
     'primary.sst', 'index-date.sst', 'index-primary_type.sst', 'index-district.sst',
     'index-community_area.sst', 'index-case_number.sst'
@@ -84,11 +92,13 @@ $Messages = @{
     # The start of the line written when the primary sort ends, before the merge.
     SortCompleted     = 'Ordenación completada.'
     HeaderMismatch    = 'La cabecera no coincide con el esquema: columna 5 esperaba "IUCR" y encontró "IUCR_ALTERADA".'
-    ReferenceSummary  = 'Generación completada: 8.656.904 registros válidos, 0 rechazados (ver log).'
+    # {0}: the valid records with Spanish thousands separators.
+    Summary           = 'Generación completada: {0} registros válidos, 0 rechazados (ver log).'
     Ac13Summary       = 'Generación completada: 999 registros válidos, 3 rechazados (ver log).'
     Ac13ColumnCount   = 'Fila 1001 omitida: se esperaban 22 columnas y hay 21.'
     Ac13InvalidDate   = 'Fila 1002 omitida, columna "Date": "02/30/2026 12:00:00 AM" no es una fecha válida (formato MM/DD/AAAA hh:mm:ss AM/PM).'
-    Ac13DuplicateId   = 'Fila 1003 omitida: el ID 14348063 ya apareció en la fila 2.'
+    # {0}: the ID of the first data row of the CSV.
+    Ac13DuplicateId   = 'Fila 1003 omitida: el ID {0} ya apareció en la fila 2.'
     MemoryWarning     = 'Aviso: el pico de memoria privada comprometida'
 }
 
@@ -286,6 +296,11 @@ $started = Get-Date
 foreach ($path in @($Csv, $CtrlCHelper)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing file: $path" }
 }
+# AC-G5 makes its bad rows from the first data row of the CSV, whatever it is: its ID, case number
+# and date are the first three fields, quoted like every non-empty field of the portal's CSV.
+$firstDataRow = @(Get-Content -LiteralPath $Csv -TotalCount 2 -Encoding UTF8)[1]
+$SampleFields = [regex]::Match([string]$firstDataRow, '^"(?<id>[0-9]+)",(?<case>"[^"]*"),"(?<date>[^"]*)",(?<rest>.*)$')
+if (-not $SampleFields.Success) { throw "The first data row of the CSV does not start with a quoted ID, case number and date: $firstDataRow" }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 $RunA = Join-Path $WorkDir 'run-a'
 $RunB = Join-Path $WorkDir 'run-b'
@@ -385,10 +400,25 @@ Add-Section (@(
         (Format-Code $firstRun.Log)
     ) -join "`n")
 
+# --- Which CSV: the reference extract or another one ---
+
+# The source fingerprint that Run A's manifest records. Without a manifest Run A failed anyway, and
+# the CSV is hashed here only for the report header.
+$runAManifest = $null
+if ($firstRun.ExitCode -eq 0) {
+    $runAManifest = Get-Content -LiteralPath (Join-Path (Join-Path $RunA (Get-CurrentName $RunA)) 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $SourceSha256 = [string]$runAManifest.source.sha256
+}
+else { $SourceSha256 = (Get-FileHash -LiteralPath $Csv -Algorithm SHA256).Hash.ToLowerInvariant() }
+$IsReference = Test-ReferenceExtract $SourceSha256
+Write-Step (Format-CsvMode $SourceSha256)
+
 # --- The independent verifier on Run A: AC-G1, AC-G3, AC-G4 ---
 
 Write-Step 'Independent verifier on Run A'
-$verifier = Invoke-Program -FilePath $VerifierExe -Arguments @('--csv', $Csv, '--dataset', $RunA, '--reference')
+$verifierArguments = @('--csv', $Csv, '--dataset', $RunA)
+if ($IsReference) { $verifierArguments += '--reference' }
+$verifier = Invoke-Program -FilePath $VerifierExe -Arguments $verifierArguments
 $verdicts = @{}
 foreach ($line in Get-Lines $verifier.Stdout) {
     $match = [regex]::Match($line, '^(PASS|FAIL|SKIP)  (\S+)  (.*)$')
@@ -396,7 +426,8 @@ foreach ($line in Get-Lines $verifier.Stdout) {
         $verdicts[$match.Groups[2].Value] = [pscustomobject]@{ Outcome = $match.Groups[1].Value; Summary = $match.Groups[3].Value }
     }
 }
-# With --reference the verifier never skips; on the reference CSV only a PASS proves a criterion.
+# Only a PASS proves a criterion: with --reference the verifier never skips, and on another CSV a
+# check skipped for lack of data still fails (PRD aceptacion-cualquier-csv, decision A3).
 function Get-VerdictResult([string[]]$Criteria) {
     $passed = $true
     $parts = foreach ($criterion in $Criteria) {
@@ -412,9 +443,13 @@ function Get-VerdictResult([string[]]$Criteria) {
     [pscustomobject]@{ Passed = $passed; Evidence = ($parts -join ' / ') }
 }
 
-$summaryLine = $firstRun.Log.Contains($Messages.ReferenceSummary)
+# On another CSV the valid records are those of the manifest; the verifier's AC-G1 proves that they
+# are the CSV's data rows minus the rejected ones, and the summary requires 0 rejected.
+$expectedValid = if ($IsReference) { $ReferenceValidRecords } elseif ($runAManifest) { [long]$runAManifest.records.valid } else { -1 }
+$expectedSummary = $Messages.Summary -f (Format-Count $expectedValid).Replace(',', '.')
+$summaryLine = $expectedValid -ge 0 -and $firstRun.Log.Contains($expectedSummary)
 $g1 = Get-VerdictResult @('AC-G1')
-Add-Result 'AC-G1' ($g1.Passed -and $summaryLine) ('{0} / Run A summary "{1}": {2}' -f $g1.Evidence, $Messages.ReferenceSummary, $summaryLine)
+Add-Result 'AC-G1' ($g1.Passed -and $summaryLine) ('{0} / Run A summary "{1}": {2}' -f $g1.Evidence, $expectedSummary, $summaryLine)
 $g3 = Get-VerdictResult @('AC-G3', 'AC-G3-SAMPLE', 'AC-G3-DST')
 Add-Result 'AC-G3' $g3.Passed $g3.Evidence
 $g4 = Get-VerdictResult @('AC-G4-date', 'AC-G4-primary_type', 'AC-G4-district', 'AC-G4-community_area', 'AC-G4-case_number', 'AC-G4-THEFT', 'AC-G4-COMMUNITY-NIL', 'AC-G4-SHARED-CASES')
@@ -427,7 +462,7 @@ Add-Result 'Lowercase text indexes (query app AC-C18)' $lowercase.Passed $lowerc
 Add-Section (@(
         '## Independent verifier on Run A'
         ''
-        ('`crime-acceptance --csv <CSV> --dataset run-a --reference`: exit {0}.' -f $verifier.ExitCode)
+        ('`crime-acceptance --csv <CSV> --dataset run-a{0}`: exit {1}.' -f $(if ($IsReference) { ' --reference' } else { '' }), $verifier.ExitCode)
         ''
         (Format-Code $verifier.Stdout)
         ''
@@ -560,14 +595,19 @@ Add-Section (@(
 
 Write-Step 'AC-G5: CSV with a 21-column row, an invalid date and a repeated ID'
 $sample = $firstLines[1]
+$sampleId = $SampleFields.Groups['id'].Value
+function New-SampleRow([string]$Id, [string]$Date) {
+    '"{0}",{1},"{2}",{3}' -f $Id, $SampleFields.Groups['case'].Value, $Date, $SampleFields.Groups['rest'].Value
+}
 $badRows = @(
-    # 21 columns: the sample row with a new ID and without Location.
-    ($sample.Replace('"14348063"', '"99000001"') -replace ',"\([^"]*\)"$', '')
+    # 21 columns: the sample row with a new ID and without its last field (Location, quoted or empty).
+    ((New-SampleRow '99000001' $SampleFields.Groups['date'].Value) -replace ',("[^"]*")?$', '')
     # An invalid date with a new ID.
-    $sample.Replace('"14348063"', '"99000002"').Replace('"10/03/2026 12:00:00 AM"', '"02/30/2026 12:00:00 AM"')
+    (New-SampleRow '99000002' '02/30/2026 12:00:00 AM')
     # The ID of line 2 again.
     $sample
 )
+$ac13DuplicateId = $Messages.Ac13DuplicateId -f $sampleId
 $ac13Csv = Join-Path $InputDir 'ac13.csv'
 $ac13Lines = @(Get-Content -LiteralPath $Csv -TotalCount 1000 -Encoding UTF8) + $badRows
 [System.IO.File]::WriteAllText($ac13Csv, (($ac13Lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false))
@@ -578,7 +618,7 @@ $ac13Manifest = if ($ac13.ExitCode -eq 0) {
     Get-Content -LiteralPath (Join-Path (Join-Path $Ac13Output (Get-CurrentName $Ac13Output)) 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 }
 else { $null }
-$rowsLogged = $ac13Text.Contains($Messages.Ac13ColumnCount) -and $ac13Text.Contains($Messages.Ac13InvalidDate) -and $ac13Text.Contains($Messages.Ac13DuplicateId)
+$rowsLogged = $ac13Text.Contains($Messages.Ac13ColumnCount) -and $ac13Text.Contains($Messages.Ac13InvalidDate) -and $ac13Text.Contains($ac13DuplicateId)
 $manifestCounts = $null -ne $ac13Manifest -and $ac13Manifest.records.valid -eq 999 -and $ac13Manifest.records.rejected -eq 3
 Add-Result 'AC-G5 (parent AC13)' ($ac13.ExitCode -eq 0 -and $rowsLogged -and $ac13Text.Contains($Messages.Ac13Summary) -and $manifestCounts) `
 ('exit {0}; the log names each row ({1}); summary "{2}"; manifest valid {3}, rejected {4}' -f $ac13.ExitCode, $rowsLogged, $Messages.Ac13Summary, `
@@ -600,6 +640,7 @@ $report = @(
     ('- **Commit**: {0}' -f $commit)
     ('- **Machine**: {0}, {1} logical processors, {2} GiB RAM, {3}' -f $processor, [Environment]::ProcessorCount, $memoryGiB, $os)
     ('- **CSV**: `{0}`, {1} bytes' -f $Csv, (Format-Count $csvSize))
+    ('- {0}' -f (Format-CsvMode $SourceSha256))
     ('- **Work folder**: `{0}`' -f $WorkDir)
     ''
     '## Results'
