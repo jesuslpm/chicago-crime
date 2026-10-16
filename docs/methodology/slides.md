@@ -79,7 +79,8 @@ ODD.
 Todo lo que veremos sale de un experimento real, chicago-crime, un repositorio público. Cada cifra que aparece
 en las slides se puede comprobar en él.
 
-▸ Organización: unos 60 minutos. Documento de detalle en la otra pantalla: desarrollo-asistido-por-ia.md. Ejemplo paso a paso: generacion-del-prd.md.
+▸ Organización: unos 60 minutos. Documento de detalle en la otra pantalla: desarrollo-asistido-por-ia.md.
+Ejemplo paso a paso: generacion-del-prd.md.
 
 ⏱ Al terminar esta slide: hacia el minuto 1.
 -->

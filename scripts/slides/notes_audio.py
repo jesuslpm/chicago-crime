@@ -5,8 +5,8 @@ Usage (from the repository root, after `python -m pip install edge-tts`):
     python scripts/slides/notes_audio.py [--slides docs/methodology/slides.md]
         [--out docs/methodology/audio] [--voice es-ES-AlvaroNeural]
 
-Only the spoken text of each "Cómo leerla" note is read: lines that start with "▸" (directions for the
-presenter) or "⏱" (timing marks) are skipped. Words the voice gets wrong are respelled first (PRONUNCIATION);
+Only the spoken text of each "Cómo leerla" note is read: paragraphs that start with "▸" (directions for the
+presenter) or "⏱" (timing marks) are skipped whole, even when they wrap. Words the voice gets wrong are respelled first (PRONUNCIATION);
 the notes themselves keep the normal spelling. The output folder is git-ignored. It gets slide-NN.mp3 for every
 slide with notes and duraciones.md with the length of each one.
 """
@@ -38,19 +38,17 @@ PRONUNCIATION = [
 
 
 def spoken(note: str) -> str:
-    """The text of a note that is read aloud: wrapped lines joined, paragraphs kept apart."""
+    """The text of a note that is read aloud: wrapped lines joined, paragraphs kept apart. A paragraph whose
+    first line starts with a SKIPPED mark is a direction for the presenter and is left out whole, wrapped or not."""
     paragraphs, current = [], []
-    for line in note.splitlines():
+    for line in [*note.splitlines(), ""]:
         text = line.strip()
-        if text.startswith(SKIPPED):
-            continue
         if text:
             current.append(text)
         elif current:
-            paragraphs.append(" ".join(current))
+            if not current[0].startswith(SKIPPED):
+                paragraphs.append(" ".join(current))
             current = []
-    if current:
-        paragraphs.append(" ".join(current))
     return "\n\n".join(paragraphs)
 
 
@@ -62,6 +60,7 @@ def pronounce(text: str) -> str:
 
 def notes(markdown: str) -> list[tuple[int, str, str]]:
     """(slide number, title, spoken text) for every slide that has a "Cómo leerla" note."""
+    markdown = markdown.lstrip("﻿")  # an editor's byte order mark would hide the front matter
     body = re.sub(r"\A---\n.*?\n---\n", "", markdown, count=1, flags=re.S)  # Marp front matter
     slides = [s for s in re.split(r"^---\s*$", body, flags=re.M) if s.strip()]
     found = []
@@ -93,6 +92,9 @@ async def generate(slides: Path, out: Path, voice: str) -> None:
         old.unlink()
     rows, total = [], 0.0
     for number, title, text in notes(slides.read_text(encoding="utf-8")):
+        if not text:  # only directions for the presenter: nothing to read, and the voice rejects empty text
+            print(f"slide {number:02}: sin texto para leer, se omite")
+            continue
         path = out / f"slide-{number:02}.mp3"
         await synthesize(pronounce(text), voice, path)
         seconds = path.stat().st_size * 8 / BITRATE
