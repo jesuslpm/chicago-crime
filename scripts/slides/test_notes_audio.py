@@ -104,19 +104,27 @@ class NotesTest(unittest.TestCase):
 class GenerateTest(unittest.TestCase):
     ONLY_DIRECTIONS = "\n---\n\n## Solo indicaciones\n\n<!--\nCómo leerla:\n\n▸ Mostrar: algo.\n-->\n"
 
-    def run_generate(self, deck: str, out: Path) -> list[str]:
-        """Runs generate() with a stub voice that writes one second of audio; returns the texts it was given."""
+    SECOND = notes_audio.BITRATE // 8  # bytes in one second of audio
+
+    def run_generate(self, deck: str, out: Path, fail: bool = False) -> list[str]:
+        """Runs generate() with a stub voice that writes one second of audio made from the text (so moved files
+        can be told apart), or fails when asked to; returns the texts it was given."""
         said = []
 
         async def one_second(text, voice, path):
             said.append(text)
-            path.write_bytes(b"\0" * (notes_audio.BITRATE // 8))
+            if fail:
+                raise ConnectionError("sin conexión")
+            path.write_bytes(text.encode().ljust(self.SECOND, b"\0")[: self.SECOND])
 
         slides = out / "slides.md"
         slides.write_text(deck, encoding="utf-8")
         with mock.patch.object(notes_audio, "synthesize", one_second), mock.patch("builtins.print"):
             asyncio.run(notes_audio.generate(slides, out / "audio", "voz"))
         return said
+
+    def audio(self, out: Path) -> dict[str, bytes]:
+        return {p.name: p.read_bytes() for p in sorted((out / "audio").glob("slide-*.mp3"))}
 
     def test_one_file_per_slide_with_notes_and_the_durations_table(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -127,9 +135,53 @@ class GenerateTest(unittest.TestCase):
             files = sorted(p.name for p in (out / "audio").iterdir())
             table = (out / "audio" / "duraciones.md").read_text(encoding="utf-8")
         self.assertEqual(said, ["Primera slide.\n\nTexto que se lee en voz alta.", "Segunda slide. Se dice con guit."])
-        self.assertEqual(files, ["duraciones.md", "slide-01.mp3", "slide-02.mp3"])
+        self.assertEqual(files, ["duraciones.md", "manifest.json", "slide-01.mp3", "slide-02.mp3"])
         self.assertIn("| 1 | Primera slide | 9 | 1 s | 0.0 min | 540 |", table)
         self.assertIn("| 2 | Segunda slide | 6 | 1 s | 0.0 min | 360 |", table)
+
+    def test_unchanged_notes_are_not_synthesized_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            before = self.audio(out)
+            said = self.run_generate(DECK, out)
+            after = self.audio(out)
+        self.assertEqual(said, [])
+        self.assertEqual(after, before)
+
+    def test_only_a_changed_note_is_synthesized(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            before = self.audio(out)
+            said = self.run_generate(DECK.replace("Se dice con git.", "Se dice distinto."), out)
+            after = self.audio(out)
+        self.assertEqual(said, ["Segunda slide. Se dice distinto."])
+        self.assertEqual(after["slide-01.mp3"], before["slide-01.mp3"])
+        self.assertNotEqual(after["slide-02.mp3"], before["slide-02.mp3"])
+
+    def test_an_inserted_slide_moves_the_next_files_without_synthesizing_them(self):
+        inserted = DECK.replace("\n---\n\n## Segunda", "\n---\n\n## Nueva\n\n<!--\nCómo leerla:\n\nNueva.\n-->\n\n---\n\n## Segunda")
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            before = self.audio(out)
+            said = self.run_generate(inserted, out)
+            after = self.audio(out)
+        self.assertEqual(said, ["Nueva."])
+        self.assertEqual(sorted(after), ["slide-01.mp3", "slide-02.mp3", "slide-03.mp3"])
+        self.assertEqual(after["slide-03.mp3"], before["slide-02.mp3"])
+
+    def test_a_failing_voice_leaves_the_previous_audio_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            before = self.audio(out)
+            manifest = (out / "audio" / "manifest.json").read_bytes()
+            with self.assertRaises(ConnectionError):
+                self.run_generate(DECK.replace("Se dice con git.", "Se dice distinto."), out, fail=True)
+            self.assertEqual(self.audio(out), before)
+            self.assertEqual((out / "audio" / "manifest.json").read_bytes(), manifest)
 
     def test_a_note_with_only_directions_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:

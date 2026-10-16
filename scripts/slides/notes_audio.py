@@ -1,20 +1,25 @@
-"""Turn the speaker notes of the Marp deck into one MP3 per slide, to rehearse by listening.
+"""Turn the speaker notes of the Marp deck into one MP3 per slide, played from the presenter view.
 
 Usage (from the repository root, after `python -m pip install edge-tts`):
 
     python scripts/slides/notes_audio.py [--slides docs/methodology/slides.md]
         [--out docs/methodology/audio] [--voice es-ES-AlvaroNeural]
 
-Only the spoken text of each "Cómo leerla" note is read: paragraphs that start with "▸" (directions for the
-presenter) or "⏱" (timing marks) are skipped whole, even when they wrap. Words the voice gets wrong are respelled first (PRONUNCIATION);
-the notes themselves keep the normal spelling. The output folder is git-ignored. It gets slide-NN.mp3 for every
-slide with notes and duraciones.md with the length of each one.
+Only the spoken text of each "Cómo leerla" note is read: a direction for the presenter ("▸") or a timing mark
+("⏱") is skipped up to the next blank line. Words the voice gets wrong are respelled first (PRONUNCIATION); the
+notes themselves keep the normal spelling. The output folder gets slide-NN.mp3 for every slide with notes,
+duraciones.md with the length of each one and manifest.json with a fingerprint of each text. The folder is
+committed, so a run only synthesizes the notes whose text changed: the others reuse their previous audio, moved
+to the new slide number when slides are inserted or removed. Nothing is replaced until every slide has audio.
 """
 
 import argparse
 import asyncio
+import hashlib
+import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,25 +97,57 @@ async def synthesize(text: str, voice: str, path: Path) -> None:
             await asyncio.sleep(2)
 
 
+def fingerprint(voice: str, said: str) -> str:
+    return hashlib.sha256(f"{voice}\n{said}".encode()).hexdigest()
+
+
+def previous_audio(out: Path) -> dict[str, bytes]:
+    """The audio of the last run by fingerprint, for the files the manifest lists that still exist."""
+    manifest = out / "manifest.json"
+    if not manifest.exists():
+        return {}
+    known = {}
+    for entry in json.loads(manifest.read_text(encoding="utf-8")):
+        path = out / entry["file"]
+        if path.exists():
+            known[entry["fingerprint"]] = path.read_bytes()
+    return known
+
+
 async def generate(slides: Path, out: Path, voice: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
+    audio = previous_audio(out)
+    plan = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for number, title, text in notes(slides.read_text(encoding="utf-8")):
+            if not text:  # only directions for the presenter: nothing to read, and the voice rejects empty text
+                print(f"slide {number:02}: sin texto para leer, se omite")
+                continue
+            said = pronounce(text)
+            key = fingerprint(voice, said)
+            if key not in audio:
+                print(f"slide {number:02}: generando  {title}")
+                path = Path(tmp) / f"{key}.mp3"
+                await synthesize(said, voice, path)
+                audio[key] = path.read_bytes()
+            plan.append((number, title, text, key))
+
+    # Every slide has its audio now, so a failed synthesis above never leaves a half-replaced folder.
     for old in out.glob("slide-*.mp3"):
         old.unlink()
-    rows, total = [], 0.0
-    for number, title, text in notes(slides.read_text(encoding="utf-8")):
-        if not text:  # only directions for the presenter: nothing to read, and the voice rejects empty text
-            print(f"slide {number:02}: sin texto para leer, se omite")
-            continue
-        path = out / f"slide-{number:02}.mp3"
-        await synthesize(pronounce(text), voice, path)
-        seconds = path.stat().st_size * 8 / BITRATE
+    rows, entries, total = [], [], 0.0
+    for number, title, text, key in plan:
+        name = f"slide-{number:02}.mp3"
+        (out / name).write_bytes(audio[key])
+        entries.append({"file": name, "fingerprint": key})
+        seconds = len(audio[key]) * 8 / BITRATE
         total += seconds
         words = len(re.findall(r"\w+", text))
         rows.append(f"| {number} | {title} | {words} | {seconds:.0f} s | {total / 60:.1f} min | {words / seconds * 60:.0f} |")
-        print(f"slide {number:02} {seconds:6.1f} s  total {total / 60:5.1f} min  {title}")
     table = ["| Slide | Título | Palabras | Duración | Acumulado | Palabras/min |", "|---|---|---|---|---|---|"]
     (out / "duraciones.md").write_text("\n".join([f"Voz: {voice}", "", *table, *rows]) + "\n", encoding="utf-8")
-    print(f"total {total / 60:.1f} min")
+    (out / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
+    print(f"{len(plan)} slides, total {total / 60:.1f} min")
 
 
 def main() -> None:
