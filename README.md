@@ -312,6 +312,7 @@ the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-workt
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
 | `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
+| `scripts/slides` | Generates one MP3 per slide from the talk's speaker notes, to rehearse by listening (needs `edge-tts`). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `docs/linux` | Guides to build, test and run the project on Linux, in WSL or natively. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |
