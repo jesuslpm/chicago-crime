@@ -2,7 +2,9 @@
 //   npx @marp-team/marp-cli@4.2.3 slides.md -o slides.html
 // It makes every external link (http/https) open in a new tab, so following a "→ Detalle" link during the
 // talk never replaces the presentation. In-presentation links (such as #3) are left alone.
+// HTML is enabled so the last slide can load presenter-audio.js, the "▶ Nota" button of the presenter view.
 export default {
+  html: true,
   engine: ({ marp }) =>
     marp.use((md) => {
       const render =

@@ -931,3 +931,5 @@ y el skill de PRD, que también está publicado en un Gist para quien quiera usa
 
 ⏱ Al llegar aquí: hacia el minuto 37. En una sesión de 60 minutos quedan unos 23 para preguntas o para una demo en vivo.
 -->
+
+<script src="presenter-audio.js"></script>
