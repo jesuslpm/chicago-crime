@@ -97,6 +97,14 @@ class NotesTest(unittest.TestCase):
         deck = DECK + "\n---\n\n## Sin notas\n"
         self.assertEqual([number for number, _, _ in notes_audio.notes(deck)], [1, 2])
 
+    def test_the_real_deck_numbers_every_slide_as_marp_pages_it(self):
+        # The presenter view plays audio/slide-NN.mp3 for Marp's page NN: every slide must have a note, so
+        # notes() numbers 1..N without gaps, as Marp does.
+        deck = (notes_audio.ROOT / "docs/methodology/slides.md").read_text(encoding="utf-8")
+        numbers = [number for number, _, _ in notes_audio.notes(deck)]
+        self.assertEqual(numbers, list(range(1, len(numbers) + 1)))
+        self.assertGreater(len(numbers), 20)
+
     def test_a_byte_order_mark_does_not_shift_the_numbers(self):
         self.assertEqual(notes_audio.notes("\ufeff" + DECK), notes_audio.notes(DECK))
 
@@ -119,8 +127,11 @@ class GenerateTest(unittest.TestCase):
 
         slides = out / "slides.md"
         slides.write_text(deck, encoding="utf-8")
-        with mock.patch.object(notes_audio, "synthesize", one_second), mock.patch("builtins.print"):
-            asyncio.run(notes_audio.generate(slides, out / "audio", "voz"))
+        with mock.patch.object(notes_audio, "synthesize", one_second), mock.patch("builtins.print") as printed:
+            try:
+                asyncio.run(notes_audio.generate(slides, out / "audio", "voz"))
+            finally:
+                self.printed = [" ".join(map(str, call.args)) for call in printed.call_args_list]
         return said
 
     def audio(self, out: Path) -> dict[str, bytes]:
@@ -148,6 +159,28 @@ class GenerateTest(unittest.TestCase):
             after = self.audio(out)
         self.assertEqual(said, [])
         self.assertEqual(after, before)
+
+    def test_every_slide_prints_its_duration_and_the_running_total(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            self.run_generate(DECK, out)
+        self.assertEqual(
+            self.printed,
+            [
+                "slide 01    1.0 s  total   0.0 min  reutilizado  Primera slide",
+                "slide 02    1.0 s  total   0.0 min  reutilizado  Segunda slide",
+                "total 0.0 min",
+            ],
+        )
+
+    def test_a_broken_manifest_means_a_full_regeneration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            self.run_generate(DECK, out)
+            (out / "audio" / "manifest.json").write_text("<<<<<<< HEAD\n[{\"file\": 1}]", encoding="utf-8")
+            said = self.run_generate(DECK, out)
+        self.assertEqual(len(said), 2)
 
     def test_only_a_changed_note_is_synthesized(self):
         with tempfile.TemporaryDirectory() as tmp:

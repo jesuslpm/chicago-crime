@@ -23,7 +23,7 @@
     const file = () => `audio/slide-${String(parseInt(page.textContent, 10)).padStart(2, '0')}.mp3`;
     const show = () => {
       button.textContent = audio.paused ? '▶ Nota' : '⏸ Nota';
-      button.dataset.audio = file();
+      button.dataset.audio = file(); // not read here: shows in the DOM which file the button would play
     };
 
     button.addEventListener('click', () => {
@@ -33,8 +33,9 @@
       }
       const wanted = new URL(file(), location.href).href;
       if (audio.src !== wanted) audio.src = wanted;
-      audio.play().catch(() => {
-        button.textContent = '✕ Sin audio';
+      audio.play().catch((error) => {
+        // A pause or slide change before playback starts aborts play(): that is not a missing file.
+        if (error.name !== 'AbortError') button.textContent = '✕ Sin audio';
       });
     });
     for (const event of ['play', 'pause', 'ended']) audio.addEventListener(event, show);

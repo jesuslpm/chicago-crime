@@ -107,10 +107,14 @@ def previous_audio(out: Path) -> dict[str, bytes]:
     if not manifest.exists():
         return {}
     known = {}
-    for entry in json.loads(manifest.read_text(encoding="utf-8")):
-        path = out / entry["file"]
-        if path.exists():
-            known[entry["fingerprint"]] = path.read_bytes()
+    try:
+        for entry in json.loads(manifest.read_text(encoding="utf-8")):
+            path = out / entry["file"]
+            if path.exists():
+                known[entry["fingerprint"]] = path.read_bytes()
+    except (ValueError, KeyError, TypeError):  # a broken cache (say, merge markers) only costs a full run
+        print("manifest.json no se puede leer: se generan todas las slides")
+        return {}
     return known
 
 
@@ -125,18 +129,20 @@ async def generate(slides: Path, out: Path, voice: str) -> None:
                 continue
             said = pronounce(text)
             key = fingerprint(voice, said)
+            state = "reutilizado"
             if key not in audio:
-                print(f"slide {number:02}: generando  {title}")
+                print(f"slide {number:02}: generando…")
                 path = Path(tmp) / f"{key}.mp3"
                 await synthesize(said, voice, path)
                 audio[key] = path.read_bytes()
-            plan.append((number, title, text, key))
+                state = "generado"
+            plan.append((number, title, text, key, state))
 
     # Every slide has its audio now, so a failed synthesis above never leaves a half-replaced folder.
     for old in out.glob("slide-*.mp3"):
         old.unlink()
     rows, entries, total = [], [], 0.0
-    for number, title, text, key in plan:
+    for number, title, text, key, state in plan:
         name = f"slide-{number:02}.mp3"
         (out / name).write_bytes(audio[key])
         entries.append({"file": name, "fingerprint": key})
@@ -144,10 +150,11 @@ async def generate(slides: Path, out: Path, voice: str) -> None:
         total += seconds
         words = len(re.findall(r"\w+", text))
         rows.append(f"| {number} | {title} | {words} | {seconds:.0f} s | {total / 60:.1f} min | {words / seconds * 60:.0f} |")
+        print(f"slide {number:02} {seconds:6.1f} s  total {total / 60:5.1f} min  {state}  {title}")
     table = ["| Slide | Título | Palabras | Duración | Acumulado | Palabras/min |", "|---|---|---|---|---|---|"]
     (out / "duraciones.md").write_text("\n".join([f"Voz: {voice}", "", *table, *rows]) + "\n", encoding="utf-8")
     (out / "manifest.json").write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
-    print(f"{len(plan)} slides, total {total / 60:.1f} min")
+    print(f"total {total / 60:.1f} min")
 
 
 def main() -> None:
