@@ -230,13 +230,13 @@ section.lead::after { color: #a5b4fc; }
 <td>Generador</td>
 <td>230</td>
 <td>14/14</td>
-<td>93 MiB de pico (límite 512)</td>
+<td>~95.000 registros/s; 93 MiB de pico (límite 512)</td>
 </tr>
 <tr>
 <td>Consultor</td>
 <td>423</td>
 <td>58/58</td>
-<td>Consulta por ID en 39–51 ms</td>
+<td>Consulta por ID en &lt; 1 ms (39–51 ms con el arranque)</td>
 </tr>
 </tbody>
 </table>
@@ -362,7 +362,7 @@ section.lead li::marker { color: #67e8f9; }
 section.lead::after { color: #a5b4fc; }
 " lang="en-US" data-marpit-pagination="5" style="--paginate:true;--theme:default;--style:@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap')
 ;" data-marpit-pagination-total="23">
-<h2 id="las-secciones-que-m%C3%A1s-pesan">Las secciones que más pesan</h2>
+<h2 id="las-secciones-del-prd-que-m%C3%A1s-pesan">Las secciones del PRD que más pesan</h2>
 <table>
 <thead>
 <tr>
@@ -1368,7 +1368,7 @@ section.lead::after { color: #a5b4fc; }
 <table>
 <thead>
 <tr>
-<th>Papel</th>
+<th>Agente</th>
 <th>Qué hace en el experimento</th>
 </tr>
 </thead>
@@ -1458,7 +1458,7 @@ section.lead::after { color: #a5b4fc; }
 <thead>
 <tr>
 <th>Grupo</th>
-<th>Papeles</th>
+<th>Agentes</th>
 <th>Se configura en</th>
 <th>En el experimento</th>
 </tr>
@@ -1484,7 +1484,7 @@ section.lead::after { color: #a5b4fc; }
 </tr>
 </tbody>
 </table>
-<p>Presets: <strong>balanced</strong>, performance, economy, diversity y <strong>custom</strong> (modelo y esfuerzo por papel).</p>
+<p>Presets: <strong>balanced</strong>, performance, economy, diversity y <strong>custom</strong> (modelo y esfuerzo por agente).</p>
 <p><strong>Recomendación:</strong> escritor fuerte (Opus), exploración y verificación más baratas (Sonnet).</p>
 <p><span class="detalle">→ Detalle: <a href="https://github.com/jesuslpm/chicago-crime/blob/main/docs/methodology/agentes-y-modelos.md" target="_blank" rel="noopener noreferrer">Agentes de Gentle AI: modelos y esfuerzo</a></span></p>
 </section>
@@ -1786,6 +1786,8 @@ section.lead::after { color: #a5b4fc; }
 <script>!function(){"use strict";const t={h1:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"1"},style:"display: block; font-size: 2em; margin-block-start: 0.67em; margin-block-end: 0.67em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},h2:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"2"},style:"display: block; font-size: 1.5em; margin-block-start: 0.83em; margin-block-end: 0.83em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},h3:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"3"},style:"display: block; font-size: 1.17em; margin-block-start: 1em; margin-block-end: 1em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},h4:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"4"},style:"display: block; margin-block-start: 1.33em; margin-block-end: 1.33em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},h5:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"5"},style:"display: block; font-size: 0.83em; margin-block-start: 1.67em; margin-block-end: 1.67em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},h6:{proto:()=>HTMLHeadingElement,attrs:{role:"heading","aria-level":"6"},style:"display: block; font-size: 0.67em; margin-block-start: 2.33em; margin-block-end: 2.33em; margin-inline-start: 0px; margin-inline-end: 0px; font-weight: bold;"},span:{proto:()=>HTMLSpanElement},pre:{proto:()=>HTMLElement,style:"display: block; font-family: monospace; white-space: pre; margin: 1em 0; --marp-auto-scaling-white-space: pre;"}},e="data-marp-auto-scaling-wrapper",i="data-marp-auto-scaling-svg",n="data-marp-auto-scaling-container";class s extends HTMLElement{container;containerSize;containerObserver;svg;svgComputedStyle;svgPreserveAspectRatio="xMinYMid meet";wrapper;wrapperSize;wrapperObserver;constructor(){super();const t=t=>([e])=>{const{width:i,height:n}=e.contentRect;this[t]={width:i,height:n},this.updateSVGRect()};this.attachShadow({mode:"open"}),this.containerObserver=new ResizeObserver(t("containerSize")),this.wrapperObserver=new ResizeObserver((...e)=>{t("wrapperSize")(...e),this.flushSvgDisplay()})}static get observedAttributes(){return["data-downscale-only"]}connectedCallback(){this.shadowRoot.innerHTML=`\n<style>\n  svg[${i}] { display: block; width: 100%; height: auto; vertical-align: top; }\n  span[${n}] { display: table; white-space: var(--marp-auto-scaling-white-space, nowrap); width: max-content; }\n</style>\n<div ${e}>\n  <svg part="svg" ${i}>\n    <foreignObject><span ${n}><slot></slot></span></foreignObject>\n  </svg>\n</div>\n    `.split(/\n\s*/).join(""),this.wrapper=this.shadowRoot.querySelector(`div[${e}]`)??void 0;const t=this.svg;this.svg=this.wrapper?.querySelector(`svg[${i}]`)??void 0,this.svg!==t&&(this.svgComputedStyle=this.svg?window.getComputedStyle(this.svg):void 0),this.container=this.svg?.querySelector(`span[${n}]`)??void 0,this.observe()}disconnectedCallback(){this.svg=void 0,this.svgComputedStyle=void 0,this.wrapper=void 0,this.container=void 0,this.observe()}attributeChangedCallback(){this.observe()}flushSvgDisplay(){const{svg:t}=this;t&&(t.style.display="inline",requestAnimationFrame(()=>{t.style.display=""}))}observe(){this.containerObserver.disconnect(),this.wrapperObserver.disconnect(),this.wrapper&&this.wrapperObserver.observe(this.wrapper),this.container&&this.containerObserver.observe(this.container),this.svgComputedStyle&&this.observeSVGStyle(this.svgComputedStyle)}observeSVGStyle(t){const e=()=>{const i=(()=>{const e=t.getPropertyValue("--preserve-aspect-ratio");if(e)return e.trim();return`x${(({textAlign:t,direction:e})=>{if(t.endsWith("left"))return"Min";if(t.endsWith("right"))return"Max";if("start"===t||"end"===t){let i="rtl"===e;return"end"===t&&(i=!i),i?"Max":"Min"}return"Mid"})(t)}YMid meet`})();i!==this.svgPreserveAspectRatio&&(this.svgPreserveAspectRatio=i,this.updateSVGRect()),t===this.svgComputedStyle&&requestAnimationFrame(e)};e()}updateSVGRect(){let t=Math.ceil(this.containerSize?.width??0);const e=Math.ceil(this.containerSize?.height??0);void 0!==this.dataset.downscaleOnly&&(t=Math.max(t,this.wrapperSize?.width??0));const i=this.svg?.querySelector(":scope > foreignObject");if(i?.setAttribute("width",`${t}`),i?.setAttribute("height",`${e}`),this.svg&&(this.svg.setAttribute("viewBox",`0 0 ${t} ${e}`),this.svg.setAttribute("preserveAspectRatio",this.svgPreserveAspectRatio),this.svg.style.height=t<=0||e<=0?"0":""),this.container){const t=this.svgPreserveAspectRatio.toLowerCase();this.container.style.marginLeft=t.startsWith("xmid")||t.startsWith("xmax")?"auto":"0",this.container.style.marginRight=t.startsWith("xmi")?"auto":"0"}}}const r=(t,{attrs:e={},style:i})=>class extends t{constructor(...t){super(...t);for(const[t,i]of Object.entries(e))this.hasAttribute(t)||this.setAttribute(t,i);this._shadow()}static get observedAttributes(){return["data-auto-scaling"]}connectedCallback(){this._update()}attributeChangedCallback(){this._update()}_shadow(){if(!this.shadowRoot)try{this.attachShadow({mode:"open"})}catch(t){if(!(t instanceof Error&&"NotSupportedError"===t.name))throw t}return this.shadowRoot}_update(){const t=this._shadow();if(t){const e=i?`<style>:host { ${i} }</style>`:"";let n="<slot></slot>";const{autoScaling:s}=this.dataset;if(void 0!==s){n=`<marp-auto-scaling exportparts="svg:auto-scaling" ${"downscale-only"===s?"data-downscale-only":""}>${n}</marp-auto-scaling>`}t.innerHTML=e+n}}};let o;const a=()=>o??(o=!!document.createElement("div",{is:"marp-auto-scaling"}).outerHTML.startsWith("<div is"),o),l=Symbol();let c;const d="marpitSVGPolyfill:setZoomFactor,",h=Symbol(),g=Symbol();const p=()=>{const t="Apple Computer, Inc."===navigator.vendor,e=t?[v]:[],i={then:e=>(t?(async()=>{if(void 0===c){const t=document.createElement("canvas");t.width=10,t.height=10;const e=t.getContext("2d"),i=new Image(10,10),n=new Promise(t=>{i.addEventListener("load",()=>t())});i.crossOrigin="anonymous",i.src="data:image/svg+xml;charset=utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2210%22%20height%3D%2210%22%20viewBox%3D%220%200%201%201%22%3E%3CforeignObject%20width%3D%221%22%20height%3D%221%22%20requiredExtensions%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxhtml%22%3E%3Cdiv%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F1999%2Fxhtml%22%20style%3D%22width%3A%201px%3B%20height%3A%201px%3B%20background%3A%20red%3B%20position%3A%20relative%22%3E%3C%2Fdiv%3E%3C%2FforeignObject%3E%3C%2Fsvg%3E",await n,e.drawImage(i,0,0),c=e.getImageData(5,5,1,1).data[3]<128}return c})().then(t=>{null==e||e(t?[v]:[])}):null==e||e([]),i)};return Object.assign(e,i)};let m,u;function v(t){const e="object"==typeof t&&t.target||document,i="object"==typeof t?t.zoom:t;window[g]||(Object.defineProperty(window,g,{configurable:!0,value:!0}),document.body.style.zoom=1.0001,document.body.offsetHeight,document.body.style.zoom=1,window.addEventListener("message",({data:t,origin:e})=>{if(e===window.origin)try{if(t&&"string"==typeof t&&t.startsWith(d)){const[,e]=t.split(","),i=Number.parseFloat(e);Number.isNaN(i)||(u=i)}}catch(t){console.error(t)}}));let n=!1;Array.from(e.querySelectorAll("svg[data-marpit-svg]"),t=>{var e,s,r,o;t.style.transform||(t.style.transform="translateZ(0)");const a=i||u||t.currentScale||1;m!==a&&(m=a,n=a);const l=t.getBoundingClientRect(),{length:c}=t.children;for(let i=0;i<c;i+=1){const n=t.children[i];if(n.getScreenCTM){const t=n.getScreenCTM();if(t){const i=null!==(s=null===(e=n.x)||void 0===e?void 0:e.baseVal.value)&&void 0!==s?s:0,c=null!==(o=null===(r=n.y)||void 0===r?void 0:r.baseVal.value)&&void 0!==o?o:0,d=n.children.length;for(let e=0;e<d;e+=1){const s=n.children[e];if("SECTION"===s.tagName){const{style:e}=s;e.transformOrigin||(e.transformOrigin=`${-i}px ${-c}px`),e.transform=`scale(${a}) matrix(${t.a}, ${t.b}, ${t.c}, ${t.d}, ${t.e-l.left}, ${t.f-l.top}) translateZ(0.0001px)`;break}}}}}}),!1!==n&&Array.from(e.querySelectorAll("iframe"),({contentWindow:t})=>{null==t||t.postMessage(`${d}${n}`,"null"===window.origin?"*":window.origin)})}function w({once:t=!1,target:e=document}={}){const i=function(t=document){if(t[h])return t[h];let e=!0;const i=()=>{e=!1,delete t[h]};Object.defineProperty(t,h,{configurable:!0,value:i});let n=[],s=!1;(async()=>{try{n=await p()}finally{s=!0}})();const r=()=>{for(const e of n)e({target:t});s&&0===n.length||e&&window.requestAnimationFrame(r)};return r(),i}(e);return t?(i(),()=>{}):i}m=1,u=void 0;const b=Symbol(),y=(e=document)=>{if("undefined"==typeof window)throw new Error("Marp Core's browser script is valid only in browser context.");if(((e=document)=>{const i=window[l];i||customElements.define("marp-auto-scaling",s);for(const n of Object.keys(t)){const s=`marp-${n}`,o=t[n].proto();a()&&o!==HTMLElement?i||customElements.define(s,r(o,{style:t[n].style}),{extends:n}):(i||customElements.define(s,r(HTMLElement,t[n])),e.querySelectorAll(`${n}[is="${s}"]`).forEach(t=>{t.outerHTML=t.outerHTML.replace(new RegExp(`^<${n}`,"i"),`<${s}`).replace(new RegExp(`</${n}>$`,"i"),`</${s}>`)}))}window[l]=!0})(e),e[b])return e[b];const i=w({target:e}),n=()=>{i(),delete e[b]},o=Object.assign(n,{cleanup:n,update:()=>y(e)});return Object.defineProperty(e,b,{configurable:!0,value:o}),o},f=document.currentScript;y(f?f.getRootNode():document)}();
 </script></foreignObject></svg></div><div class="bespoke-marp-note" data-index="0" tabindex="0"><p>Cómo leerla:
 
+Desarrollo práctico de software asistido por IA.
+
 Esta sesión trata de cómo desarrollamos software con agentes de IA de forma práctica y verificable, no de
 demos. Vamos a ver tres formas de trabajar que comparten el mismo punto de partida, el PRD: vibe coding, SDD y
 ODD.
@@ -1793,53 +1795,61 @@ ODD.
 Todo lo que veremos sale de un experimento real, chicago-crime, un repositorio público. Cada cifra que aparece
 en las slides se puede comprobar en él.
 
-Organización: unos 60 minutos. Documento de detalle en la otra pantalla: desarrollo-asistido-por-ia.md.
+▸ Organización: unos 60 minutos. Documento de detalle en la otra pantalla: desarrollo-asistido-por-ia.md.
 Ejemplo paso a paso: generacion-del-prd.md.
 
 ⏱ Al terminar esta slide: hacia el minuto 1.</p></div><div class="bespoke-marp-note" data-index="1" tabindex="0"><p>Cómo leerla:
 
-La tesis es que el PRD es la fuente permanente de verdad funcional, y que las especificaciones, el diseño, las
-tareas y el código se derivan de él.
+La tesis.
+
+El PRD es la fuente permanente de verdad funcional: las especificaciones, el diseño, las tareas y el código se
+derivan de él.
 
 En el desarrollo de software asistido por IA distinguimos tres capas: la especificación de los requisitos, la
 generación del código mediante un método de ejecución, y la evidencia que nos da la certeza de que el código
 cumple los requisitos.
 
-El PRD se encarga de los requisitos. Está escrito para personas, no necesariamente técnicas, en lenguaje de
+Los requisitos. De ellos se encarga el PRD, escrito para personas, no necesariamente técnicas, en lenguaje de
 producto. Su carácter es permanente, pero no inmutable: evoluciona a lo largo de todo el ciclo de vida del
 software, y los cambios se van anotando con fecha en lugar de reescribir su historia.
 
-La ejecución es variable: para cada cambio elegimos el método que mejor encaja, sea vibe coding, SDD u ODD, y las
-herramientas también cambian con el tiempo. Lo que produce cada ejecución pertenece a ese cambio; el PRD
+La ejecución. Es variable: para cada cambio elegimos el método que mejor encaja, sea vibe coding, SDD u ODD, y
+las herramientas también cambian con el tiempo. Lo que produce cada ejecución pertenece a ese cambio; el PRD
 permanece.
 
-La evidencia es imprescindible: tests, criterios de aceptación comprobados sobre datos reales, revisiones e
+La evidencia. Es imprescindible: tests, criterios de aceptación comprobados sobre datos reales, revisiones e
 informe de cierre. Sin evidencia, no sabemos si el código hace lo que dice el PRD; solo lo suponemos.
 
-Mensaje clave: no es &quot;la IA sustituye a los ingenieros&quot;. Es que un ingeniero con dominio, algoritmos y
-arquitectura puede dirigir agentes en una tecnología que todavía no domina, y sigue siendo responsable de
-especificar y de evaluar.
+La clave es que la IA no sustituye a los ingenieros. Un buen ingeniero, con dominio, algoritmos y arquitectura,
+puede dirigir agentes en una tecnología que todavía no domina, y sigue siendo responsable de especificar y de
+evaluar.
 
 ⏱ Al terminar esta slide: hacia el minuto 3.</p></div><div class="bespoke-marp-note" data-index="2" tabindex="0"><p>Cómo leerla:
 
-El experimento parte de un CSV público de delitos de Chicago: 8.656.904 registros y 2,4 GB. El objetivo era
-convertirlo en un conjunto de datos consultable, ordenado en SSTables, y hacerlo en Rust, un lenguaje que yo
-no conocía al empezar.
+El experimento: chicago-crime.
+
+Parte de un CSV público de delitos de Chicago: 8.656.904 registros y 2,4 GB. El objetivo era convertirlo en un
+conjunto de datos consultable, ordenado en SSTables, y hacerlo en Rust, un lenguaje que yo no conocía al
+empezar.
 
 Hicimos tres cambios, cada uno con su propio PRD: el generador, que construye el conjunto de datos; el
 consultor, que responde preguntas sobre él; y el soporte para Linux.
 
-La tabla resume los resultados. El generador tiene 230 tests y pasó 14 de 14 criterios de aceptación sobre el
-CSV real, con un pico de memoria de 93 MiB frente a un límite de 512. El consultor tiene 423 tests, pasó 58 de
-58 criterios y responde una consulta por ID en unos 40 o 50 milisegundos.
+La tabla resume los resultados. El generador: 230 tests y 14 de 14 criterios de aceptación sobre el CSV real.
+Procesa casi 100.000 registros por segundo, con un pico de memoria de 93 MiB frente a un límite de 512. El
+consultor: 423 tests y 58 de 58 criterios. Una consulta por ID tarda menos de un milisegundo; con el arranque
+del proceso incluido, entre 39 y 51 milisegundos.
 
-Mensaje clave: es un caso real, no una comparación controlada entre metodologías. Muestra que el método
-funciona en un problema no trivial, no que un enfoque sea mejor que otro.
+Eso sí, es un caso real, no una comparación controlada entre metodologías. Muestra que el método funciona en
+un problema no trivial, no que un enfoque sea mejor que otro.
 
 ⏱ Al terminar esta slide: hacia el minuto 4.</p></div><div class="bespoke-marp-note" data-index="3" tabindex="0"><p>Cómo leerla:
 
-Un PRD describe qué hace el producto y por qué, en lenguaje de negocio. No contiene clases, endpoints, rutas
-de archivos ni números de línea: eso es el cómo, y pertenece al código y a los documentos de ejecución.
+Qué es un PRD.
+
+Es un documento que describe qué hace el producto y por qué, en lenguaje de negocio. No contiene clases,
+endpoints, rutas de archivos ni números de línea: eso es el cómo, y pertenece al código y a los documentos de
+ejecución.
 
 No es un prompt desechable que se escribe para arrancar una sesión y se olvida. Es documentación duradera,
 versionada en el repositorio junto al código.
@@ -1850,30 +1860,32 @@ por cada cambio, que nombra a su padre y solo añade lo que ese cambio necesita.
 Cuando un hijo contradice al padre, el padre no se reescribe: se anota con fecha. Así se conserva la historia
 de cada decisión.
 
-Mostrar en la otra pantalla: docs/prd/chicago-crime/, el padre y sus tres hijos.
+▸ Mostrar en la otra pantalla: docs/prd/chicago-crime/, el padre y sus tres hijos.
 
 ⏱ Al terminar esta slide: hacia el minuto 6.</p></div><div class="bespoke-marp-note" data-index="4" tabindex="0"><p>Cómo leerla:
 
-La plantilla tiene más secciones, pero estas cinco son las que marcan la diferencia.
+Las secciones del PRD que más pesan.
 
-El estado de partida se verifica en el código y en los datos; nunca se supone. En el experimento, medir el CSV
-antes de escribir cambió varias decisiones.
+La plantilla del PRD tiene más secciones, pero estas cinco son las que marcan la diferencia.
 
-Las validaciones y mensajes recogen el texto exacto que verá el usuario, de modo que nadie lo improvisa al
+El estado de partida. Se verifica en el código y en los datos; nunca se supone. En el experimento, medir el
+CSV antes de escribir cambió varias decisiones.
+
+Las validaciones y mensajes. Recogen el texto exacto que verá el usuario, de modo que nadie lo improvisa al
 programar.
 
-El fuera de alcance es obligatorio: delimita el cambio y marca dónde empieza el siguiente. Sin él, el alcance
+El fuera de alcance. Es obligatorio: delimita el cambio y marca dónde empieza el siguiente. Sin él, el alcance
 crece solo.
 
-Los criterios de aceptación llevan cifras reales, por ejemplo que el índice de tipo principal tenga 1.838.502
-entradas THEFT. Así &quot;funciona&quot; deja de ser una opinión y pasa a ser algo comprobable.
+Los criterios de aceptación. Llevan cifras reales, por ejemplo que el índice de tipo principal tenga 1.838.502
+entradas THEFT. Así, &quot;funciona&quot; deja de ser una opinión y pasa a ser algo comprobable.
 
-Las decisiones registran cada elección con su motivo y su consecuencia aceptada. Esta sección no estaba en la
+Las decisiones. Registran cada elección con su motivo y su consecuencia aceptada. Esta sección no estaba en la
 plantilla original: nació en el experimento porque resultó la más útil.
 
 ⏱ Al terminar esta slide: hacia el minuto 7.</p></div><div class="bespoke-marp-note" data-index="5" tabindex="0"><p>Cómo leerla:
 
-El PRD se escribe conversando con la IA, y el skill prd le fija las reglas.
+Cómo se produce el PRD: conversando con la IA. Y el skill prd le fija las reglas.
 
 Empieza el programador: pide el PRD de un cambio y explica qué quiere y por qué, con el contexto que tenga. En
 el experimento, ese contexto fue un resumen de una conversación previa con ChatGPT.
@@ -1888,29 +1900,30 @@ en una. Si afirmo algo técnico, la IA lo verifica antes de darme la razón.
 Iteramos hasta que no queda nada abierto. Y un detalle importante: escribir el PRD no autoriza a implementar;
 la implementación se pide aparte.
 
-Mostrar, si hay tiempo: generacion-del-prd.md.
+▸ Mostrar, si hay tiempo: generacion-del-prd.md.
 
 ⏱ Al terminar esta slide: hacia el minuto 10.</p></div><div class="bespoke-marp-note" data-index="6" tabindex="0"><p>Cómo leerla:
 
-Esta slide muestra el paso de verificación en acción, con tres decisiones reales del PRD del generador.
+Ejemplo real: la IA verifica. Son tres decisiones reales del PRD del generador.
 
-En D1 afirmé que el crate sstable era compatible con LevelDB. La IA no me dio la razón sin más: leyó el código
-fuente del crate y comprobó que el formato coincide. Tenía razón.
+D1, el formato. Afirmé que el crate sstable era compatible con LevelDB. La IA no me dio la razón sin más: leyó
+el código fuente del crate y comprobó que el formato coincide. Tenía razón.
 
-En D4 propuse guardar el ID también en el valor, porque ocupaba poco y ahorraba memoria. La IA midió: 33 MiB,
-un 2,9 %. Era más simple, pero no ahorraba RAM. Tenía razón a medias.
+D4, el valor. Propuse guardar el ID también en el valor, porque ocupaba poco y ahorraba memoria. La IA midió:
+33 MiB, un 2,9 %. Era más simple, pero no ahorraba RAM. Tenía razón a medias.
 
-En D5 dije que detectar duplicados lejanos sería difícil. La IA explicó que, después de la ordenación externa,
-los duplicados quedan contiguos por lejos que estuvieran en el CSV. La premisa era incorrecta.
+D5, los duplicados. Dije que detectar duplicados lejanos sería difícil. La IA explicó que, después de la
+ordenación externa, los duplicados quedan contiguos por lejos que estuvieran en el CSV. La premisa era
+incorrecta.
 
-Mensaje clave: en los tres casos la evidencia fueron código y números, no opiniones. La IA no está para darnos
-la razón, sino para comprobarla.
+En los tres casos, la evidencia fueron código y números, no opiniones. La IA no está para darnos la razón,
+sino para comprobarla.
 
-Mostrar: las citas literales del documento; enseñan que el pedido real no fue perfecto.
+▸ Mostrar: las citas literales del documento; enseñan que el pedido real no fue perfecto.
 
 ⏱ Al terminar esta slide: hacia el minuto 12.</p></div><div class="bespoke-marp-note" data-index="7" tabindex="0"><p>Cómo leerla:
 
-Ahora el caso contrario, del PRD del consultor.
+Ejemplo real: la IA se equivoca. Ahora el caso contrario, en el PRD del consultor.
 
 La IA defendió que los resultados salieran ordenados por ID, con el argumento de que cada índice ya los
 entrega ordenados. Le respondí que no era cierto: con varios valores, el índice los agrupa por valor, no por
@@ -1919,108 +1932,118 @@ ID. La IA lo comprobó contra el contrato del conjunto de datos, reconoció el e
 Después recorté el alcance: dejamos la ordenación para un cambio posterior, para ir más poco a poco. Así nació
 la versión 1.1 del PRD.
 
-Lección: recomendar no es decidir. Las mejores decisiones del consultor salieron de mis respuestas libres, no
-de las opciones que proponía la IA.
+La lección es que recomendar no es decidir. Las mejores decisiones del consultor salieron de mis respuestas
+libres, no de las opciones que proponía la IA.
 
 También pasó con las mayúsculas: un supuesto que nadie había medido obligó a cambiar el generador y a subir el
 esquema a la versión 2.
 
 ⏱ Al terminar esta slide: hacia el minuto 13.</p></div><div class="bespoke-marp-note" data-index="8" tabindex="0"><p>Cómo leerla:
 
-Resumimos por qué merece la pena el esfuerzo de escribir el PRD.
+Por qué importa el PRD. Resumimos por qué merece la pena el esfuerzo de escribirlo.
 
-Separa decidir de construir: las decisiones de producto se cierran antes de programar, y por eso el agente
-puede trabajar horas sin parar, porque no le queda nada de negocio por preguntar.
+Separa decidir de construir. Las decisiones de producto se cierran antes de programar, y por eso el agente
+puede trabajar horas sin parar: no le queda nada de negocio por preguntar.
 
-Es un contrato verificable, con criterios que llevan cifras reales. Limita el alcance: el agente no amplía el
-cambio por su cuenta. Lo lee cualquiera, también quien nunca va a abrir el código. Dura más que el código:
-cuando cambia una regla, se cambia primero el PRD y después el código. Y hace auditable el trabajo con IA:
-cualquiera puede revisar qué se pidió, qué se decidió y qué se comprobó.
+Es un contrato verificable, con criterios que llevan cifras reales.
+
+Limita el alcance: el agente no amplía el cambio por su cuenta.
+
+Lo lee cualquiera, también quien nunca va a abrir el código.
+
+Dura más que el código: cuando cambia una regla, se cambia primero el PRD y después el código.
+
+Y hace auditable el trabajo con IA: cualquiera puede revisar qué se pidió, qué se decidió y qué se comprobó.
 
 Eso sí, no todo necesita un PRD: los bugs, las refactorizaciones y el tooling que no cambian el comportamiento
 del producto van directos a la ejecución.
 
 ⏱ Al terminar esta slide: hacia el minuto 15.</p></div><div class="bespoke-marp-note" data-index="9" tabindex="0"><p>Cómo leerla:
 
-Estas tres reglas valen para cualquier forma de ejecutar el PRD, y atacan los problemas que más tiempo nos
-hacen perder.
+Tres reglas antes de ejecutar. Valen para cualquier forma de ejecutar el PRD, y atacan los problemas que más
+tiempo nos hacen perder.
 
-La primera es pedir una estimación de tiempo antes de empezar. El agente nos la da en un mensaje propio, junto
-con la pregunta de si empieza, para que no se pierda entre todo lo que va haciendo. Cuando confirmamos, anota
-la hora real de inicio. Sin esa referencia no hay forma de calibrar ni de planificar. En el consultor se estimaron entre 4 y 7 horas, y se
-tardaron unas 3 horas y cuarto.
+La primera, la estimación de tiempo. El agente nos la da antes de empezar, en un mensaje propio y junto con la
+pregunta de si empieza, para que no se pierda entre todo lo que va haciendo. Cuando confirmamos, anota la hora
+real de inicio. Sin esa referencia no hay forma de calibrar ni de planificar. En el consultor se estimaron
+entre 4 y 7 horas, y se tardaron unas 3 horas y cuarto.
 
-La segunda es que no haya interrupciones. Todas las preguntas se hacen al principio, y después el agente no se
-detiene: ante una duda menor toma un valor razonable, lo documenta y lo informa al final. Una sola pregunta a
-mitad de proceso puede dejarlo parado horas mientras nadie mira la pantalla, y eso nos pasó.
+La segunda, sin interrupciones. Todas las preguntas se hacen al principio, y después el agente no se detiene:
+ante una duda menor toma un valor razonable, lo documenta y lo informa al final. Una sola pregunta a mitad de
+proceso puede dejarlo parado horas mientras nadie mira la pantalla, y eso nos pasó.
 
-La tercera es exigir un informe de cierre en Markdown, guardado en el repositorio, con el resultado, las
+La tercera, el informe de cierre. Lo exigimos en Markdown, guardado en el repositorio, con el resultado, las
 revisiones automáticas con sus hallazgos, el tiempo real frente al estimado, las líneas por área, un resumen y
 los pendientes. Los hallazgos hay que anotarlos en el momento, porque la herramienta de revisión no los guarda.
 
-Mostrar: odd/tasks/crime-query-report.md.
+▸ Mostrar: odd/tasks/crime-query-report.md.
 
 ⏱ Al terminar esta slide: hacia el minuto 17.</p></div><div class="bespoke-marp-note" data-index="10" tabindex="0"><p>Cómo leerla:
 
-Las tres reglas no se quedan en buenas intenciones: viven en el repositorio.
+Las reglas, versionadas en el repositorio. Las tres reglas no se quedan en buenas intenciones: viven en el
+repositorio.
 
-CLAUDE.md son las instrucciones del proyecto que Claude Code carga en cada sesión. Es deliberadamente corto:
+CLAUDE.md: son las instrucciones del proyecto que Claude Code carga en cada sesión. Es deliberadamente corto:
 solo lleva lo que siempre aplica.
 
-El skill closing-report se carga solo al cerrar. Trae la plantilla del informe y un script que calcula las
+El skill closing-report: se carga solo al cerrar. Trae la plantilla del informe y un script que calcula las
 líneas por área a partir de git, para que el agente no tenga que sumarlas a mano.
 
-El skill vibe-coding aplica las tres reglas cuando se pide vibe coding, que es el único enfoque que no trae un
-proceso propio.
+El skill vibe-coding: aplica las tres reglas cuando se pide vibe coding, que es el único enfoque que no trae
+un proceso propio.
 
-Mensaje clave: así las reglas no dependen de la memoria personal de nadie; cualquiera que clone el repositorio
-las hereda. Otros agentes, como Codex u OpenCode, leen AGENTS.md en lugar de CLAUDE.md.
+Así, las reglas no dependen de la memoria personal de nadie: cualquiera que clone el repositorio las hereda.
+Otros agentes, como Codex u OpenCode, leen AGENTS.md en lugar de CLAUDE.md.
 
-Mostrar: CLAUDE.md y .claude/skills/closing-report/.
+▸ Mostrar: CLAUDE.md y .claude/skills/closing-report/.
 
 ⏱ Al terminar esta slide: hacia el minuto 19.</p></div><div class="bespoke-marp-note" data-index="11" tabindex="0"><p>Cómo leerla:
 
-Después del PRD tenemos tres formas de ejecutar. Conviene aclarar que no son tres frameworks equivalentes: el
-PRD es común a las tres, y lo que cambia es cómo se implementa, se coordina y se verifica.
+Tres formas de ejecutar un PRD. Conviene aclarar que no son tres frameworks equivalentes: el PRD es común a
+las tres, y lo que cambia es cómo se implementa, se coordina y se verifica.
 
-Con vibe coding implementamos conversando directamente con la IA, y la formalidad depende de nuestra
-disciplina. Sirve para prototipos y cambios sencillos; su riesgo es la deriva de requisitos y la pérdida de
-contexto en sesiones largas.
+Vibe coding. Implementamos conversando directamente con la IA, y la formalidad depende de nuestra disciplina.
+Sirve para prototipos y cambios sencillos; su riesgo es la deriva de requisitos y la pérdida de contexto en
+sesiones largas.
 
-SDD sigue fases formales, cada una con su artefacto. Es más estructurado y encaja con cambios de alto riesgo o
-complejidad, a cambio de más sobrecarga documental.
+SDD. Sigue fases formales, cada una con su artefacto. Es más estructurado y encaja con cambios de alto riesgo
+o complejidad, a cambio de más sobrecarga documental.
 
-ODD adapta la ceremonia al tamaño y al riesgo de cada cambio. Sirve para funcionalidad real con poca
+ODD. Adapta la ceremonia al tamaño y al riesgo de cada cambio. Sirve para funcionalidad real con poca
 ceremonia; su riesgo es que los requisitos se reinterpreten al pasar de un agente a otro.
 
 En los tres casos, el agente no altera en silencio un requisito: si encuentra una decisión de negocio abierta,
 vuelve a preguntar.
 
-Aviso: es un encuadre conceptual, no una comparación medida.
+Una aclaración: esta comparación es conceptual; no la hemos medido.
 
 ⏱ Al terminar esta slide: hacia el minuto 20.</p></div><div class="bespoke-marp-note" data-index="12" tabindex="0"><p>Cómo leerla:
 
-Estos son los prompts para arrancar cada forma de trabajar; están completos en la sección 5 del documento.
+Prompts para empezar. Estos son los prompts para arrancar cada forma de trabajar, y están completos en la
+sección 5 del documento.
 
-El del PRD invita expresamente a hacer sugerencias y preguntas, y deja claro que no se implementa nada. Esa
+El del PRD. Invita expresamente a hacer sugerencias y preguntas, y deja claro que no se implementa nada. Esa
 invitación funcionó en el experimento: de ahí salieron el manifiesto, la publicación atómica y la indexación
 de los valores vacíos.
 
-Los de ODD y SDD repiten las tres reglas: estimación, sin interrupciones e informe de cierre. El de SDD
+Los de ODD y SDD. Repiten las tres reglas: estimación, sin interrupciones e informe de cierre. El de SDD
 necesita además una herramienta instalada, como OpenSpec o Spec Kit.
 
-El de vibe coding es el más corto porque el skill vibe-coding pone el resto: el mapa del código existente, el
-código DRY, los tests por criterio, la verificación, la revisión automática si RDD está activo y el informe.
+El de vibe coding. Es el más corto, porque el skill vibe-coding pone el resto: el mapa del código existente,
+el código DRY, los tests por criterio, la verificación, la revisión automática si RDD está activo y el informe.
 
-Detalle importante: hay que nombrar el enfoque. En un proyecto con ODD por defecto, como este, si el prompt no
-dice &quot;vibe coding&quot;, el agente usa ODD.
+Un detalle importante: hay que nombrar el enfoque. En un proyecto con ODD por defecto, como este, si el prompt
+no dice &quot;vibe coding&quot;, el agente usa ODD.
 
 ⏱ Al terminar esta slide: hacia el minuto 22.</p></div><div class="bespoke-marp-note" data-index="13" tabindex="0"><p>Cómo leerla:
 
-Vibe coding es una implementación conversacional: el PRD hace de ancla y la conversación hace de plan.
+Vibe coding. Es una implementación conversacional: el PRD hace de ancla y la conversación hace de plan.
+
 Avanzamos criterio a criterio, cada uno con su test y un commit que sirve de punto de control. Como no hay
-documento de ejecución, los commits son la memoria del proceso. Si RDD está activo, la revisión automática
-funciona igual que en ODD: revisa el diff después de cada commit y, al cerrar, el último tramo.
+documento de ejecución, los commits son la memoria del proceso.
+
+Si RDD está activo, la revisión automática funciona igual que en ODD: revisa el diff después de cada commit y,
+al cerrar, el último tramo.
 
 El skill vibe-coding fija los bordes, no el proceso. Antes de escribir explora el código existente para no
 duplicar lo que ya hay, porque el vibe coding tiene la mala costumbre de dejar el código WET, y al final exige
@@ -2028,8 +2051,8 @@ la verificación y el informe.
 
 ⏱ Al terminar esta slide: hacia el minuto 24.</p></div><div class="bespoke-marp-note" data-index="14" tabindex="0"><p>Cómo leerla:
 
-SDD es desarrollo guiado por especificaciones: una especificación formal precede al código. El trabajo se
-divide en seis fases, y cada una deja un artefacto que podemos revisar antes de pasar a la siguiente.
+SDD: desarrollo guiado por especificaciones. Una especificación formal precede al código. El trabajo se divide
+en seis fases, y cada una deja un artefacto que podemos revisar antes de pasar a la siguiente.
 
 Primero, proponer: por qué hace falta el cambio y qué cambia. Después, diseñar: el enfoque técnico. Luego,
 especificar: los requisitos de comportamiento, con escenarios del tipo &quot;cuando pasa esto, entonces el sistema
@@ -2046,24 +2069,27 @@ contradice, manda el PRD.
 
 ⏱ Al terminar esta slide: hacia el minuto 25.</p></div><div class="bespoke-marp-note" data-index="15" tabindex="0"><p>Cómo leerla:
 
-ODD sigue siete pasos en cada pedido: autorizar, explorar, resolver dudas, clasificar, registrar, implementar
-y cerrar.
+ODD: el protocolo y el documento de ejecución. ODD sigue siete pasos en cada pedido: autorizar, explorar,
+resolver dudas, clasificar, registrar, implementar y cerrar.
 
 El paso clave es clasificar. Una tarea es pequeña si alguien podría terminarla solo con el pedido original y
 el git diff; si no, es grande. El número de archivos o de líneas nunca decide el tamaño.
 
 Lo pequeño se resuelve directamente, sin documentos. Lo grande se registra en un documento de ejecución,
-odd/tasks/&lt;feature&gt;.md, con cuatro secciones: un encabezado con el objetivo, la rama, la estimación y la hora
-real de inicio; las specs, que citan textualmente el PRD; las tareas, con el commit que cierra cada una; y el
-log, cuya primera entrada es el pedido original, palabra por palabra.
+odd/tasks/&lt;feature&gt;.md, con cuatro secciones.
+
+El encabezado: el objetivo, la rama, los tests, la estimación y la hora real de inicio. Las specs: citan
+textualmente el PRD. Las tareas: cada una con el commit que la cierra. Y el log: su primera entrada es el
+pedido original, palabra por palabra.
 
 El PRD sigue mandando: si una spec lo contradice, gana el PRD.
 
-Mostrar: odd/tasks/crime-query.md.
+▸ Mostrar: odd/tasks/crime-query.md.
 
 ⏱ Al terminar esta slide: hacia el minuto 27.</p></div><div class="bespoke-marp-note" data-index="16" tabindex="0"><p>Cómo leerla:
 
-Cada tarea sigue el mismo ciclo. Primero el agente lee el documento y sabe qué specs tiene que cubrir.
+ODD: el ciclo de cada tarea. En ODD, cada tarea sigue el mismo ciclo. Primero, el agente lee el documento y
+sabe qué specs tiene que cubrir.
 
 Después, test primero: escribe el test, lo ve fallar, implementa hasta que pasa y refactoriza con los tests en
 verde. Ejecuta el test enfocado, la batería completa, el formato y el lint, y cierra la tarea con un commit
@@ -2083,73 +2109,89 @@ que se fusiona haya pasado por ella.
 Las correcciones tienen límite: una tanda y una recomprobación. No hay ciclos de &quot;revisar hasta que quede
 limpio&quot;.
 
-⏱ Al terminar esta slide: hacia el minuto 29.</p></div><div class="bespoke-marp-note" data-index="17" tabindex="0"><p>Cómo leerla:
+Por último, antes de pasar a la siguiente tarea, el agente actualiza el documento: marca la tarea como hecha,
+anota el commit y la evidencia, y guarda una copia en Engram. Así, si la sesión se corta, se retoma desde el
+documento sin perder nada.
 
-Desde fuera parece una sola conversación, pero por dentro la sesión principal actúa como orquestador: entiende
-el pedido, decide y reparte el trabajo. Cada subagente tiene su propio contexto y devuelve un resumen; así el
-orquestador no se llena de código y puede sostener una conversación larga.
+⏱ Al terminar esta slide: hacia el minuto 30.</p></div><div class="bespoke-marp-note" data-index="17" tabindex="0"><p>Cómo leerla:
 
-En el experimento vimos cinco papeles. Los escritores implementaron cada tarea del generador, con su lista de
-archivos permitidos y los comandos de verificación que debían ejecutar. Los exploradores leen código
-desconocido sin modificarlo. Los verificadores no escribieron el código y prueban la especificación contra el
-resultado. Los revisores miran el cambio desde una lente cada uno, en paralelo. Y el refutador intenta
-desmentir un bloqueo dudoso antes de exigir una corrección.
+Bajo el capó: los subagentes. Desde fuera parece una sola conversación, pero por dentro la sesión principal
+actúa como orquestador: entiende el pedido, decide y reparte el trabajo. Cada subagente tiene su propio
+contexto y devuelve un resumen; así el orquestador no se llena de código y puede sostener una conversación
+larga.
+
+En el experimento vimos cinco tipos de agente.
+
+Los escritores: implementaron cada tarea del generador, con su lista de archivos permitidos y los comandos de
+verificación que debían ejecutar.
+
+Los exploradores: leen código desconocido sin modificarlo.
+
+Los verificadores: no escribieron el código y prueban la especificación contra el resultado.
+
+Los revisores: miran el cambio desde una lente cada uno, en paralelo.
+
+Y el refutador: intenta desmentir un bloqueo dudoso antes de exigir una corrección.
 
 En SDD pasa lo mismo: cada fase la ejecuta un subagente.
 
-Ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2. La versión
+Un ejemplo: en el consultor, mientras un verificador comprobaba T1, un escritor ya implementaba T2. La versión
 actual de ODD es más austera: el orquestador escribe directamente y solo delega con un motivo concreto.
 
-⏱ Al terminar esta slide: hacia el minuto 30.</p></div><div class="bespoke-marp-note" data-index="18" tabindex="0"><p>Cómo leerla:
+⏱ Al terminar esta slide: hacia el minuto 31.</p></div><div class="bespoke-marp-note" data-index="18" tabindex="0"><p>Cómo leerla:
 
-Cada papel puede correr con un modelo y un esfuerzo distintos, y eso afecta directamente al coste y a la
-calidad.
+Bajo el capó: modelos y esfuerzo. Cada agente puede correr con un modelo y un esfuerzo distintos, y eso afecta
+directamente al coste y a la calidad.
 
-Los papeles de ODD, explorador, escritor y verificador, se pueden configurar desde Gentle AI o con
-definiciones propias en .claude/agents. En el experimento no tenían definición, así que heredaron el modelo y
-el esfuerzo de la sesión principal: Opus 5.5, con esfuerzo alto o extra alto. Lo comprobamos en los
-historiales de 58 subagentes.
+ODD: sus agentes, explorador, escritor y verificador, se pueden configurar desde Gentle AI o con definiciones
+propias en .claude/agents. En el experimento no tenían definición, así que heredaron el modelo y el esfuerzo de
+la sesión principal: Opus 5.5, con esfuerzo alto o extra alto. Lo comprobamos en los historiales de 58
+subagentes.
 
-Los revisores de RDD y de Judgment Day tienen definiciones propias en Sonnet.
+RDD y Judgment Day: sus revisores y jueces tienen definiciones propias en Sonnet.
 
 Gentle AI ofrece cinco presets: balanced, performance, economy, diversity y custom, que permite elegir el
-modelo y el esfuerzo de cada papel.
+modelo y el esfuerzo de cada agente.
 
-Recomendación: un escritor fuerte, en Opus, porque escribir es lo más difícil, y exploración y verificación
+Mi recomendación: un escritor fuerte, en Opus, porque escribir es lo más difícil, y exploración y verificación
 más baratas, en Sonnet. Un verificador con un modelo distinto al del escritor aporta además una mirada más
 independiente.
 
-Pendiente: la configuración custom de los papeles de ODD todavía no está verificada; el primer intento falló
-sin guardar nada.
+Queda algo pendiente: la configuración custom de los agentes de ODD todavía no está verificada; el primer
+intento falló sin guardar nada.
 
-⏱ Al terminar esta slide: hacia el minuto 31.</p></div><div class="bespoke-marp-note" data-index="19" tabindex="0"><p>Cómo leerla:
+⏱ Al terminar esta slide: hacia el minuto 32.</p></div><div class="bespoke-marp-note" data-index="19" tabindex="0"><p>Cómo leerla:
 
-La memoria tiene tres capas, y cada una cumple un papel distinto.
+La memoria, los skills y los hooks. La memoria tiene tres capas, y cada una cumple un papel distinto.
 
-CLAUDE.md es la memoria del proyecto: está versionada y la hereda cualquiera que clone el repositorio. La
-memoria de Claude Code guarda mis preferencias personales, como &quot;no me preguntes, verifica siempre&quot;. Y Engram,
-un servidor MCP, guarda de forma proactiva decisiones, hallazgos y resúmenes de sesión, además de una copia
-del documento de ejecución para poder retomar si la sesión se corta.
+CLAUDE.md: es la memoria del proyecto. Está versionada y la hereda cualquiera que clone el repositorio.
 
-Los skills son procedimientos que se cargan solo cuando hacen falta: prd, closing-report, vibe-coding,
+La memoria de Claude Code: guarda mis preferencias personales, como &quot;no me preguntes, verifica siempre&quot;.
+
+Engram: es un servidor MCP que guarda de forma proactiva decisiones, hallazgos y resúmenes de sesión, además
+de una copia del documento de ejecución para poder retomar si la sesión se corta.
+
+Los skills: son procedimientos que se cargan solo cuando hacen falta, como prd, closing-report, vibe-coding,
 worktree y los de Gentle AI. Esa es la diferencia con CLAUDE.md, que se carga siempre.
 
-Los hooks son comandos que el entorno ejecuta automáticamente: inyectan contexto al empezar la sesión, obligan
+Los hooks: son comandos que el entorno ejecuta automáticamente. Inyectan contexto al empezar la sesión, obligan
 a pasar la revisión antes de dar el trabajo por terminado y bloquean el acceso a la base de datos principal
 desde un worktree.
 
-Mensaje clave: lo crítico no se deja a la memoria del agente; se automatiza.
+Lo crítico no se deja a la memoria del agente: se automatiza.
 
-Anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que guarda
-Claude Code.
+Una anécdota: la conversación del PRD del consultor se reconstruyó a partir del historial de sesiones que
+guarda Claude Code.
 
-⏱ Al terminar esta slide: hacia el minuto 33.</p></div><div class="bespoke-marp-note" data-index="20" tabindex="0"><p>Cómo leerla:
+⏱ Al terminar esta slide: hacia el minuto 34.</p></div><div class="bespoke-marp-note" data-index="20" tabindex="0"><p>Cómo leerla:
 
-Con un PRD cerrado y sin interrupciones, el agente puede trabajar horas solo, y eso habilita el paso
-siguiente: varios cambios a la vez, cada uno en su propia copia del repositorio.
+Desarrollo en paralelo con worktrees. Los worktrees, árboles de trabajo de git, nos permiten desarrollar varios
+cambios del mismo proyecto en paralelo, cada uno en su propia copia del repositorio. ¿Por qué importa? Porque,
+con un PRD cerrado y sin interrupciones, la IA trabaja horas sola en un cambio, y mientras tanto nosotros
+podemos avanzar con otro.
 
-git worktree aísla el código, pero no la base de datos, la configuración ni los puertos. La regla de diseño es
-que cada copia sea un entorno completo y autónomo.
+El comando git worktree aísla el código, pero no la base de datos, la configuración ni los puertos. La regla
+de diseño es que cada copia sea un entorno completo y autónomo.
 
 Todo se deriva de un solo nombre: la rama, la carpeta, la base de datos y la configuración local. Y nadie
 escribe el nombre de la base: lo resuelve un script, para que nunca se toque la principal por error.
@@ -2162,28 +2204,30 @@ en la integración.
 
 El flujo completo cabe en una línea: crear el worktree, PRD, ODD y fusionar.
 
-⏱ Al terminar esta slide: hacia el minuto 34.</p></div><div class="bespoke-marp-note" data-index="21" tabindex="0"><p>Cómo leerla:
+⏱ Al terminar esta slide: hacia el minuto 35.</p></div><div class="bespoke-marp-note" data-index="21" tabindex="0"><p>Cómo leerla:
+
+Qué sabemos y qué no.
 
 Para terminar, conviene separar lo que el experimento respalda de lo que todavía son hipótesis.
 
-Respaldado: un PRD bien trabajado alcanza para que ODD genere un plan de implementación detallado; un agente
-produjo una implementación en Rust que no es trivial sin que yo conociera el lenguaje; y tener artefactos
-persistentes, como el PRD, los documentos de ejecución, los tests y los informes, hace que el trabajo sea
-auditable.
+Lo que está respaldado. Un PRD bien trabajado alcanza para que ODD genere un plan de implementación detallado.
+Un agente produjo una implementación en Rust que no es trivial sin que yo conociera el lenguaje. Y tener
+artefactos persistentes, como el PRD, los documentos de ejecución, los tests y los informes, hace que el
+trabajo sea auditable.
 
-Falta medir: si ODD requiere menos intervención humana que SDD, si cuesta menos tiempo o tokens con la misma
-calidad, y si el vibe coding da resultados comparables con pruebas justas. Para eso habría que repetir cambios
-comparables con cada enfoque y medir lo mismo en todos.
+Lo que falta medir. Si ODD requiere menos intervención humana que SDD, si cuesta menos tiempo o tokens con la
+misma calidad, y si el vibe coding da resultados comparables con pruebas justas. Para eso habría que repetir
+cambios comparables con cada enfoque y medir lo mismo en todos.
 
-Mensaje clave: no estoy diciendo que ODD sea mejor. Estoy diciendo que, con un buen PRD, las tres formas de
+Que quede claro: no estoy diciendo que ODD sea mejor. Estoy diciendo que, con un buen PRD, las tres formas de
 ejecutar parten de una base sólida y verificable.
 
-⏱ Al terminar esta slide: hacia el minuto 36.</p></div><div class="bespoke-marp-note" data-index="22" tabindex="0"><p>Cómo leerla:
+⏱ Al terminar esta slide: hacia el minuto 37.</p></div><div class="bespoke-marp-note" data-index="22" tabindex="0"><p>Cómo leerla:
 
-Todo el material está en el repositorio: el documento completo, el ejemplo de cómo se generó el PRD y el skill
-de PRD, que también está publicado en un Gist para quien quiera usarlo en sus proyectos.
+Gracias. Todo el material está en el repositorio: el documento completo, el ejemplo de cómo se generó el PRD
+y el skill de PRD, que también está publicado en un Gist para quien quiera usarlo en sus proyectos.
 
-Reservar unos 5 minutos para preguntas.
+▸ Reservar unos 5 minutos para preguntas.
 
-⏱ Al llegar aquí: hacia el minuto 36. En una sesión de 60 minutos quedan unos 24 para preguntas o para una demo en vivo.</p></div><script>/*!! License: https://unpkg.com/@marp-team/marp-cli@4.2.3/lib/bespoke.js.LICENSE.txt */
+⏱ Al llegar aquí: hacia el minuto 37. En una sesión de 60 minutos quedan unos 23 para preguntas o para una demo en vivo.</p></div><script>/*!! License: https://unpkg.com/@marp-team/marp-cli@4.2.3/lib/bespoke.js.LICENSE.txt */
 !function(){"use strict";function e(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}var t,n,r=(n||(n=1,t={from:function(e,t){var n,r=1===(e.parent||e).nodeType?e.parent||e:document.querySelector(e.parent||e),o=[].filter.call("string"==typeof e.slides?r.querySelectorAll(e.slides):e.slides||r.children,function(e){return"SCRIPT"!==e.nodeName}),a={},i=function(e,t){return(t=t||{}).index=o.indexOf(e),t.slide=e,t},s=function(e,t){a[e]=(a[e]||[]).filter(function(e){return e!==t})},c=function(e,t){return(a[e]||[]).reduce(function(e,n){return e&&!1!==n(t)},!0)},l=function(e,t){o[e]&&(n&&c("deactivate",i(n,t)),n=o[e],c("activate",i(n,t)))},d=function(e,t){var r=o.indexOf(n)+e;c(e>0?"next":"prev",i(n,t))&&l(r,t)},u={off:s,on:function(e,t){return(a[e]||(a[e]=[])).push(t),s.bind(null,e,t)},fire:c,slide:function(e,t){if(!arguments.length)return o.indexOf(n);c("slide",i(o[e],t))&&l(e,t)},next:d.bind(null,1),prev:d.bind(null,-1),parent:r,slides:o,destroy:function(e){c("destroy",i(n,e)),a={}}};return(t||[]).forEach(function(e){e(u)}),n||l(0),u}}),t),o=e(r);const a=document.body,i=(...e)=>history.replaceState(...e),s="",c="presenter",l="next",d=["",c,l],u="bespoke-marp-",f=`data-${u}`,m=(e,{protocol:t,host:n,pathname:r,hash:o}=location)=>{const a=e.toString();return`${t}//${n}${r}${a?"?":""}${a}${o}`},g=()=>a.dataset.bespokeView,p=e=>new URLSearchParams(location.search).get(e),v=(e,t={})=>{const n={location,setter:i,...t},r=new URLSearchParams(n.location.search);for(const t of Object.keys(e)){const n=e[t];"string"==typeof n?r.set(t,n):r.delete(t)}try{n.setter({...window.history.state??{}},"",m(r,n.location))}catch(e){console.error(e)}},h=(()=>{const e="bespoke-marp";try{return localStorage.setItem(e,e),localStorage.removeItem(e),!0}catch{return!1}})(),y=e=>{try{return localStorage.getItem(e)}catch{return null}},b=(e,t)=>{try{return localStorage.setItem(e,t),!0}catch{return!1}},w=e=>{try{return localStorage.removeItem(e),!0}catch{return!1}},x=(e,t)=>{const n="aria-hidden";t?e.setAttribute(n,"true"):e.removeAttribute(n)},k=e=>{e.parent.classList.add(`${u}parent`),e.slides.forEach(e=>e.classList.add(`${u}slide`)),e.on("activate",t=>{const n=`${u}active`,r=t.slide,o=r.classList,a=!o.contains(n);if(e.slides.forEach(e=>{e.classList.remove(n),x(e,!0)}),o.add(n),x(r,!1),a){const e=`${n}-ready`;o.add(e),document.body.clientHeight,o.remove(e)}})},$=e=>{let t=0,n=0;Object.defineProperty(e,"fragments",{enumerable:!0,value:e.slides.map(e=>[null,...e.querySelectorAll("[data-marpit-fragment]")])});const r=r=>void 0!==e.fragments[t][n+r],o=(r,o)=>{t=r,n=o,e.fragments.forEach((e,t)=>{e.forEach((e,n)=>{if(null==e)return;const a=t<r||t===r&&n<=o;e.setAttribute(`${f}fragment`,(a?"":"in")+"active");const i=`${f}current-fragment`;t===r&&n===o?e.setAttribute(i,"current"):e.removeAttribute(i)})}),e.fragmentIndex=o;const a={slide:e.slides[r],index:r,fragments:e.fragments[r],fragmentIndex:o};e.fire("fragment",a)};e.on("next",({fragment:a=!0})=>{if(a){if(r(1))return o(t,n+1),!1;const a=t+1;e.fragments[a]&&o(a,0)}else{const r=e.fragments[t].length;if(n+1<r)return o(t,r-1),!1;const a=e.fragments[t+1];a&&o(t+1,a.length-1)}}),e.on("prev",({fragment:a=!0})=>{if(r(-1)&&a)return o(t,n-1),!1;const i=t-1;e.fragments[i]&&o(i,e.fragments[i].length-1)}),e.on("slide",({index:t,fragment:n})=>{let r=0;if(void 0!==n){const o=e.fragments[t];if(o){const{length:e}=o;r=-1===n?e-1:Math.min(Math.max(n,0),e-1)}}o(t,r)}),o(0,0)},E=document,L=()=>!(!E.fullscreenEnabled&&!E.webkitFullscreenEnabled),S=()=>!(!E.fullscreenElement&&!E.webkitFullscreenElement),P=e=>{e.fullscreen=()=>{L()&&(async()=>{S()?(E.exitFullscreen||E.webkitExitFullscreen)?.call(E):((e=E.body)=>{(e.requestFullscreen||e.webkitRequestFullscreen)?.call(e)})()})()},document.addEventListener("keydown",t=>{"f"!==t.key&&"F11"!==t.key||t.altKey||t.ctrlKey||t.metaKey||!L()||(e.fullscreen(),t.preventDefault())})},_=`${u}inactive`,T=(e=2e3)=>({parent:t,fire:n})=>{const r=t.classList,o=e=>n(`marp-${e?"":"in"}active`);let a;const i=()=>{a&&clearTimeout(a),a=setTimeout(()=>{r.add(_),o()},e),r.contains(_)&&(r.remove(_),o(!0))};for(const e of["mousedown","mousemove","touchend"])document.addEventListener(e,i);setTimeout(i,0)},I=["AUDIO","BUTTON","INPUT","SELECT","TEXTAREA","VIDEO"],M=e=>{e.parent.addEventListener("keydown",e=>{if(!e.target)return;const t=e.target;(I.includes(t.nodeName)||"true"===t.contentEditable)&&e.stopPropagation()})},O=e=>{window.addEventListener("load",()=>{for(const t of e.slides){const e=t.querySelector("marp-auto-scaling, [data-auto-scaling], [data-marp-fitting]");t.setAttribute(`${f}load`,e?"":"hideable")}})},A=({interval:e=250}={})=>t=>{document.addEventListener("keydown",e=>{if(" "===e.key&&e.shiftKey)t.prev();else if("ArrowLeft"===e.key||"ArrowUp"===e.key||"PageUp"===e.key)t.prev({fragment:!e.shiftKey});else if(" "!==e.key||e.shiftKey)if("ArrowRight"===e.key||"ArrowDown"===e.key||"PageDown"===e.key)t.next({fragment:!e.shiftKey});else if("End"===e.key)t.slide(t.slides.length-1,{fragment:-1});else{if("Home"!==e.key)return;t.slide(0)}else t.next();e.preventDefault()});let n,r,o=0;t.parent.addEventListener("wheel",a=>{let i=!1;const s=(e,t)=>{e&&(i=i||((e,t)=>((e,t)=>{const n="X"===t?"Width":"Height";return e[`client${n}`]<e[`scroll${n}`]})(e,t)&&((e,t)=>{const{overflow:n}=e,r=e[`overflow${t}`];return"auto"===n||"scroll"===n||"auto"===r||"scroll"===r})(getComputedStyle(e),t))(e,t)),e?.parentElement&&s(e.parentElement,t)};if(0!==a.deltaX&&s(a.target,"X"),0!==a.deltaY&&s(a.target,"Y"),i)return;a.preventDefault();const c=Math.sqrt(a.deltaX**2+a.deltaY**2);if(void 0!==a.wheelDelta){if(void 0===a.webkitForce&&Math.abs(a.wheelDelta)<40)return;if(a.deltaMode===a.DOM_DELTA_PIXEL&&c<4)return}else if(a.deltaMode===a.DOM_DELTA_PIXEL&&c<12)return;r&&clearTimeout(r),r=setTimeout(()=>{n=0},e);const l=Date.now()-o<e,d=c<=n;if(n=c,l||d)return;let u;(a.deltaX>0||a.deltaY>0)&&(u="next"),(a.deltaX<0||a.deltaY<0)&&(u="prev"),u&&(t[u](),o=Date.now())})},C=(e=`.${u}osc`)=>{const t=document.querySelector(e);if(!t)return()=>{};const n=(e,n)=>{t.querySelectorAll(`[${f}osc=${JSON.stringify(e)}]`).forEach(n)};return L()||n("fullscreen",e=>e.style.display="none"),h||n("presenter",e=>{e.disabled=!0,e.title="Presenter view is disabled due to restricted localStorage."}),e=>{t.addEventListener("click",t=>{if(t.target instanceof HTMLElement){const{bespokeMarpOsc:n}=t.target.dataset;n&&t.target.blur();const r={fragment:!t.shiftKey};"next"===n?e.next(r):"prev"===n?e.prev(r):"fullscreen"===n?e?.fullscreen():"presenter"===n&&e.openPresenterView()}}),e.parent.appendChild(t),e.on("activate",({index:t})=>{n("page",n=>n.textContent=`Page ${t+1} of ${e.slides.length}`)}),e.on("fragment",({index:t,fragments:r,fragmentIndex:o})=>{n("prev",e=>e.disabled=0===t&&0===o),n("next",n=>n.disabled=t===e.slides.length-1&&o===r.length-1)}),e.on("marp-active",()=>x(t,!1)),e.on("marp-inactive",()=>x(t,!0)),L()&&(e=>{for(const t of["","webkit"])E.addEventListener(t+"fullscreenchange",e)})(()=>n("fullscreen",e=>e.classList.toggle("exit",L()&&S())))}},D=e=>{window.addEventListener("message",t=>{if(t.origin!==window.origin)return;const[n,r]=t.data.split(":");if("navigate"===n){const[t,n]=r.split(",");let o=Number.parseInt(t,10),a=Number.parseInt(n,10)+1;a>=e.fragments[o].length&&(o+=1,a=0),e.slide(o,{fragment:a})}})};var N,B,q,K,F,j,V,U={exports:{}},X=(N||(N=1,U.exports=(B=["area","base","br","col","command","embed","hr","img","input","keygen","link","meta","param","source","track","wbr"],q=function(e){return String(e).replace(/[&<>"']/g,function(e){return"&"+K[e]+";"})},K={"&":"amp","<":"lt",">":"gt",'"':"quot","'":"apos"},F="dangerouslySetInnerHTML",j={className:"class",htmlFor:"for"},V={},function(e,t){var n=[],r="";t=t||{};for(var o=arguments.length;o-- >2;)n.push(arguments[o]);if("function"==typeof e)return t.children=n.reverse(),e(t);if(e){if(r+="<"+e,t)for(var a in t)!1!==t[a]&&null!=t[a]&&a!==F&&(r+=" "+(j[a]?j[a]:q(a))+'="'+q(t[a])+'"');r+=">"}if(-1===B.indexOf(e)){if(t[F])r+=t[F].__html;else for(;n.length;){var i=n.pop();if(i)if(i.pop)for(var s=i.length;s--;)n.push(i[s]);else r+=!0===V[i]?i:q(i)}r+=e?"</"+e+">":""}return V[r]=!0,r})),U.exports),H=e(X);const R=({children:e})=>H(null,null,...e),W=`${u}presenter-`,J={container:`${W}container`,dragbar:`${W}dragbar-container`,next:`${W}next`,nextContainer:`${W}next-container`,noteContainer:`${W}note-container`,noteWrapper:`${W}note-wrapper`,noteButtons:`${W}note-buttons`,infoContainer:`${W}info-container`,infoPage:`${W}info-page`,infoPageText:`${W}info-page-text`,infoPagePrev:`${W}info-page-prev`,infoPageNext:`${W}info-page-next`,noteButtonsBigger:`${W}note-bigger`,noteButtonsSmaller:`${W}note-smaller`,infoTime:`${W}info-time`,infoTimer:`${W}info-timer`},Y=e=>{const{title:t}=document;document.title="[Presenter view]"+(t?` - ${t}`:"");const n={},r=e=>(n[e]=n[e]||document.querySelector(`.${e}`),n[e]);document.body.appendChild((e=>{const t=document.createElement("div");return t.className=J.container,t.appendChild(e),t.insertAdjacentHTML("beforeend",H(R,null,H("div",{class:J.nextContainer},H("iframe",{class:J.next,src:"?view=next"})),H("div",{class:J.dragbar}),H("div",{class:J.noteContainer},H("div",{class:J.noteWrapper}),H("div",{class:J.noteButtons},H("button",{class:J.noteButtonsSmaller,tabindex:"-1",title:"Smaller notes font size"},"Smaller notes font size"),H("button",{class:J.noteButtonsBigger,tabindex:"-1",title:"Bigger notes font size"},"Bigger notes font size"))),H("div",{class:J.infoContainer},H("div",{class:J.infoPage},H("button",{class:J.infoPagePrev,tabindex:"-1",title:"Previous"},"Previous"),H("span",{class:J.infoPageText}),H("button",{class:J.infoPageNext,tabindex:"-1",title:"Next"},"Next")),H("time",{class:J.infoTime,title:"Current time"}),H("time",{class:J.infoTimer,title:"Timer"})))),t})(e.parent)),(e=>{let t=!1;r(J.dragbar).addEventListener("mousedown",()=>{t=!0,r(J.dragbar).classList.add("active")}),window.addEventListener("mouseup",()=>{t=!1,r(J.dragbar).classList.remove("active")}),window.addEventListener("mousemove",e=>{if(!t)return;const n=e.clientX/document.documentElement.clientWidth*100;r(J.container).style.setProperty("--bespoke-marp-presenter-split-ratio",`${Math.max(0,Math.min(100,n))}%`)}),r(J.nextContainer).addEventListener("click",()=>e.next());const n=r(J.next),o=(a=n,(e,t)=>a.contentWindow?.postMessage(`navigate:${e},${t}`,"null"===window.origin?"*":window.origin));var a;n.addEventListener("load",()=>{r(J.nextContainer).classList.add("active"),o(e.slide(),e.fragmentIndex),e.on("fragment",({index:e,fragmentIndex:t})=>o(e,t))});const i=document.querySelectorAll(".bespoke-marp-note");i.forEach(e=>{e.addEventListener("keydown",e=>e.stopPropagation()),r(J.noteWrapper).appendChild(e)}),e.on("activate",()=>i.forEach(t=>t.classList.toggle("active",t.dataset.index==e.slide())));let s=0;const c=e=>{s=Math.max(-5,s+e),r(J.noteContainer).style.setProperty("--bespoke-marp-note-font-scale",(1.2**s).toFixed(4))},l=()=>c(1),d=()=>c(-1),u=r(J.noteButtonsBigger),f=r(J.noteButtonsSmaller);u.addEventListener("click",()=>{u.blur(),l()}),f.addEventListener("click",()=>{f.blur(),d()}),document.addEventListener("keydown",e=>{"+"===e.key&&l(),"-"===e.key&&d()},!0),e.on("activate",({index:t})=>{r(J.infoPageText).textContent=`${t+1} / ${e.slides.length}`});const m=r(J.infoPagePrev),g=r(J.infoPageNext);m.addEventListener("click",t=>{m.blur(),e.prev({fragment:!t.shiftKey})}),g.addEventListener("click",t=>{g.blur(),e.next({fragment:!t.shiftKey})}),e.on("fragment",({index:t,fragments:n,fragmentIndex:r})=>{m.disabled=0===t&&0===r,g.disabled=t===e.slides.length-1&&r===n.length-1});let p=new Date;const v=()=>{const e=new Date,t=e=>`${Math.floor(e)}`.padStart(2,"0"),n=e.getTime()-p.getTime(),o=t(n/1e3%60),a=t(n/1e3/60%60),i=t(n/36e5%24);r(J.infoTime).textContent=e.toLocaleTimeString(),r(J.infoTimer).textContent=`${i}:${a}:${o}`};v(),setInterval(v,250),r(J.infoTimer).addEventListener("click",()=>{p=new Date})})(e)},z=e=>{if(!(e=>e.syncKey&&"string"==typeof e.syncKey)(e))throw new Error("The current instance of Bespoke.js is invalid for Marp bespoke presenter plugin.");Object.defineProperties(e,{openPresenterView:{enumerable:!0,value:G},presenterUrl:{enumerable:!0,get:Q}}),h&&document.addEventListener("keydown",t=>{"p"!==t.key||t.altKey||t.ctrlKey||t.metaKey||(t.preventDefault(),e.openPresenterView())})};function G(){const{max:e,floor:t}=Math,n=e(t(.85*window.innerWidth),640),r=e(t(.85*window.innerHeight),360);return window.open(this.presenterUrl,W+this.syncKey,`width=${n},height=${r},menubar=no,toolbar=no`)}function Q(){const e=new URLSearchParams(location.search);return e.set("view","presenter"),e.set("sync",this.syncKey),m(e)}const Z=e=>{const t=g();return t===l&&e.appendChild(document.createElement("span")),{[s]:z,[c]:Y,[l]:D}[t]},ee=e=>{e.on("activate",t=>{document.querySelectorAll(".bespoke-progress-parent > .bespoke-progress-bar").forEach(n=>{n.style.flexBasis=100*t.index/(e.slides.length-1)+"%"})})},te=e=>{const t=Number.parseInt(e,10);return Number.isNaN(t)?null:t},ne=(e={})=>{const t={history:!0,...e};return e=>{let n=!0;const r=e=>{const t=n;try{return n=!0,e()}finally{n=t}},o=(t={fragment:!0})=>{let n=t.fragment?te(p("f")||""):null;((t,n)=>{const{min:r,max:o}=Math,{fragments:a,slides:i}=e,s=o(0,r(t,i.length-1)),c=o(0,r(n||0,a[s].length-1));s===e.slide()&&c===e.fragmentIndex||e.slide(s,{fragment:c})})((()=>{if(location.hash){const[t]=location.hash.slice(1).split(":~:");if(/^\d+$/.test(t))return(te(t)??1)-1;const r=document.getElementById(t)||document.querySelector(`a[name="${CSS.escape(t)}"]`);if(r){const{length:t}=e.slides;for(let o=0;o<t;o+=1)if(e.slides[o].contains(r)){const t=e.fragments?.[o],a=r.closest("[data-marpit-fragment]");if(t&&a){const e=t.indexOf(a);e>=0&&(n=e)}return o}}}return 0})(),n)};e.on("fragment",({index:e,fragmentIndex:r})=>{n||v({f:0===r||r.toString()},{location:{...location,hash:`#${e+1}`},setter:(...e)=>t.history?history.pushState(...e):history.replaceState(...e)})}),setTimeout(()=>{o(),window.addEventListener("hashchange",()=>r(()=>{o({fragment:!1}),v({f:void 0})})),window.addEventListener("popstate",()=>{n||r(()=>o())}),n=!1},0)}},re=(e={})=>{const t=e.key||window.history.state?.marpBespokeSyncKey||Math.random().toString(36).slice(2),n=`bespoke-marp-sync-${t}`;var r;r={marpBespokeSyncKey:t},v({},{setter:(e,...t)=>i({...e,...r},...t)});const o=()=>{const e=y(n);return e?JSON.parse(e):Object.create(null)},a=e=>{const t=o(),r={...t,...e(t)};return b(n,JSON.stringify(r)),r},s=()=>{window.removeEventListener("pageshow",s),a(e=>({reference:(e.reference||0)+1}))};return e=>{s(),Object.defineProperty(e,"syncKey",{value:t,enumerable:!0});let r=!0;setTimeout(()=>{e.on("fragment",e=>{r&&a(()=>({index:e.index,fragmentIndex:e.fragmentIndex}))})},0),window.addEventListener("storage",t=>{if(t.key===n&&t.oldValue&&t.newValue){const n=JSON.parse(t.oldValue),o=JSON.parse(t.newValue);if(n.index!==o.index||n.fragmentIndex!==o.fragmentIndex)try{r=!1,e.slide(o.index,{fragment:o.fragmentIndex,forSync:!0})}finally{r=!0}}});const i=()=>{const{reference:e}=o();void 0===e||e<=1?w(n):a(()=>({reference:e-1}))};window.addEventListener("pagehide",e=>{e.persisted&&window.addEventListener("pageshow",s),i()}),e.on("destroy",i)}},{PI:oe,abs:ae,sqrt:ie,atan2:se}=Math,ce={passive:!0},le=({slope:e=-.7,swipeThreshold:t=30}={})=>n=>{let r;const o=n.parent,a=e=>{const t=o.getBoundingClientRect();return{x:e.pageX-(t.left+t.right)/2,y:e.pageY-(t.top+t.bottom)/2}};o.addEventListener("touchstart",({touches:e})=>{r=1===e.length?a(e[0]):void 0},ce),o.addEventListener("touchmove",e=>{if(r)if(1===e.touches.length){e.preventDefault();const t=a(e.touches[0]),n=t.x-r.x,o=t.y-r.y;r.delta=ie(ae(n)**2+ae(o)**2),r.radian=se(n,o)}else r=void 0}),o.addEventListener("touchend",o=>{if(r){if(r.delta&&r.delta>=t&&r.radian){const t=(r.radian-e+oe)%(2*oe)-oe;n[t<0?"next":"prev"](),o.stopPropagation()}r=void 0}},ce)},de=new Map;de.clear(),de.set("none",{backward:{both:void 0,incoming:void 0,outgoing:void 0},forward:{both:void 0,incoming:void 0,outgoing:void 0}});const ue={both:"",outgoing:"outgoing-",incoming:"incoming-"},fe={forward:"",backward:"-backward"},me=e=>`--marp-bespoke-transition-animation-${e}`,ge=e=>`--marp-transition-${e}`,pe=me("name"),ve=me("duration"),he=e=>new Promise(t=>{const n={},r=document.createElement("div"),o=e=>{r.remove(),t(e)};r.addEventListener("animationstart",()=>o(n)),Object.assign(r.style,{animationName:e,animationDuration:"1s",animationFillMode:"both",animationPlayState:"paused",position:"absolute",pointerEvents:"none"}),document.body.appendChild(r);const a=getComputedStyle(r).getPropertyValue(ge("duration"));a&&Number.parseFloat(a)>=0&&(n.defaultDuration=a),((e,t)=>{requestAnimationFrame(()=>{e.style.animationPlayState="running",requestAnimationFrame(()=>t(void 0))})})(r,o)}),ye=async e=>de.has(e)?de.get(e):(e=>{const t={},n=[];for(const[r,o]of Object.entries(ue))for(const[a,i]of Object.entries(fe)){const s=`marp-${o}transition${i}-${e}`;n.push(he(s).then(e=>{t[a]=t[a]||{},t[a][r]=e?{...e,name:s}:void 0}))}return Promise.all(n).then(()=>t)})(e).then(t=>(de.set(e,t),t)),be=e=>Object.values(e).flatMap(Object.values).every(e=>!e),we=(e,{type:t,backward:n})=>{const r=e[n?"backward":"forward"],o=(()=>{const e=r[t],n=e=>({[pe]:e.name});if(e)return n(e);if(r.both){const e=n(r.both);return"incoming"===t&&(e[me("direction")]="reverse"),e}})();return!o&&n?we(e,{type:t,backward:!1}):o||{[pe]:"__bespoke_marp_transition_no_animation__"}},xe=e=>{if(e)try{const t=JSON.parse(e);if((e=>{if("object"!=typeof e)return!1;const t=e;return"string"==typeof t.name&&(void 0===t.duration||"string"==typeof t.duration)})(t))return t}catch{}},ke="_tSId",$e="_tA",Ee="bespoke-marp-transition-warming-up",Le=window.matchMedia("(prefers-reduced-motion: reduce)"),Se="__bespoke_marp_transition_reduced_outgoing__",Pe="__bespoke_marp_transition_reduced_incoming__",_e={forward:{both:void 0,incoming:{name:Pe},outgoing:{name:Se}},backward:{both:void 0,incoming:{name:Pe},outgoing:{name:Se}}},Te=e=>{if(!document.startViewTransition)return;const t=t=>(void 0!==t&&(e._tD=t),e._tD);let n;t(!1),((...e)=>{CSS.registerProperty({name:ge("duration"),syntax:"<time>",inherits:!0,initialValue:"-1s"});const t=[...new Set(e).values()];return Promise.all(t.map(e=>ye(e))).then()})(...Array.from(document.querySelectorAll("section[data-transition], section[data-transition-back]")).flatMap(e=>[e.dataset.transition,e.dataset.transitionBack].flatMap(e=>{const t=xe(e);return[t?.name,t?.builtinFallback?`__builtin__${t.name}`:void 0]}).filter(e=>!!e))).then(()=>{document.querySelectorAll("style").forEach(e=>{e.innerHTML=e.innerHTML.replace(/--marp-transition-duration:[^;}]*[;}]/g,e=>e.slice(0,-1)+"!important"+e.slice(-1))})});const r=(n,{back:r,cond:o})=>a=>{const i=t();if(i)return!!a[$e]||!("object"!=typeof i||(i.skipTransition(),!a.forSync));if(!o(a))return!0;const s=e.slides[e.slide()],c=()=>a.back??r,l="data-transition"+(c()?"-back":""),d=s.querySelector(`section[${l}]`);if(!d)return!0;const u=xe(d.getAttribute(l)??void 0);return!u||((async(e,{builtinFallback:t=!0}={})=>{let n=await ye(e);if(be(n)){if(!t)return;return n=await ye(`__builtin__${e}`),be(n)?void 0:n}return n})(u.name,{builtinFallback:u.builtinFallback}).then(e=>{if(!e){t(!0);try{n(a)}finally{t(!1)}return}let r=e;Le.matches&&(console.warn("Use a constant animation to transition because preferring reduced motion by viewer has detected."),r=_e);const o=document.getElementById(ke);o&&o.remove();const i=document.createElement("style");i.id=ke,document.head.appendChild(i),((e,t)=>{const n=[`:root{${ge("direction")}:${t.backward?-1:1};}`,":root:has(.bespoke-marp-inactive){cursor:none;}"],r=t=>{const n=e[t].both?.defaultDuration||e[t].outgoing?.defaultDuration||e[t].incoming?.defaultDuration;return"forward"===t?n:n||r("forward")},o=t.duration||r(t.backward?"backward":"forward");void 0!==o&&n.push(`::view-transition-group(*){${ve}:${o};}`);const a=e=>Object.entries(e).map(([e,t])=>`${e}:${t};`).join("");return n.push(`::view-transition-old(root){${a(we(e,{...t,type:"outgoing"}))}}`,`::view-transition-new(root){${a(we(e,{...t,type:"incoming"}))}}`),n})(r,{backward:c(),duration:u.duration}).forEach(e=>i.sheet?.insertRule(e));const s=document.documentElement.classList;s.add(Ee);let l=!1;const d=()=>{l||(n(a),l=!0,s.remove(Ee))},f=()=>{t(!1),i.remove(),s.remove(Ee)};try{t(!0);const e=document.startViewTransition(d);t(e),e.finished.finally(f)}catch(e){console.error(e),d(),f()}}),!1)};e.on("prev",r(t=>e.prev({...t,[$e]:!0}),{back:!0,cond:e=>e.index>0&&!((e.fragment??1)&&n.fragmentIndex>0)})),e.on("next",r(t=>e.next({...t,[$e]:!0}),{cond:t=>t.index+1<e.slides.length&&!(n.fragmentIndex+1<n.fragments.length)})),setTimeout(()=>{e.on("slide",r(t=>e.slide(t.index,{...t,[$e]:!0}),{cond:t=>{const n=e.slide();return t.index!==n&&(t.back=t.index<n,!0)}}))},0),e.on("fragment",e=>{n=e})};let Ie;const Me=()=>(void 0===Ie&&(Ie="wakeLock"in navigator&&navigator.wakeLock),Ie),Oe=async()=>{const e=Me();if(e)try{return await e.request("screen")}catch(e){console.warn(e)}return null},Ae=async()=>{if(!Me())return;let e;const t=()=>{e&&"visible"===document.visibilityState&&Oe()};for(const e of["visibilitychange","fullscreenchange"])document.addEventListener(e,t);return e=await Oe(),e};((e=document.getElementById(":$p"))=>{(()=>{const e=p("view");a.dataset.bespokeView=e===l||e===c?e:""})();const t=(e=>{const t=p(e);return v({[e]:void 0}),t})("sync")||void 0;o.from(e,((...e)=>{const t=d.findIndex(e=>g()===e);return e.map(([e,n])=>e[t]&&n).filter(e=>e)})([[1,1,0],re({key:t})],[[1,1,1],Z(e)],[[1,1,0],M],[[1,1,1],k],[[1,0,0],T()],[[1,1,1],O],[[1,1,1],ne({history:!1})],[[1,1,0],A()],[[1,1,0],P],[[1,0,0],ee],[[1,1,0],le()],[[1,0,0],C()],[[1,0,0],Te],[[1,1,1],$],[[1,1,0],Ae]))})()}();</script></body></html>
