@@ -304,10 +304,17 @@ foreach ($path in @($Csv, $CtrlCHelper)) {
 }
 # AC-G5 makes its bad rows from the first data row of the CSV, whatever it is: 22 fields, an ID first
 # and the date third.
-$firstDataRow = [string]@(Get-Content -LiteralPath $Csv -TotalCount 2 -Encoding UTF8)[1]
+$headLines = @(Get-Content -LiteralPath $Csv -TotalCount 2 -Encoding UTF8)
+$firstDataRow = [string]$headLines[1]
 $SampleFields = Split-CsvLine $firstDataRow
 if ($SampleFields.Count -ne 22 -or $SampleFields[0].Trim('"') -notmatch '^[0-9]+$') {
     throw "The first data row of the CSV does not have 22 fields starting with a numeric ID: $firstDataRow"
+}
+# AC-G9 alters the fifth header field, so it must be IUCR: otherwise the "altered" CSV would carry the
+# unchanged header.
+$headerFieldNames = @(Split-CsvLine ([string]$headLines[0]) | ForEach-Object { $_.Trim('"') })
+if ($headerFieldNames.Count -ne 22 -or $headerFieldNames[4] -cne 'IUCR') {
+    throw "The CSV header does not have 22 fields with IUCR fifth: $($headLines[0])"
 }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 $RunA = Join-Path $WorkDir 'run-a'

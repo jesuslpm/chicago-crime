@@ -61,6 +61,7 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
 | T5a | S5 | inline | done | `d14d901`: the query summary counted the new non-AC row as a criterion ("19 criteria"); now only `AC-C<n>` rows count. |
 | T6 | S3, S7 | inline | done | From the real download (L7): `Split-CsvLine` keeps each field as written, quoted or not; AC-G5 rows and the AC-G9 header are rebuilt field by field. Check (functions taken from the script's AST): download first row 22 fields → 21/22/22, header field 5 `IUCR_ALTERADA`; reference extract: rows and altered header byte-identical to the pre-change construction. |
 | T7 | S2, S7 | inline | done | From the GREEN query run on the download (L12): AC-C1, AC-C6, AC-C8 and AC-C12 compared query CSV output with source lines byte for byte, which holds only when the source quotes like the query app. The PRD asks for values ("equivalente en valor", C4 "la misma cabecera"), so on another CSV rows are compared field by field (`CanonicalRow`, `CompareRowSets(..., byValue)`, `Test-SameCsvText`); byte for byte on the reference extract, unchanged. Check on that run's real outputs: the four row sets "header lines differ" by bytes, equal by values; reference outputs equal both ways; AC-C1 first download row equal by value, unequal by bytes, and a changed field is detected. |
+| T8 | S1, S2, S3 | inline | done | One correction batch for the verifier blocker B1 and selected review advisories (L13, L14): AC-C1 ID prefixes built as text (`[long] + ','` threw on every CSV); `Test-SameCsvText -ByValue` explicit and dropping only the final empty line; `$RowMatchText`; "(with bare empty fields)" only on the reference extract; generator startup guard that the header has 22 fields with IUCR fifth. Probe of the exact AC-C1 statements with `[long]` IDs (quoted, bare, missing) and of the comparison edge cases; parse 0 errors. |
 | T4 | S1–S7 | inline checks; acceptance runs in the background | pending | AC-A1 on the reference extract, AC-A2/AC-A3 on the portal download, last-slice review, closing report |
 
 ## Log
@@ -132,3 +133,27 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
   - Final query (`7cc3a83`) on the reference extract, 08:27:02–08:32:45: **PASS 59/59 (18 criteria)**.
   - The feature document was modified but uncommitted during the GREEN and final runs, so those reports say
     "7cc3a83 with uncommitted changes"; no script differed from `7cc3a83`.
+- **L13** RDD review of the last slice, 08:39–08:43. Commits `9ea8828..f529fbe` (T5, T5a, T6, T7 and the document),
+  risk medium (under budget, reviewed at closing by the project rule), lenses readability + reliability, lineage
+  `review-a29e96e73e4bb850`. Result: **approved**, acknowledged 08:43:09 (authority burned); reviewed boundary is
+  now `f529fbe`. Findings, all advisory:
+  - WARNING R3-byvalue-path-unproved: no full run of the by-value path yet. **Resolved by T4** (runs on `f529fbe`
+    crashed, see L14; final runs after T8).
+  - SUGGESTION R2-001: `Test-SameCsvText` read `$ByValue` from script scope. **Fixed** (T8): explicit parameter.
+  - SUGGESTION R2-002: the 22-column layout as bare literals (22, 0, 2, 4). **Left open**: one-off indexes next to
+    their comment; listed as pending in the closing report.
+  - SUGGESTION R2-003 and R3-ac-g9-header-position-unasserted: AC-G9 assumed IUCR fifth. **Fixed** (T8): startup
+    guard.
+  - SUGGESTION R2-004: `$RowMatch` read as a boolean. **Fixed** (T8): `$RowMatchText`.
+  - SUGGESTION R3-samecsvtext-drops-blank-lines. **Fixed** (T8): only the final empty line is dropped.
+  - SUGGESTION R3-parsers-without-fixture-tests: no fixture tests for `Split-CsvLine`/`CanonicalRow`. **Left open**:
+    the scripts have no test harness; both parsers are exercised by full runs on both CSVs and the reference
+    byte-identity probe; listed as pending.
+- **L14** Independent verifier (general-purpose agent, read-only, probes in a temp dir), finished ~08:47.
+  S3–S7 PASS; S1/S2 PASS for the generator, **FAIL for the query script: blocker B1** — `$sample.Id + ','` with a
+  `[long]` ID throws (`Cannot convert value "," to type "System.Int64"`), so the query script stopped at AC-C1 on
+  every CSV; seen in `work/new-query2.log` at 08:43:09. Introduced by T7 (its probe exercised extracted functions,
+  not that inline statement). The `final-query-ref2` run was stopped by PID before reaching the same line.
+  Advisories: reference-mode output changed beyond the header (folder `full`, new `Full dataset: 0 rejected` row,
+  58 → 59 checks; both from the L6 review); by-value comparison treats `""` as a bare empty field (fits "equivalente
+  en valor"); AC-C1 "(with bare empty fields)" label noisy on unquoted CSVs (**fixed** in T8). Fixed B1 in T8.
