@@ -131,6 +131,12 @@ function Format-Code([string]$Text) { "``````text`n$($Text.TrimEnd())`n``````" }
 
 # --- Files ---
 
+# The fields of one CSV line as written, quotes included: the reference extract quotes every non-empty
+# field, later downloads quote only the fields that need it (such as Location).
+function Split-CsvLine([string]$Line) {
+    @([regex]::Matches($Line, '(?<=^|,)("(?:[^"]|"")*"|[^,"]*)') | ForEach-Object { $_.Value })
+}
+
 # Reads a text file that another process may still have open for writing.
 function Read-SharedText([string]$Path) {
     $stream = [System.IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite, Delete')
@@ -296,11 +302,13 @@ $started = Get-Date
 foreach ($path in @($Csv, $CtrlCHelper)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing file: $path" }
 }
-# AC-G5 makes its bad rows from the first data row of the CSV, whatever it is: its ID, case number
-# and date are the first three fields, quoted like every non-empty field of the portal's CSV.
-$firstDataRow = @(Get-Content -LiteralPath $Csv -TotalCount 2 -Encoding UTF8)[1]
-$SampleFields = [regex]::Match([string]$firstDataRow, '^"(?<id>[0-9]+)",(?<case>"[^"]*"),"(?<date>[^"]*)",(?<rest>.*)$')
-if (-not $SampleFields.Success) { throw "The first data row of the CSV does not start with a quoted ID, case number and date: $firstDataRow" }
+# AC-G5 makes its bad rows from the first data row of the CSV, whatever it is: 22 fields, an ID first
+# and the date third.
+$firstDataRow = [string]@(Get-Content -LiteralPath $Csv -TotalCount 2 -Encoding UTF8)[1]
+$SampleFields = Split-CsvLine $firstDataRow
+if ($SampleFields.Count -ne 22 -or $SampleFields[0].Trim('"') -notmatch '^[0-9]+$') {
+    throw "The first data row of the CSV does not have 22 fields starting with a numeric ID: $firstDataRow"
+}
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 $RunA = Join-Path $WorkDir 'run-a'
 $RunB = Join-Path $WorkDir 'run-b'
@@ -490,7 +498,10 @@ Add-Result 'AC-G8 (refusal)' ($refused.ExitCode -eq 1 -and $refusedText.Contains
 Write-Step 'AC-G9: CSV with an altered header'
 $alteredCsv = Join-Path $InputDir 'header-altered.csv'
 $firstLines = @(Get-Content -LiteralPath $Csv -TotalCount 1000 -Encoding UTF8)
-$firstLines[0] = $firstLines[0].Replace('"IUCR"', '"IUCR_ALTERADA"')
+# The fifth header field, quoted or not, becomes IUCR_ALTERADA.
+$headerFields = Split-CsvLine $firstLines[0]
+$headerFields[4] = $headerFields[4].Replace('IUCR', 'IUCR_ALTERADA')
+$firstLines[0] = $headerFields -join ','
 [System.IO.File]::WriteAllText($alteredCsv, (($firstLines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding $false))
 $before = Get-Snapshot $RunA
 $headerLog = Join-Path $LogDir 'ac-g9-header.log'
@@ -598,13 +609,18 @@ Add-Section (@(
 
 Write-Step 'AC-G5: CSV with a 21-column row, an invalid date and a repeated ID'
 $sample = $firstDataRow
-$sampleId = $SampleFields.Groups['id'].Value
-function New-SampleRow([string]$Id, [string]$Date) {
-    '"{0}",{1},"{2}",{3}' -f $Id, $SampleFields.Groups['case'].Value, $Date, $SampleFields.Groups['rest'].Value
+$sampleId = $SampleFields[0].Trim('"')
+$sampleDate = $SampleFields[2].Trim('"')
+# The sample row with another ID and date, both written as the sample writes them, cut to $FieldCount fields.
+function New-SampleRow([string]$Id, [string]$Date, [int]$FieldCount = 22) {
+    $fields = [string[]]$SampleFields.Clone()
+    $fields[0] = $SampleFields[0].Replace($sampleId, $Id)
+    $fields[2] = $SampleFields[2].Replace($sampleDate, $Date)
+    $fields[0..($FieldCount - 1)] -join ','
 }
 $badRows = @(
-    # 21 columns: the sample row with a new ID and without its last field (Location, quoted or empty).
-    ((New-SampleRow '99000001' $SampleFields.Groups['date'].Value) -replace ',("[^"]*")?$', '')
+    # 21 columns: the sample row with a new ID and without its last field (Location).
+    (New-SampleRow '99000001' $sampleDate 21)
     # An invalid date with a new ID.
     (New-SampleRow '99000002' '02/30/2026 12:00:00 AM')
     # The ID of line 2 again.

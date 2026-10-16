@@ -58,6 +58,8 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
 | T2 | S1, S2, S4, S5 | inline | done | `cd55943`. Query script. Parse 0 errors; `Complete-Selects` runs before AC-C11/AC-C17 use the `theft` select. Assess: medium, under_budget. |
 | T3 | S6 | inline | done | `9ea8828`. README (modes, PRD list, layout row, C:\ examples) and worktree guide. No `D:\` left in README, worktree guide or scripts; 0 broken README links. Assess: medium, under_budget. |
 | T5 | S1, S2, S4 | inline | done | Fixes from the RDD review of `407d43d..9ea8828` (see L6): query script requires 0 rejected in both modes, both scripts fail on a malformed manifest fingerprint, `$TheftFigure`/`$NoCommunityAreaFigure` names, full dataset folder `full` (old `reference` folder cleaned), one source for the AC-G5 sample row, README anchor name. Parse 0 errors; `Test-Sha256` true for the reference hash, false for a prefixed or empty value. |
+| T5a | S5 | inline | done | `d14d901`: the query summary counted the new non-AC row as a criterion ("19 criteria"); now only `AC-C<n>` rows count. |
+| T6 | S3, S7 | inline | done | From the real download (L7): `Split-CsvLine` keeps each field as written, quoted or not; AC-G5 rows and the AC-G9 header are rebuilt field by field. Check (functions taken from the script's AST): download first row 22 fields → 21/22/22, header field 5 `IUCR_ALTERADA`; reference extract: rows and altered header byte-identical to the pre-change construction. |
 | T4 | S1–S7 | inline checks; acceptance runs in the background | pending | AC-A1 on the reference extract, AC-A2/AC-A3 on the portal download, last-slice review, closing report |
 
 ## Log
@@ -95,3 +97,16 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
   - SUGGESTION R3-ac-g5-row-parse: unquoted empty case number in the first row. **Declined**: Case Number is
     mandatory (parent PRD field rules), so such a row is itself rejected and AC-G5's 999 valid rows would not
     hold anyway.
+- **L7** 07:28:40: portal download complete after three more 503/500 answers retried by curl:
+  `work/portal-download/chicago-crime-portal.csv`, 2,047,271,622 bytes, 8,659,584 data rows (reference: 8,656,904),
+  LF line ends. **The portal no longer quotes every field**: header `ID,Case Number,Date,...` and rows such as
+  `13311263,JG503434,07/29/2022 03:39:00 AM,...`; only fields that need it (Location) are quoted. Its first row
+  differs from the reference extract's (13311263 vs 14348063), so AC-A3 is tested on it (no fallback copy
+  needed). Two generator-script assumptions broke: the T1 first-row regex required quotes (startup throw), and
+  AC-G9's `.Replace('"IUCR"', ...)` would leave an unquoted header unchanged (the "altered" run would succeed
+  over Run A). Fixed in T6. The query script only uses `Trim('"')` on source fields, so it reads both forms.
+- **L8** AC-A1 first pass (07:11:36–07:23:06): generator acceptance on the reference extract with the T1 script
+  (report commit `cd55943`): PASS 15/15, header "CSV: the reference extract (SHA-256 5cb5fa41…ae35d); the exact
+  figures of the PRDs are required.", AC-G1 summary `8.656.904 registros válidos, 0 rechazados`. Query acceptance
+  on `e9891f4`: PASS 59/59 (the "19 criteria" text led to T5a), `--dataset full --reference`, THEFT 1,838,502 =
+  select = PRD figure, community area nil 613,720, `Full dataset: 0 rejected` PASS.
