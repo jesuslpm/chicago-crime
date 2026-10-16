@@ -756,8 +756,8 @@ nadie escribe el nombre de la base: ni el desarrollador ni el agente. Un script 
 
 | Cambio | PRD | Ejecución | Resultado |
 |---|---|---|---|
-| Generador | [generador.prd.md](../prd/chicago-crime/generador.prd.md) | [crime-generator.md](../../odd/tasks/crime-generator.md) | 230 tests; aceptación 14/14 sobre 8.656.904 registros; pico de memoria de ~93 MiB frente a un límite de 512 MiB; las dos generaciones salieron idénticas byte a byte |
-| Consultor | [consultor.prd.md](../prd/chicago-crime/consultor.prd.md) | [crime-query.md](../../odd/tasks/crime-query.md) | 423 tests; aceptación 58/58; consulta por ID en 39–51 ms; ~3 h 15 min frente a 4–7 h estimadas |
+| Generador | [generador.prd.md](../prd/chicago-crime/generador.prd.md) | [crime-generator.md](../../odd/tasks/crime-generator.md) | 230 tests; aceptación 14/14 sobre 8.656.904 registros, generados en 90,9 s (unos 95.000 por segundo); pico de memoria de ~93 MiB frente a un límite de 512 MiB; las dos generaciones salieron idénticas byte a byte |
+| Consultor | [consultor.prd.md](../prd/chicago-crime/consultor.prd.md) | [crime-query.md](../../odd/tasks/crime-query.md) | 423 tests; aceptación 58/58; consulta por ID en menos de 1 ms (39–51 ms con el arranque del proceso); ~3 h 15 min frente a 4–7 h estimadas |
 | Soporte Linux | [soporte-linux.prd.md](../prd/chicago-crime/soporte-linux.prd.md) | [soporte-linux.md](../../odd/tasks/soporte-linux.md) | ~48 min frente a 1,5–2,5 h estimadas |
 
 Lo que muestra el caso:
