@@ -14,6 +14,7 @@ slide with notes and duraciones.md with the length of each one.
 import argparse
 import asyncio
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -105,6 +106,7 @@ async def generate(slides: Path, out: Path, voice: str) -> None:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # slide titles have accents; the Windows console default mangles them
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--slides", type=Path, default=ROOT / "docs/methodology/slides.md")
     parser.add_argument("--out", type=Path, default=ROOT / "docs/methodology/audio")
