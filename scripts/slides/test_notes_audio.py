@@ -56,6 +56,10 @@ class SpokenTest(unittest.TestCase):
         note = "Texto.\n\n▸ Mostrar: una indicación larga\nque sigue en otra línea.\n\nMás texto."
         self.assertEqual(notes_audio.spoken(note), "Texto.\n\nMás texto.")
 
+    def test_a_direction_inside_a_paragraph_is_not_read(self):
+        note = "Texto que se lee.\n▸ Mostrar: algo\nque sigue.\n⏱ Al terminar esta slide: hacia el minuto 3.\n\nMás texto."
+        self.assertEqual(notes_audio.spoken(note), "Texto que se lee.\n\nMás texto.")
+
 
 class PronounceTest(unittest.TestCase):
     def test_table_words_are_spelled_as_spoken(self):
@@ -94,7 +98,7 @@ class NotesTest(unittest.TestCase):
         self.assertEqual([number for number, _, _ in notes_audio.notes(deck)], [1, 2])
 
     def test_a_byte_order_mark_does_not_shift_the_numbers(self):
-        self.assertEqual(notes_audio.notes("﻿" + DECK), notes_audio.notes(DECK))
+        self.assertEqual(notes_audio.notes("\ufeff" + DECK), notes_audio.notes(DECK))
 
 
 class GenerateTest(unittest.TestCase):

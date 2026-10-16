@@ -38,17 +38,23 @@ PRONUNCIATION = [
 
 
 def spoken(note: str) -> str:
-    """The text of a note that is read aloud: wrapped lines joined, paragraphs kept apart. A paragraph whose
-    first line starts with a SKIPPED mark is a direction for the presenter and is left out whole, wrapped or not."""
-    paragraphs, current = [], []
+    """The text of a note that is read aloud: wrapped lines joined, paragraphs kept apart. A line that starts
+    with a SKIPPED mark begins a direction for the presenter: it and the lines after it, up to the next blank
+    line, are left out, wherever the mark appears."""
+    paragraphs, current, skipping = [], [], False
     for line in [*note.splitlines(), ""]:
         text = line.strip()
-        if text:
-            current.append(text)
-        elif current:
-            if not current[0].startswith(SKIPPED):
+        if not text:  # a blank line ends both a spoken paragraph and a direction
+            if current:
                 paragraphs.append(" ".join(current))
-            current = []
+            current, skipping = [], False
+        elif skipping or text.startswith(SKIPPED):
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            skipping = True
+        else:
+            current.append(text)
     return "\n\n".join(paragraphs)
 
 
@@ -60,7 +66,7 @@ def pronounce(text: str) -> str:
 
 def notes(markdown: str) -> list[tuple[int, str, str]]:
     """(slide number, title, spoken text) for every slide that has a "Cómo leerla" note."""
-    markdown = markdown.lstrip("﻿")  # an editor's byte order mark would hide the front matter
+    markdown = markdown.lstrip("\ufeff")  # an editor's byte order mark would hide the front matter
     body = re.sub(r"\A---\n.*?\n---\n", "", markdown, count=1, flags=re.S)  # Marp front matter
     slides = [s for s in re.split(r"^---\s*$", body, flags=re.M) if s.strip()]
     found = []
