@@ -62,7 +62,7 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
 | T6 | S3, S7 | inline | done | From the real download (L7): `Split-CsvLine` keeps each field as written, quoted or not; AC-G5 rows and the AC-G9 header are rebuilt field by field. Check (functions taken from the script's AST): download first row 22 fields → 21/22/22, header field 5 `IUCR_ALTERADA`; reference extract: rows and altered header byte-identical to the pre-change construction. |
 | T7 | S2, S7 | inline | done | From the GREEN query run on the download (L12): AC-C1, AC-C6, AC-C8 and AC-C12 compared query CSV output with source lines byte for byte, which holds only when the source quotes like the query app. The PRD asks for values ("equivalente en valor", C4 "la misma cabecera"), so on another CSV rows are compared field by field (`CanonicalRow`, `CompareRowSets(..., byValue)`, `Test-SameCsvText`); byte for byte on the reference extract, unchanged. Check on that run's real outputs: the four row sets "header lines differ" by bytes, equal by values; reference outputs equal both ways; AC-C1 first download row equal by value, unequal by bytes, and a changed field is detected. |
 | T8 | S1, S2, S3 | inline | done | One correction batch for the verifier blocker B1 and selected review advisories (L13, L14): AC-C1 ID prefixes built as text (`[long] + ','` threw on every CSV); `Test-SameCsvText -ByValue` explicit and dropping only the final empty line; `$RowMatchText`; "(with bare empty fields)" only on the reference extract; generator startup guard that the header has 22 fields with IUCR fifth. Probe of the exact AC-C1 statements with `[long]` IDs (quoted, bare, missing) and of the comparison edge cases; parse 0 errors. |
-| T4 | S1–S7 | inline checks; acceptance runs in the background | pending | AC-A1 on the reference extract, AC-A2/AC-A3 on the portal download, last-slice review, closing report |
+| T4 | S1–S7 | inline checks; acceptance runs in the background | done | Final runs on `cd46d82` (clean tree), L17: download — generator PASS 15/15, query PASS 59/59; reference extract — generator PASS 15/15, query PASS 59/59. RED on the download with `407d43d`: generator FAIL 5/15, query FAIL 9/58 (L12). Three RDD reviews approved (L6, L13, L15); independent verifier blocker B1 fixed in T8 (L14). Closing report: [aceptacion-cualquier-csv-report.md](aceptacion-cualquier-csv-report.md). |
 
 ## Log
 
@@ -157,3 +157,31 @@ Product source: `docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md` **v1.0*
   Advisories: reference-mode output changed beyond the header (folder `full`, new `Full dataset: 0 rejected` row,
   58 → 59 checks; both from the L6 review); by-value comparison treats `""` as a bare empty field (fits "equivalente
   en valor"); AC-C1 "(with bare empty fields)" label noisy on unquoted CSVs (**fixed** in T8). Fixed B1 in T8.
+- **L15** RDD review of the T8 slice, 08:49–08:51. Commits `f529fbe..cd46d82`, risk medium (under budget, reviewed at
+  closing), lenses readability + reliability, lineage `review-df72399a8f12bea3`. Result: **approved**, acknowledged
+  08:51:53; reviewed boundary is now `cd46d82` (every commit of the feature reviewed). Findings, all advisory:
+  - WARNING R3-001: B1 fix and the new `Test-SameCsvText` unproved by a full run. **Resolved by T4** (L17).
+  - SUGGESTION R2-001 / R3-002: `-ByValue` is an optional `[bool]`; a two-argument call would compare bytes.
+    **Left open** (pending): both call sites pass it.
+  - SUGGESTION R2-002: the 22/4 literals repeated in the new guard. **Left open** (pending, as in L13).
+  - SUGGESTION R3-003: no negative test of the header guard. **Resolved by an executed check** (L16).
+- **L16** 08:52: header guard negative check, outside the repository: `run-acceptance.ps1 -Csv <temp>\shifted.csv`
+  (header `ID,Case Number,Date,IUCR,Block,...`) printed `The CSV header does not have 22 fields with IUCR fifth: ...`,
+  exit 1, and created no work folder.
+- **L17** final runs on `cd46d82`, clean tree (08:49:23–09:14:46):
+  - download, generator 08:49:23–08:55:00: **PASS 15/15**; header "CSV: not the reference extract (SHA-256
+    a36d8277…3edd)"; summary `8.659.584 registros válidos, 0 rechazados`; verifier without `--reference`; AC-G5 and
+    AC-G9 PASS on a first row 13311263 (AC-A3).
+  - download, query 08:55:00–09:01:31: **PASS 59/59 (18 criteria)**; THEFT 1,839,054 = select (PRD figure "none");
+    community area nil 613,720 = select; `Full dataset: 0 rejected`; AC-C1 "equal field by field"; verifier
+    `--dataset full` without `--reference`.
+  - reference extract, generator 09:01:31–09:07:37: **PASS 15/15**; verifier `--reference`; summary
+    `8.656.904 registros válidos, 0 rechazados`.
+  - reference extract, query 09:07:37–09:14:46: **PASS 59/59 (18 criteria)**; THEFT 1,838,502 = select = PRD figure;
+    AC-C1 "byte-identical"; verifier `--reference`.
+- **L18** End of verification 09:15:23. Active time 07:05:01–09:15:23 minus the 27 min wait = **1 h 43 min**
+  (estimate 1–2 h).
+
+## Closing
+
+All tasks done; S1–S7 verified (L17). Closing report: [aceptacion-cualquier-csv-report.md](aceptacion-cualquier-csv-report.md).
