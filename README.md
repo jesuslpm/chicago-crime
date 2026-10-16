@@ -47,6 +47,7 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
   - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): the generator, acceptance criteria AC-G1 to AC-G10.
   - [Query app PRD](docs/prd/chicago-crime/consultor.prd.md) (Spanish): the query app, acceptance criteria AC-C1 to AC-C18.
   - [Linux support PRD](docs/prd/chicago-crime/soporte-linux.prd.md) (Spanish): building, testing and running on Linux, acceptance criteria AC-L1 to AC-L9.
+  - [Acceptance with any CSV PRD](docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.en.md) ([Spanish original](docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.md)): acceptance scripts that also work with a newer download, acceptance criteria AC-A1 to AC-A4.
 - **ODD (Organic Driven Development).** The PRD becomes a feature document with an objective,
   implementation decisions and a task checklist. That document is the single place for progress and
   evidence: [`odd/tasks/crime-generator.md`](odd/tasks/crime-generator.md),
@@ -93,7 +94,7 @@ interrupted generator from those of a running one, and which checks still need W
 ## Run the generator
 
 ```powershell
-target\release\crime-generator.exe --input chicago-crime-data.csv --output D:\datasets\chicago
+target\release\crime-generator.exe --input chicago-crime-data.csv --output C:\datasets\chicago
 ```
 
 | Option | Meaning |
@@ -155,13 +156,13 @@ holds `CURRENT`; the query app reads the active version and never writes to that
 
 ```powershell
 # How many thefts in district 008?
-target\release\crime-query.exe --dataset D:\datasets\chicago --where "Primary Type=THEFT" --where District=008 --count
+target\release\crime-query.exe --dataset C:\datasets\chicago --where "Primary Type=THEFT" --where District=008 --count
 
 # Arrests for theft in August 2019, as CSV in a file
-target\release\crime-query.exe --dataset D:\datasets\chicago --where "Primary Type=theft" --range Date=2019-08-01..2019-08-31 --where Arrest=true --format csv --output thefts.csv
+target\release\crime-query.exe --dataset C:\datasets\chicago --where "Primary Type=theft" --range Date=2019-08-01..2019-08-31 --where Arrest=true --format csv --output thefts.csv
 
 # Two records by ID, as JSON
-target\release\crime-query.exe --dataset D:\datasets\chicago --where ID=634 --where ID=14348063 --format json
+target\release\crime-query.exe --dataset C:\datasets\chicago --where ID=634 --where ID=14348063 --format json
 ```
 
 | Option | Meaning |
@@ -223,23 +224,36 @@ a rare type. The command line and the messages are in Spanish.
 ## Verify
 
 [`scripts/acceptance/run-acceptance.ps1`](scripts/acceptance/run-acceptance.ps1) checks AC-G1 to AC-G10
-on the reference CSV and writes a Markdown report. It takes about 6 minutes and needs about 6 GB of
-free disk.
+and writes a Markdown report. It takes about 6 minutes and needs about 6 GB of free disk.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir D:\acceptance
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir C:\acceptance
 ```
 
 [`scripts/acceptance/run-query-acceptance.ps1`](scripts/acceptance/run-query-acceptance.ps1) checks
-the query app's AC-C1 to AC-C18 on the reference CSV: it generates the dataset, runs every criterion
+the query app's AC-C1 to AC-C18: it generates the dataset, runs every criterion
 through the binary, compares every count with an independent filtering of the CSV and writes
 `query-acceptance-report.md`. It needs about 5 GB of free disk. Its AC-C1 takes the parent AC3's
 "el primero, el último" as the first and last CSV rows, and the verifier's AC-G3-SAMPLE as the
 smallest and largest IDs, so both readings are checked.
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir D:\query-acceptance
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir C:\query-acceptance
 ```
+
+Both scripts work with the reference extract and with any later download (`-Csv <file>`; by default
+`chicago-crime-data.csv` at the repository root). After generating the dataset, they compare the CSV's
+SHA-256, which the generator records in the manifest, with the reference extract's (see
+[Get the dataset](#get-the-dataset)):
+
+- **Reference extract**: they also require the exact figures of the PRDs, such as 1,838,502 `THEFT`
+  records, and run the independent verifier with `--reference`.
+- **Any other CSV**: every expected figure is counted on that CSV. The valid records must be its data
+  rows with 0 rejected, the `THEFT` and no-community-area counts come from the independent filtering,
+  and the verifier runs without `--reference`. A check skipped for lack of data still fails.
+
+The report header says which case applied and shows the CSV's SHA-256
+([PRD](docs/prd/chicago-crime/aceptacion-cualquier-csv.prd.en.md)).
 
 Measured on the reference machine (2026-10-13, all 58 checks of the 18 criteria passed; three runs
 took 6¼, 7½ and 15 minutes including the generation and the verifier, the last one with a release
@@ -259,7 +273,7 @@ compares every CSV row with the primary table, rebuilds every index from the CSV
 text indexes are in lowercase:
 
 ```powershell
-target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset D:\datasets\chicago
+target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset C:\datasets\chicago
 ```
 
 Add `--reference` to also require the exact figures of the reference extract.
@@ -296,7 +310,7 @@ the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-workt
 | `crates/crime-generator` | The generator. |
 | `crates/crime-query` | The query app. |
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
-| `scripts/acceptance` | Acceptance scripts for the reference CSV (generator and query app). |
+| `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `docs/linux` | Guides to build, test and run the project on Linux, in WSL or natively. |

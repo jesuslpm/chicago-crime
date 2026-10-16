@@ -82,7 +82,7 @@ coding), committing on `feat/<n>`.
 
 - The copy builds in its own `target` folder; its first build is a complete one.
 - Acceptance runs and generated datasets use the copy's `work` folder, not the fixed folders of the README
-  (such as `D:\acceptance`), which two copies would share. For example, from the copy's root:
+  (such as `C:\acceptance`), which two copies would share. For example, from the copy's root:
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-acceptance.ps1 -WorkDir work\acceptance`.
 - The agent reads and writes memory only in the copy's Engram project.
 - The project rule "merge into `main` after full verification" becomes "close the run without merging; merge
