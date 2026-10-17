@@ -121,7 +121,8 @@ escritor con el modelo fuerte.
 ## 5. La asignación en Claude Code
 
 El 2026-10-17, con Gentle AI 4.2.0, el **Confirm** de la configuración custom guardó esta asignación en
-`~/.gentle-ai/state.json`:
+`~/.gentle-ai/state.json`. Es una foto de ese día: la tabla que rige para los agentes de ODD es la de la
+sección *Subagent models* del [`CLAUDE.md`](../../CLAUDE.md) del proyecto.
 
 | Agente | Modelo | Esfuerzo |
 |---|---|---|
