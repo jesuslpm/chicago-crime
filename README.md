@@ -62,11 +62,25 @@ Parent PRD (app or large module) → child PRD (one per change) → ODD feature 
   tasks, for example T2a and T5a in the generator. The feature is merged into `main` only after the full
   acceptance passes.
 
+## Requirements
+
+| Tool | Needed for | Version |
+|---|---|---|
+| Rust toolchain | Building and testing the generator and the query app | 1.85 or later (edition 2024) |
+| Python | The worktree guard hook, the scripts of the `closing-report` and `prd` skills, and the speaker-note audio generator | 3.10 or later |
+| [uv](https://docs.astral.sh/uv/) | Only the [speaker-note audio](#speaker-note-audio) generator | Verified with 0.10.2 |
+
+Python is run as `python`, or as `python3` where there is no `python` command, as on most Linux
+distributions. The hook and the two skills use only the standard library, so they need nothing else; without
+any Python the worktree guard does not run and says so on every tool call. uv runs the audio generator in an
+isolated environment with locked dependencies, so nothing is installed in the system Python. All the Python
+tests pass on Python 3.10 and 3.14.
+
 ## Build
 
-You need a Rust toolchain. The project uses edition 2024, which requires at least Rust 1.85, and it was
-built and verified with Rust 1.99 on Windows 11, the reference platform, and on Ubuntu 24.04 under WSL 2
-(see [Build and test on Linux](#build-and-test-on-linux)).
+You need the Rust toolchain from [Requirements](#requirements). The project was built and verified with Rust
+1.99 on Windows 11, the reference platform, and on Ubuntu 24.04 under WSL 2 (see
+[Build and test on Linux](#build-and-test-on-linux)).
 
 ```powershell
 cargo build --release
@@ -306,11 +320,8 @@ the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-workt
 
 The talk's slides, `docs/methodology/slides.html`, can play a recorded version of each speaker note: open the
 presenter view (press P) and use the ▶ Nota button. The MP3s are committed in `docs/methodology/audio`. After
-changing the notes in `docs/methodology/slides.md`, generate them again. That needs:
-
-- **Python** 3.10 or later.
-- **[uv](https://docs.astral.sh/uv/)**, which runs the generator in an isolated environment with the dependency
-  versions locked in `scripts/slides/notes_audio.py.lock`. Nothing is installed in the system Python.
+changing the notes in `docs/methodology/slides.md`, generate them again. That needs Python and uv (see
+[Requirements](#requirements)); the dependency versions are locked in `scripts/slides/notes_audio.py.lock`.
 
 ```powershell
 uv run scripts/slides/notes_audio.py
