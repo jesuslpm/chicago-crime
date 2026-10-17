@@ -31,6 +31,25 @@ refactor after each green step); a test per acceptance criterion, verification a
 report with the criterion → test → result table and the reuse outcome at the end. No execution document,
 phases or subagents.
 
+## Subagent models
+
+Gentle AI saves the Claude Code model assignment of the ODD roles but does not apply it yet: the subagents
+inherit the session model (gentle-ai issue [#5252](https://github.com/Gentleman-Programming/gentle-ai/issues/5252),
+fix pending in PR [#5269](https://github.com/Gentleman-Programming/gentle-ai/pull/5269)). Until a release applies
+it, pass this table's `model` and `effort` every time a subagent is launched for one of these roles:
+
+| Role | Launched for | `model` | `effort` |
+|---|---|---|---|
+| ODD Explorer | Read-only exploration that maps code for a decision | `opus` | `medium` |
+| ODD Worker | A delegated writer: one unit with its code, tests and docs | `opus` | `high` |
+| ODD Verify | An independent verifier | `sonnet` | `high` |
+| General delegation | Any other subagent: research, analysis | `sonnet` | `medium` |
+
+The table mirrors the assignment made in the Gentle AI TUI (saved in `~/.gentle-ai/state.json` on 2026-10-17):
+change both together. RDD reviewers and Judgment Day agents are not listed, because their own definitions in
+`~/.claude/agents` already carry their model. Remove this section when a Gentle AI release writes its own
+Claude ODD assignment table into the global `CLAUDE.md`.
+
 ## During the run
 
 - Work on a feature branch with one local commit per task (Conventional Commits, no AI attribution).

@@ -118,12 +118,41 @@ ODD ya tiene en cuenta el abaratamiento: si un escritor corre con un modelo pequ
 nivel de verificación de su trabajo. Por eso conviene ahorrar en exploración y verificación, y dejar al
 escritor con el modelo fuerte.
 
-## 5. Pendiente de verificar
+## 5. La asignación en Claude Code
 
-- **Que la configuración custom se aplique a los papeles de ODD.** El primer intento de **Confirm**, el
-  2026-10-15, falló al reescribir `review-resilience.md`, y no se guardó ninguna asignación. Hay que repetirlo
-  y comprobar qué escribe Gentle AI (nuevas definiciones en `~/.claude/agents/`, cambios en `CLAUDE.md` o en
-  `settings.json`) y si el orquestador empieza a usarlas.
+El 2026-10-17, con Gentle AI 4.2.0, el **Confirm** de la configuración custom guardó esta asignación en
+`~/.gentle-ai/state.json`:
+
+| Agente | Modelo | Esfuerzo |
+|---|---|---|
+| Orquestador | opus | — |
+| ODD Explorer | opus | medium |
+| ODD Worker | opus | high |
+| ODD Verify | sonnet | high |
+| General delegation | sonnet | medium |
+| Judgment Day (jueces y corrección) | sonnet | por defecto |
+| RDD (los seis revisores) | sonnet | por defecto |
+
+En Claude Code solo se aplica una parte:
+
+- **RDD, sí.** Gentle AI reescribe las definiciones `~/.claude/agents/review-*.md`. El esfuerzo «por defecto»
+  se escribe con el de *General delegation*: antes no tenían ninguno y ahora tienen `effort: medium`.
+- **Judgment Day, sin cambios.** Sus definiciones ya tenían `model: sonnet`.
+- **ODD, no.** Gentle AI no crea definiciones `odd-*` ni escribe una tabla de modelos en el `CLAUDE.md` global,
+  así que los subagentes de ODD heredan el modelo y el esfuerzo de la sesión. Es un bug conocido: el
+  [issue #5252](https://github.com/Gentleman-Programming/gentle-ai/issues/5252), reproducido también en la
+  4.2.0, con el arreglo pendiente en el [PR #5269](https://github.com/Gentleman-Programming/gentle-ai/pull/5269).
+  Ese arreglo añadirá una tabla solo de modelos al `CLAUDE.md` y descartará el esfuerzo. Con Codex sí
+  funciona: su `AGENTS.md` lleva la tabla de modelos.
+
+**Solución temporal.** El [`CLAUDE.md`](../../CLAUDE.md) del proyecto tiene una sección *Subagent models* con la
+misma tabla, y el orquestador pasa el `model` y el `effort` al lanzar cada subagente. Está comprobado: un
+subagente lanzado como *ODD Verify* quedó registrado en su historial con `claude-sonnet-5-5` y esfuerzo `high`,
+mientras la sesión principal corría en Opus. La sección se quita cuando una versión de Gentle AI aplique la
+asignación por su cuenta.
+
+## 6. Pendiente de verificar
+
 - **El modelo real de los revisores de RDD**, observando una revisión en curso.
 - **Qué modelo asigna a cada papel** cada preset distinto de `custom`. La pantalla solo muestra la
   descripción general, y con el preset `balanced` el modo custom parte de `sonnet` en todos los papeles.
