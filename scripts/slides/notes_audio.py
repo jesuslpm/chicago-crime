@@ -1,9 +1,17 @@
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["edge-tts==7.3.1"]
+# ///
 """Turn the speaker notes of the Marp deck into one MP3 per slide, played from the presenter view.
 
-Usage (from the repository root, after `python -m pip install edge-tts`):
+Usage, from the repository root, with uv (https://docs.astral.sh/uv/):
 
-    python scripts/slides/notes_audio.py [--slides docs/methodology/slides.md]
+    uv run scripts/slides/notes_audio.py [--slides docs/methodology/slides.md]
         [--out docs/methodology/audio] [--voice es-ES-AlvaroNeural]
+
+uv reads the dependencies declared above and runs the script in an isolated environment of its own: nothing
+is installed in the system Python. The tests need only the standard library:
+`uv run python -m unittest discover -s scripts/slides`.
 
 Only the spoken text of each "Cómo leerla" note is read: a direction for the presenter ("▸") or a timing mark
 ("⏱") is skipped up to the next blank line. Words the voice gets wrong are respelled first (PRONUNCIATION); the
