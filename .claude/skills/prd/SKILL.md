@@ -54,6 +54,8 @@ Run inline in the main session so the PRD is agreed with the user in conversatio
    python .claude/skills/prd/scripts/prd_time.py <prd.md> [<prd.en.md> ...]
    ```
 
+   Where there is no `python` command (most Linux systems), run it with `python3`.
+
    It reads this session's Claude Code history (`CLAUDE_CODE_SESSION_ID`) and splits the time into agent
    work and the person's time; a wait for the person longer than 10 minutes (`--idle-minutes`) counts only
    10 and the rest is discarded as idle. Rerun it after any later edit in the same session: it replaces this

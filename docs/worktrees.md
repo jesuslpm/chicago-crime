@@ -200,7 +200,10 @@ In a copy, a `PreToolUse` hook (`.claude/hooks/worktree_guard.py`, wired in the 
   protected the same way even when it is not the copy's base.
 
 In the main copy it blocks nothing; Python does not even start. Input it cannot read is never blocked. It only
-acts in sessions opened at a copy's root. Tests: `python -m unittest discover -s .claude/hooks`.
+acts in sessions opened at a copy's root. It runs with `python`, or with `python3` where there is no `python`
+command (most Linux distributions); with neither, it does not run and every tool call shows
+`Guarda de worktrees: no se encontró Python (python ni python3); la guarda no se aplicó.` Tests:
+`python -m unittest discover -s .claude/hooks`.
 
 ## Scripts
 

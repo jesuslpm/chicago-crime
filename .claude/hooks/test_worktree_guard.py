@@ -405,10 +405,22 @@ class SettingsCommandTests(unittest.TestCase):
         self.assertEqual(entry["matcher"], "Bash|PowerShell|Write|Edit|NotebookEdit")
         return entry["hooks"][0]["command"]
 
-    def run_command(self, project_dir, data, with_python):
+    def python3_only(self):
+        """A folder whose only Python is a `python3` launcher, as on Linux without python-is-python3."""
+        folder = os.path.join(self.root, "bin")
+        os.makedirs(folder, exist_ok=True)
+        launcher = os.path.join(folder, "python3")
+        with open(launcher, "w", newline="\n") as f:
+            f.write(f'#!/bin/sh\nexec "{sys.executable.replace(os.sep, "/")}" "$@"\n')
+        os.chmod(launcher, os.stat(launcher).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        return folder
+
+    def run_command(self, project_dir, data, with_python, python3_only=False):
         path = [os.path.dirname(GIT_BASH)]
         if with_python:
             path.insert(0, os.path.dirname(sys.executable))
+        if python3_only:
+            path.insert(0, self.python3_only())
         env = {k: v for k, v in os.environ.items() if k.upper() not in ("PATH", "CLAUDE_PROJECT_DIR")}
         env["PATH"] = os.pathsep.join(path)
         env["CLAUDE_PROJECT_DIR"] = project_dir
@@ -431,6 +443,18 @@ class SettingsCommandTests(unittest.TestCase):
         allowed = payload("Write", self.copy, file_path=os.path.join(self.copy, "x.md"), content="x")
         self.assertEqual(self.run_command(self.copy, blocked, with_python=True), (2, write_block(self.copy)))
         self.assertEqual(self.run_command(self.copy, allowed, with_python=True), (0, ""))
+
+    def test_copy_runs_the_guard_when_only_python3_exists(self):
+        blocked = payload("Write", self.copy, file_path=os.path.join(self.main, "x.md"), content="x")
+        result = self.run_command(self.copy, blocked, with_python=False, python3_only=True)
+        self.assertEqual(result, (2, write_block(self.copy)))
+
+    def test_copy_without_python_says_the_guard_did_not_run(self):
+        data = payload("Write", self.copy, file_path=os.path.join(self.main, "x.md"), content="x")
+        self.assertEqual(
+            self.run_command(self.copy, data, with_python=False),
+            (1, "Guarda de worktrees: no se encontró Python (python ni python3); la guarda no se aplicó."),
+        )
 
 
 if __name__ == "__main__":
