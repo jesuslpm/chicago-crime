@@ -302,6 +302,24 @@ You ask the agent with fixed Spanish phrases, such as `Crea un worktree para el 
 The [worktree guide](docs/worktrees.md) covers every phrase, the rehearsal and what to do for each message;
 the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-worktrees.md). Windows only.
 
+## Speaker-note audio
+
+The talk's slides, `docs/methodology/slides.html`, can play a recorded version of each speaker note: open the
+presenter view (press P) and use the ▶ Nota button. The MP3s are committed in `docs/methodology/audio`. After
+changing the notes in `docs/methodology/slides.md`, generate them again. That needs:
+
+- **Python** 3.10 or later.
+- **[uv](https://docs.astral.sh/uv/)**, which runs the generator in an isolated environment with the dependency
+  versions locked in `scripts/slides/notes_audio.py.lock`. Nothing is installed in the system Python.
+
+```powershell
+uv run scripts/slides/notes_audio.py
+uv run python -m unittest discover -s scripts/slides
+```
+
+Only the notes whose text changed are synthesized again. The voice comes from Microsoft's online service
+through `edge-tts`, so generating needs an internet connection.
+
 ## Repository layout
 
 | Path | Contents |
@@ -312,7 +330,7 @@ the Spanish prompts are in [prompts-worktrees.md](docs/methodology/prompts-workt
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
 | `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
-| `scripts/slides` | Generates one MP3 per slide from the talk's speaker notes into `docs/methodology/audio`, played with the ▶ Nota button of the presenter view; only notes whose text changed are synthesized again. Run it with `uv run scripts/slides/notes_audio.py`, which installs `edge-tts` in an isolated environment. |
+| `scripts/slides` | Generates one MP3 per slide from the talk's speaker notes into `docs/methodology/audio`, played with the ▶ Nota button of the presenter view; see [Speaker-note audio](#speaker-note-audio). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |
 | `docs/linux` | Guides to build, test and run the project on Linux, in WSL or natively. |
 | `odd/tasks` | ODD feature documents with tasks and evidence. |

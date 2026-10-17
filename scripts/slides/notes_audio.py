@@ -10,7 +10,9 @@ Usage, from the repository root, with uv (https://docs.astral.sh/uv/):
         [--out docs/methodology/audio] [--voice es-ES-AlvaroNeural]
 
 uv reads the dependencies declared above and runs the script in an isolated environment of its own: nothing
-is installed in the system Python. The tests need only the standard library:
+is installed in the system Python. The versions of edge-tts and of everything it pulls in are locked in
+notes_audio.py.lock; after changing the dependencies above, refresh it with
+`uv lock --script scripts/slides/notes_audio.py`. The tests need only the standard library:
 `uv run python -m unittest discover -s scripts/slides`.
 
 Only the spoken text of each "Cómo leerla" note is read: a direction for the presenter ("▸") or a timing mark
