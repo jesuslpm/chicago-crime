@@ -5,7 +5,7 @@ Usage:
     python -I phase_times.py bg-start <log> <phase> <label>
     python -I phase_times.py bg-end <log> <phase> <label>
     python -I phase_times.py end <log>
-    python -I phase_times.py report <log> [--lang es|en]
+    python -I phase_times.py report <log> [--lang es|en] [--commits BASE..HEAD]
 
 The log is a tab-separated file with one event per line: local time with offset, event, phase and label.
 Every time comes from the clock when the command runs, so the log holds measurements only.
@@ -131,9 +131,13 @@ def parse_log(text: str):
         try:
             if len(parts) != 4 or parts[1] not in EVENTS or (parts[2] and parts[2] not in PHASES):
                 raise ValueError
-            events.append(Event(datetime.fromisoformat(parts[0]), parts[1], parts[2], parts[3]))
+            moment = datetime.fromisoformat(parts[0])
         except ValueError:
             raise ValueError(f"line {number} is not a phase event: {raw!r}") from None
+        if moment.tzinfo is None:
+            # Commit times carry an offset; a naive time cannot be compared with them.
+            raise ValueError(f"line {number} has a time without UTC offset: {raw!r}")
+        events.append(Event(moment, parts[1], parts[2], parts[3]))
     return events
 
 
@@ -369,15 +373,20 @@ def main(argv=None) -> int:
             print(text)
         elif args.command == "mark":
             append(args.log, "start" if args.start else "mark", args.phase, args.label)
-        elif args.command == "bg-start":
-            append(args.log, "bg-start", args.phase, args.label)
-        elif args.command == "bg-end":
-            summary = summarize(read_events(args.log))
+        elif args.command in ("bg-start", "bg-end"):
             label = clean(args.label)
-            if not any(p == args.phase and l == label for p, l, _ in summary.open_background):
+            try:
+                open_tasks = summarize(read_events(args.log)).open_background
+            except FileNotFoundError:
+                open_tasks = []  # bg-start may open the log
+            is_open = any(p == args.phase and l == label for p, l, _ in open_tasks)
+            if args.command == "bg-start" and is_open:
+                print(f"background task {args.phase}/{label} is already open in {args.log}", file=sys.stderr)
+                return 2
+            if args.command == "bg-end" and not is_open:
                 print(f"no open background task {args.phase}/{label} in {args.log}", file=sys.stderr)
                 return 2
-            append(args.log, "bg-end", args.phase, label)
+            append(args.log, args.command, args.phase, label)
         else:
             append(args.log, "end")
     except FileNotFoundError:

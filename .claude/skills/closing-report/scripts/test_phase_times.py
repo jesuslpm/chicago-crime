@@ -63,6 +63,20 @@ class LogTests(unittest.TestCase):
         self.assertIn("acceptance/query", err)
         self.assertEqual(self.read().count("\n"), 1)
 
+    def test_bg_start_of_a_task_already_open_fails_and_writes_nothing(self):
+        self.run_main("bg-start", self.path, "acceptance", "generator")
+        code, _, err = self.run_main("bg-start", self.path, "acceptance", "generator", now=at(5))
+        self.assertEqual(code, 2)
+        self.assertIn("acceptance/generator", err)
+        self.assertEqual(self.read().count("\n"), 1)
+
+    def test_report_of_a_time_without_offset_fails_without_traceback(self):
+        with open(self.path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(line(0, "start", "implement") + "2026-10-16T07:10:00\tend\t\t\n")
+        code, _, err = self.run_main("report", self.path)
+        self.assertEqual(code, 2)
+        self.assertIn("line 2", err)
+
     def test_tabs_and_newlines_in_labels_are_flattened(self):
         self.run_main("bg-start", self.path, "acceptance", "run\tA\nreference")
         self.assertEqual(self.read(), f"{T0.isoformat()}\tbg-start\tacceptance\trun A reference\n")
@@ -135,6 +149,12 @@ class SummaryTests(unittest.TestCase):
         )
         self.assertEqual(s.active, timedelta(minutes=15))
         self.assertEqual(s.paused, [(at(10), at(30))])
+
+    def test_a_time_without_utc_offset_is_rejected(self):
+        with self.assertRaises(ValueError) as ctx:
+            pt.parse_log("2026-10-16T07:00:00\tstart\timplement\t\n")
+        self.assertIn("line 1", str(ctx.exception))
+        self.assertIn("UTC offset", str(ctx.exception))
 
     def test_a_malformed_line_names_its_number(self):
         with self.assertRaises(ValueError) as ctx:
