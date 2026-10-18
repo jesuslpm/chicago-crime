@@ -702,3 +702,212 @@ fn an_empty_date_condition_is_shown_with_no_interval() {
         json!([{"field": "Date", "indexed": true, "intervals": []}])
     );
 }
+
+// Prefix conditions (startswith PRD).
+
+const TEXT_ONLY: &str = "\"Empieza por\" solo se admite en campos de texto: Case Number, Primary \
+                         Type, District, IUCR, Location Description, Beat y FBI Code.";
+
+fn sw(field: &str, prefix: &str) -> RawCondition {
+    RawCondition::starts_with(field, prefix)
+}
+
+fn prefixes(query: &Query, field: Field) -> Vec<String> {
+    query
+        .equalities()
+        .iter()
+        .find(|equality| equality.field() == field)
+        .unwrap_or_else(|| panic!("an indexed condition on {field:?}"))
+        .prefixes()
+        .to_vec()
+}
+
+#[test]
+fn a_prefix_on_an_indexed_field_is_an_indexed_condition_that_may_go_alone() {
+    for (name, field) in [
+        ("Case Number", Field::CaseNumber),
+        ("primary type", Field::PrimaryType),
+        ("District", Field::District),
+    ] {
+        let query = build(&[sw(name, "Ja")]);
+        assert_eq!(prefixes(&query, field), ["ja"], "{name}");
+        assert!(values(&query, field).is_empty(), "{name}");
+        assert!(query.filters().is_empty(), "{name}");
+    }
+}
+
+#[test]
+fn a_prefix_is_lowercased_and_otherwise_taken_as_is() {
+    let query = build(&[
+        sw("Primary Type", "Crim "),
+        sw("District", "00"),
+        sw("District", "8"),
+        sw("Primary Type", "CRIM "),
+    ]);
+    assert_eq!(prefixes(&query, Field::PrimaryType), ["crim "]);
+    assert_eq!(prefixes(&query, Field::District), ["00", "8"]);
+}
+
+#[test]
+fn values_and_prefixes_on_one_field_are_alternatives() {
+    let query = build(&[
+        eq("Primary Type", "THEFT"),
+        sw("Primary Type", "CRIM"),
+        eq("District", ""),
+        sw("District", "01"),
+        eq("ID", "1"),
+    ]);
+    assert_eq!(query.equalities().len(), 2);
+    assert_eq!(
+        values(&query, Field::PrimaryType),
+        [IndexValue::text("theft")]
+    );
+    assert_eq!(prefixes(&query, Field::PrimaryType), ["crim"]);
+    assert_eq!(values(&query, Field::District), [IndexValue::nil()]);
+    assert_eq!(prefixes(&query, Field::District), ["01"]);
+}
+
+#[test]
+fn an_indexed_condition_with_prefixes_checks_a_record() {
+    let query = build(&[
+        eq("District", ""),
+        sw("District", "00"),
+        sw("Case Number", "jk4"),
+    ]);
+    let district = &query.equalities()[0];
+    assert_eq!(district.field(), Field::District);
+    assert!(district.matches(&record()), "003 starts with 00");
+    assert!(
+        district.matches(&empty_record()),
+        "sin valor is an alternative"
+    );
+    let only_prefix = build(&[sw("District", "01")]);
+    assert!(!only_prefix.equalities()[0].matches(&record()));
+    assert!(
+        !only_prefix.equalities()[0].matches(&empty_record()),
+        "sin valor never starts with a prefix"
+    );
+    assert!(query.equalities()[1].matches(&record()));
+}
+
+#[test]
+fn a_prefix_on_a_field_without_index_is_a_filter() {
+    for (name, prefix) in [
+        ("Location Description", "VEHICLE n"),
+        ("IUCR", "03"),
+        ("Beat", "031"),
+        ("FBI Code", "08b"),
+    ] {
+        let query = build(&[by_id(), sw(name, prefix)]);
+        assert!(query.equalities().is_empty(), "{name}");
+        assert_eq!(query.filters().len(), 1, "{name}");
+        assert!(query.matches(&record()), "{name}");
+    }
+    assert!(
+        !build(&[by_id(), sw("IUCR", "3")]).matches(&record()),
+        "no zero padding"
+    );
+    assert!(!build(&[by_id(), sw("Beat", "0315")]).matches(&record()));
+    let location = build(&[by_id(), sw("Location Description", "v")]);
+    assert!(
+        !location.matches(&empty_record()),
+        "sin valor never starts with a prefix"
+    );
+    let either = build(&[
+        by_id(),
+        eq("Location Description", "street"),
+        sw("Location Description", "veh"),
+    ]);
+    assert!(either.matches(&record()));
+    let with_nil = build(&[
+        by_id(),
+        eq("Location Description", ""),
+        sw("Location Description", "x"),
+    ]);
+    assert!(with_nil.matches(&empty_record()));
+    assert!(!with_nil.matches(&record()));
+}
+
+#[test]
+fn prefixes_only_on_fields_without_index_need_an_indexed_condition() {
+    assert_eq!(error(&[sw("Location Description", "resid")]), NEED_INDEXED);
+    assert_eq!(error(&[sw("IUCR", "04"), sw("Beat", "1")]), NEED_INDEXED);
+}
+
+#[test]
+fn a_prefix_is_rejected_on_a_field_that_is_not_text() {
+    for name in [
+        "ID",
+        "Date",
+        "Arrest",
+        "Domestic",
+        "Ward",
+        "Community Area",
+        "X Coordinate",
+        "Y Coordinate",
+        "Year",
+        "Updated On",
+        "Latitude",
+        "Longitude",
+    ] {
+        assert_eq!(error(&[by_id(), sw(name, "1")]), TEXT_ONLY, "{name}");
+    }
+}
+
+#[test]
+fn a_prefix_on_block_description_location_or_an_unknown_field_gets_the_equality_message() {
+    for name in ["Block", "description", "Location"] {
+        let field = Field::find(name).expect("a field").name();
+        assert_eq!(
+            error(&[by_id(), sw(name, "0")]),
+            format!("El campo \"{field}\" no admite condiciones. Campos disponibles: {AVAILABLE}")
+        );
+    }
+    assert_eq!(
+        error(&[by_id(), sw("Gravedad", "x")]),
+        format!("El campo \"Gravedad\" no existe. Campos disponibles: {AVAILABLE}")
+    );
+}
+
+#[test]
+fn an_empty_prefix_is_rejected_after_the_field_checks() {
+    assert_eq!(
+        error(&[sw("primary type", "")]),
+        "El prefijo de \"Primary Type\" no puede estar vacío."
+    );
+    assert_eq!(error(&[by_id(), sw("Ward", "")]), TEXT_ONLY);
+    assert_eq!(
+        error(&[by_id(), sw("Block", "")]),
+        format!("El campo \"Block\" no admite condiciones. Campos disponibles: {AVAILABLE}")
+    );
+}
+
+#[test]
+fn the_first_wrong_condition_is_reported_whatever_its_option() {
+    assert_eq!(error(&[sw("Ward", "1"), eq("Gravedad", "x")]), TEXT_ONLY);
+    assert_eq!(
+        error(&[eq("Gravedad", "x"), sw("Ward", "1")]),
+        format!("El campo \"Gravedad\" no existe. Campos disponibles: {AVAILABLE}")
+    );
+}
+
+#[test]
+fn the_interpreted_query_shows_the_prefixes_in_lowercase() {
+    let query = build(&[
+        sw("Primary Type", "CRIM"),
+        eq("Primary Type", "THEFT"),
+        sw("Case Number", "JA"),
+        sw("Location Description", "Resid"),
+        eq("ID", "1"),
+    ]);
+    let applied = serde_json::to_value(query.interpreted()).expect("serializable");
+    assert_eq!(
+        applied["conditions"],
+        json!([
+            {"field": "Primary Type", "indexed": true, "values": ["theft"], "startswith": ["crim"]},
+            {"field": "Case Number", "indexed": true, "values": [], "startswith": ["ja"]},
+            {"field": "Location Description", "indexed": false, "values": [], "startswith": ["resid"]},
+            {"field": "ID", "indexed": true, "values": [1]},
+        ])
+    );
+}

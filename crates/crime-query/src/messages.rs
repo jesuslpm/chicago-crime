@@ -89,6 +89,19 @@ pub fn inverted_range() -> String {
     "La fecha inicial es posterior a la final.".to_owned()
 }
 
+/// `--startswith CAMPO=` with nothing after the `=` (startswith PRD, decision P6).
+pub fn empty_prefix(field: &str) -> String {
+    format!("El prefijo de \"{field}\" no puede estar vacío.")
+}
+
+/// `--startswith` on a field that is not text: ID, dates, numbers, Arrest, Domestic,
+/// coordinates.
+pub fn prefix_not_on_text() -> String {
+    "\"Empieza por\" solo se admite en campos de texto: Case Number, Primary Type, District, \
+     IUCR, Location Description, Beat y FBI Code."
+        .to_owned()
+}
+
 /// The conditionable fields by CSV name, in CSV order, ending with a period.
 fn available_fields() -> String {
     let names: Vec<&str> = Field::conditionable().map(Field::name).collect();
@@ -172,6 +185,10 @@ fn thousands(value: u128) -> String {
 
 pub fn malformed_condition(text: &str) -> String {
     format!("La condición \"{text}\" no tiene la forma CAMPO=VALOR.")
+}
+
+pub fn malformed_prefix(text: &str) -> String {
+    format!("La condición \"{text}\" no tiene la forma CAMPO=PREFIJO.")
 }
 
 pub fn malformed_range(text: &str) -> String {
