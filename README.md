@@ -177,12 +177,16 @@ target\release\crime-query.exe --dataset C:\datasets\chicago --where "Primary Ty
 
 # Two records by ID, as JSON
 target\release\crime-query.exe --dataset C:\datasets\chicago --where ID=634 --where ID=14348063 --format json
+
+# Thefts and every primary type that starts with CRIM
+target\release\crime-query.exe --dataset C:\datasets\chicago --where "Primary Type=THEFT" --startswith "Primary Type=CRIM" --count
 ```
 
 | Option | Meaning |
 |---|---|
 | `--dataset <CARPETA>` | The generator's output folder. Required. |
 | `--where <CAMPO=VALOR>` | An equality condition. Repeatable. |
+| `--startswith <CAMPO=PREFIJO>` | A "starts with" condition on a text field. Repeatable. |
 | `--range <Date=DESDE..HASTA>` | An inclusive date range; either end may be left out (`Date=2020-01-01..`, `Date=..2020-01-31`). Repeatable; every range must hold. |
 | `--limit <N>` | Return at most N records (N > 0). Any N records of the result, not necessarily the same ones each time. |
 | `--count` | Print only the number of results. It cannot be combined with `--format`. |
@@ -205,6 +209,22 @@ derived `Location`, can be used as a filter on top of an indexed condition.
 - Dates are `AAAA-MM-DD [hh:mm]` in Chicago civil time, as published. A range start without a time
   begins at 00:00:00; an end without a time takes the whole day, and with a time the whole minute.
   `--where Date=2019-08-15` is that whole day.
+
+**Prefixes.** `--startswith CAMPO=PREFIJO` keeps the records whose field starts with the prefix
+([startswith PRD](docs/prd/chicago-crime/startswith.prd.md)). It follows the same rules as text
+equality: case is ignored, the prefix is taken as is, spaces included, and codes are not padded
+(`District=8` finds nothing, `District=00` finds `001` to `009`). The prefix cannot be empty, and
+a record without a value never starts with any prefix.
+
+- It works on the text fields only: `Case Number`, `Primary Type` and `District`, where it is an
+  indexed condition and can be the only one; and `IUCR`, `Location Description`, `Beat` and
+  `FBI Code`, where it is a filter that needs an indexed condition too.
+- A field's prefixes and `--where` values are alternatives (OR); a record matching several of them
+  comes out once.
+- Memory does not grow with the number of results or with the number of distinct values a prefix
+  covers. A broad prefix such as `Case Number=H`, which covers two thirds of the dataset, uses a memory
+  comparable to a narrow one.
+- In JSON, the condition lists its prefixes, lowercase, under `startswith`, next to its `values`.
 
 **Output.** CSV and JSON hold every stored field in CSV order, with `Location` rebuilt. The CSV is
 written like the source (same header, non-empty fields quoted, empty fields bare, `\n` line ends), so
@@ -245,7 +265,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-accep
 ```
 
 [`scripts/acceptance/run-query-acceptance.ps1`](scripts/acceptance/run-query-acceptance.ps1) checks
-the query app's AC-C1 to AC-C18: it generates the dataset, runs every criterion
+the query app's AC-C1 to AC-C18 and its prefix conditions' AC-S1 to AC-S12
+([startswith PRD](docs/prd/chicago-crime/startswith.prd.md); AC-S12 passes when every AC-C row
+does): it generates the dataset, runs every criterion
 through the binary, compares every count with an independent filtering of the CSV and writes
 `query-acceptance-report.md`. It needs about 5 GB of free disk. Its AC-C1 takes the parent AC3's
 "el primero, el último" as the first and last CSV rows, and the verifier's AC-G3-SAMPLE as the
@@ -298,6 +320,15 @@ rows themselves, in the same CSV form as `crime-query --format csv`:
 
 ```powershell
 target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where "Primary Type=THEFT" --where District=008
+```
+
+`--startswith FIELD=PREFIX`, repeatable, keeps the rows whose field begins with the prefix, in any
+case and taken as is (`8` does not begin `008`), on Case Number, Primary Type, District, IUCR,
+Location Description, Beat and FBI Code. A field's prefixes and `--where` values are alternatives,
+different fields must all hold:
+
+```powershell
+target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where "Primary Type=THEFT" --startswith "Primary Type=CRIM"
 ```
 
 ## Work on several changes at once
