@@ -41,8 +41,18 @@ separate on purpose, and why.>
 ## Time
 
 - Estimate: <range given before starting>. Real start: <date>. End: <date>.
-- **Active duration: <h min>**, against the estimate: <deviation and its main cause>.
+- **Active duration since the start: <h min>**, against the estimate: <deviation and the phases that caused it>.
 - Waits for the user: <none | each wait with start, end and reason>.
+
+### Time by phase
+
+<Paste the output of `scripts/phase_times.py report <log> --commits <base>..HEAD`: the phase table, the
+start, waits and pauses lines, the background table (acceptance runs and other tasks that overlapped the
+foreground) and the time by commit (message, task labels, active time and its phases). If the run kept no
+phase log, write "Not measured by phase" and why.>
+
+<One or two lines reading the table: which phases took most of the time and why (for example, a third round
+of acceptance runs after a blocker).>
 
 ## Change report (`<base>..<head>`)
 

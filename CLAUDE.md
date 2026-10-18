@@ -18,7 +18,7 @@ Rust workspace that turns the Chicago crime CSV into SSTables (`crime-generator`
 2. **Estimate, then ask to start.** When no questions are left, send a message with only the time range for
    the whole run and the question whether to start, then stop and wait. Nothing else goes in that message (no
    plan, map or progress), so the estimate does not get lost in the agent's activity. After the user confirms,
-   record the estimate and the real start time from `date`. Past runs finished in about half the estimated
+   record the estimate and the real start time from `date`, and mark it in the phase log with `--start`. Past runs finished in about half the estimated
    time; calibrate with the earlier closing reports in `odd/tasks/*-report.md`.
 3. **Always verify.** Never ask whether to run tests, verifiers or reviews: run them. Automated review
    consent is always granted.
@@ -55,6 +55,10 @@ Claude ODD assignment table into the global `CLAUDE.md`.
 - Work on a feature branch with one local commit per task (Conventional Commits, no AI attribution).
 - Write only measured times in logs: `date`, commit times or script reports, never estimates.
 - If the run must wait for the user, log when the wait starts and ends; waits are not active time.
+- Keep the phase log from the first exploration to the end of the verification (`closing-report` skill, *Phase
+  log*): one `phase_times.py mark` at each change of phase (exploration, code and tests, checks, acceptance,
+  verification, RDD review, fixes, docs, closing, waits), and `bg-start`/`bg-end` chained around every
+  background run, such as an acceptance run. The closing report's time by phase comes only from this log.
 - Record each RDD review when it ends: commits, lenses, result, findings with severity and resolution, and
   lineage. Write it in the execution document's log (in vibe coding, the running list). Gentle AI keeps none
   of it after the review is acknowledged, and the closing report's RDD reviews table is built from this record.

@@ -46,6 +46,8 @@ vibe coding instead of a lightweight SDD.
 - **Every acceptance criterion gets a test.** When a criterion cannot be automated, record the exact manual
   check command and its output as its evidence.
 - **Measured times only.** Start and end come from `date`; never write an estimate as if it were a measurement.
+  The time by phase comes from the phase log (`closing-report` skill, *Phase log*), marked at each change of
+  phase from the first exploration on.
 - **No push.** Commits stay local; push only when the user asks.
 
 ## Decision Gates
@@ -68,7 +70,8 @@ vibe coding instead of a lightweight SDD.
 
 ### Before the first change
 
-1. Read the PRD and its parent completely, including their **Starting state** and **Reuse** sections. List the
+1. Open the phase log with `phase_times.py mark <log> explore` (`closing-report` skill, *Phase log*). Read the
+   PRD and its parent completely, including their **Starting state** and **Reuse** sections. List the
    acceptance criteria.
 2. **Map the starting state.** For each criterion, search the code for its domain terms, field names, messages
    and similar functions, types or validations. Classify each criterion as *already done*, *partly done*,
@@ -78,8 +81,9 @@ vibe coding instead of a lightweight SDD.
 3. Ask every open product question in a single message and wait for the answers. If there are none, say so
    in one line at the end of the map (step 2), so the step 4 message stays clean.
 4. Send a message with only a time range for the whole run, calibrated with earlier closing reports when they
-   exist, and the question whether to start; nothing else goes in it, so the estimate stands out. Wait for the
-   answer, then record the real start time with `date`.
+   exist, and the question whether to start; nothing else goes in it, so the estimate stands out. Mark the
+   wait (`mark <log> wait`) before sending it. On the answer, record the real start time with `date` and mark
+   the first phase with `--start`.
 5. Create a branch for the change from the integration branch.
 
 ### During the run
@@ -102,7 +106,8 @@ vibe coding instead of a lightweight SDD.
 12. Run the project's full checks (see `CLAUDE.md`), after the last code change.
 13. Check every acceptance criterion against the PRD with executed commands, and build the table criterion →
     test or check → result.
-14. Record the end time with `date` and compare the real duration with the estimate.
+14. Record the end time with `date` and `phase_times.py end <log>`, and compare the real duration with the
+    estimate.
 15. Write the closing report with the `closing-report` skill, including the acceptance criteria coverage
     table, the reuse map outcome (reused, extended, extracted, new), the RDD reviews and their findings (or
     why there were none), the defaults chosen without asking and the pending items. Commit it.

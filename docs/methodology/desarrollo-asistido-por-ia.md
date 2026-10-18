@@ -173,7 +173,9 @@ trabajar con agentes.
    - el resultado y qué se verificó;
    - una fila por cada revisión automática, con sus hallazgos y cómo se resolvieron. Se anotan en el momento,
      porque Gentle AI no guarda los hallazgos una vez reconocida la revisión;
-   - el tiempo real frente al estimado, con las esperas aparte;
+   - el tiempo real frente al estimado, con las esperas aparte, y cuánto tardó cada fase (exploración, código
+     y tests, checks, aceptación, verificación, revisión RDD, correcciones, cierre). Las fases se anotan con un
+     script al cambiar de una a otra, porque al final ya no se pueden reconstruir;
    - las líneas añadidas y eliminadas por área;
    - un resumen de un párrafo;
    - los valores elegidos sin preguntar y los pendientes.
@@ -188,7 +190,10 @@ En el repositorio, estas reglas viven en tres piezas:
 - **El skill [`closing-report`](../../.claude/skills/closing-report/SKILL.md)**, que solo se carga al cerrar.
   Tiene la [plantilla del informe](../../.claude/skills/closing-report/assets/closing-report-template.md) y un
   [script](../../.claude/skills/closing-report/scripts/numstat_by_area.py) que calcula las líneas por área a
-  partir de `git`, para que el agente no tenga que sumarlas a mano.
+  partir de `git`, para que el agente no tenga que sumarlas a mano. Otro
+  [script](../../.claude/skills/closing-report/scripts/phase_times.py) anota cada cambio de fase durante la
+  ejecución y, al cerrar, calcula el tiempo de cada fase y de cada commit, las esperas y las tareas en segundo
+  plano, como la aceptación.
 - **El skill [`vibe-coding`](../../.claude/skills/vibe-coding/SKILL.md)**, que aplica las tres reglas cuando
   se pide vibe coding. ODD y SDD ya traen su propio proceso; vibe coding no, y sin el skill dependería de que el
   prompt las pidiera.
