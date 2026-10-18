@@ -175,6 +175,18 @@ impl Dataset {
         )
     }
 
+    /// Every ID whose `kind` index holds a text value that starts with `prefix`, in value and
+    /// then ID order (not ID order). `prefix` is in the index form, lowercase. For the text
+    /// indexes: primary type, district and case number.
+    pub fn ids_with_prefix(&self, kind: IndexKind, prefix: &str) -> IdStream {
+        IdStream::for_prefix(
+            self.index(kind),
+            prefix,
+            Arc::clone(&self.health),
+            self.folder.clone(),
+        )
+    }
+
     /// Every ID whose date is within `[from, to]`, both ends included, in date and then ID
     /// order (not ID order).
     pub fn ids_in_date_range(&self, from: CivilDateTime, to: CivilDateTime) -> IdStream {

@@ -6,17 +6,25 @@
 //!   intervals are sorted and disjoint, so no ID comes twice) and every other indexed condition
 //!   is checked per ID: the ID condition by a binary search in the requested list, each
 //!   equality by one point lookup of `(value, id)` per alternative until one is found.
-//! - **Without a date condition**, every alternative of an equality is an ascending stream of
-//!   IDs; the alternatives of one condition are joined by a k-way union and the conditions are
+//! - **Without a date condition but with a prefix** ("empieza por", startswith PRD) on an
+//!   indexed field, the first such field drives: its index is read over each of its
+//!   alternatives in turn, one run of keys per value or prefix, after dropping the alternatives
+//!   another prefix of the field already covers, so the runs are disjoint and no ID comes twice.
+//!   The other indexed conditions are checked per ID as with a date condition.
+//! - **Otherwise**, every alternative of an equality is an ascending stream of IDs; the
+//!   alternatives of one condition are joined by a k-way union and the conditions are
 //!   intersected by a sorted merge that advances the smaller heads. The ID condition is the
 //!   ascending list of the requested IDs that exist.
 //!
-//! The filters on fields without an index are then applied to each candidate's record, which is
-//! read only when a filter or the output needs it: a count without filters reads no record.
+//! An indexed condition with prefixes that does not drive cannot be checked by a point lookup
+//! (the index is keyed by value), so it is checked on the candidate's record, like the filters
+//! on fields without an index. The record is read only when one of those checks or the output
+//! needs it: a count without them reads no record.
 //!
-//! Memory grows with the number of conditions and alternatives, never with the result
-//! (decision C7): every stream holds one table iterator and nothing collects IDs or records.
-//! The order of the results is unspecified (decision C11).
+//! Memory grows with the number of conditions and alternatives, never with the result nor with
+//! the distinct values a prefix covers (decisions C7 and startswith S7): every stream holds one
+//! table iterator, one run is open at a time and nothing collects IDs or records. The order of
+//! the results is unspecified (decision C11).
 
 use std::fmt;
 use std::time::{Duration, Instant};
@@ -24,7 +32,7 @@ use std::time::{Duration, Instant};
 use crime_dataset::{CrimeRecord, IndexKind};
 
 use crate::query::{DateInterval, Equality};
-use crate::{Dataset, Field, IdStream, Query, ReadError, messages};
+use crate::{Dataset, Field, IdStream, IndexValue, Query, ReadError, messages};
 
 /// Why an execution stopped before it completed. [`fmt::Display`] gives the message for the
 /// analyst.
@@ -90,6 +98,8 @@ pub struct Execution<'a> {
     query: &'a Query,
     cancel: &'a dyn Fn() -> bool,
     candidates: Candidates<'a>,
+    /// The indexed conditions with prefixes that do not drive, checked on each record.
+    on_record: Vec<&'a Equality>,
     warnings: Vec<String>,
     started: Instant,
     count: u64,
@@ -134,20 +144,35 @@ impl<'a> Execution<'a> {
                 }
             }
         }
-        let candidates = match query.dates() {
-            Some(intervals) => Candidates::Dates(Box::new(DateScan {
+        let (by_lookup, with_prefixes): (Vec<&Equality>, Vec<&Equality>) = query
+            .equalities()
+            .iter()
+            .partition(|equality| equality.prefixes().is_empty());
+        let mut on_record = with_prefixes;
+        let scan = |runs| {
+            Candidates::Scan(Box::new(Scan {
                 dataset,
-                intervals: intervals.iter(),
+                runs,
                 stream: None,
                 ids: query.ids(),
-                equalities: query.equalities(),
-            })),
+                equalities: by_lookup.clone(),
+            }))
+        };
+        let candidates = match query.dates() {
+            Some(intervals) => scan(Runs::Dates(intervals.iter())),
+            None if !on_record.is_empty() => {
+                let driver = on_record.remove(0);
+                scan(Runs::Field(
+                    driver.index(),
+                    disjoint_runs(driver).into_iter(),
+                ))
+            }
             None => {
                 let mut sources = Vec::new();
                 if query.ids().is_some() {
                     sources.push(Sorted::List(existing.into_iter()));
                 }
-                for equality in query.equalities() {
+                for equality in &by_lookup {
                     let mut streams: Vec<IdStream> = equality
                         .values()
                         .iter()
@@ -166,6 +191,7 @@ impl<'a> Execution<'a> {
             query,
             cancel,
             candidates,
+            on_record,
             warnings,
             started,
             count: 0,
@@ -179,7 +205,7 @@ impl<'a> Execution<'a> {
         &self.warnings
     }
 
-    /// Counts the results, reading records only when a filter needs them.
+    /// Counts the results, reading records only when a check on the record needs them.
     pub fn count(mut self) -> Result<Summary, ExecError> {
         while let Some(item) = self.next_match(false) {
             item?;
@@ -208,12 +234,13 @@ impl<'a> Execution<'a> {
         }
     }
 
-    /// The next result, with its record when `want_record` or a filter needs it.
+    /// The next result, with its record when `want_record` or a check on the record needs it.
     fn next_match(&mut self, want_record: bool) -> Option<Result<Option<CrimeRecord>, ExecError>> {
         if self.elapsed.is_some() {
             return None;
         }
-        let item = self.find(want_record || !self.query.filters().is_empty());
+        let checks_record = !self.query.filters().is_empty() || !self.on_record.is_empty();
+        let item = self.find(want_record || checks_record);
         // Ended by the limit, by the end of the candidates or by a failure.
         let ended = match &item {
             Some(Ok(_)) => {
@@ -251,7 +278,11 @@ impl<'a> Execution<'a> {
                 }
                 Err(error) => return Some(Err(error.into())),
             };
-            if self.query.matches(&record) {
+            let on_record = self
+                .on_record
+                .iter()
+                .all(|equality| equality.matches(&record));
+            if on_record && self.query.matches(&record) {
                 return Some(Ok(Some(record)));
             }
         }
@@ -269,30 +300,83 @@ impl Iterator for Execution<'_> {
 
 /// The IDs that meet every indexed condition, each once.
 enum Candidates<'a> {
-    Dates(Box<DateScan<'a>>),
+    Scan(Box<Scan<'a>>),
     Merge(Intersection),
 }
 
 impl Candidates<'_> {
     fn next(&mut self, cancel: &dyn Fn() -> bool) -> Option<Result<i64, ExecError>> {
         match self {
-            Candidates::Dates(scan) => scan.next(cancel),
+            Candidates::Scan(scan) => scan.next(cancel),
             Candidates::Merge(intersection) => intersection.next(cancel),
         }
     }
 }
 
-/// The date index over each interval, with the other indexed conditions checked per ID.
-struct DateScan<'a> {
+/// One alternative of an indexed field, read as one run of index keys.
+enum Run<'a> {
+    Value(&'a IndexValue),
+    Prefix(&'a str),
+}
+
+/// The disjoint runs that cover every alternative of `equality`: each prefix that no shorter
+/// prefix of the field covers, then each value that no prefix covers. "Sin valor" is never
+/// covered: it starts with no prefix.
+fn disjoint_runs(equality: &Equality) -> Vec<Run<'_>> {
+    let prefixes = equality.prefixes();
+    let covered = |text: &str, own: Option<&str>| {
+        prefixes
+            .iter()
+            .any(|prefix| Some(prefix.as_str()) != own && text.starts_with(prefix.as_str()))
+    };
+    let kept = prefixes
+        .iter()
+        .filter(|prefix| !covered(prefix, Some(prefix)))
+        .map(|prefix| Run::Prefix(prefix));
+    let values = equality
+        .values()
+        .iter()
+        .filter(|value| !value.as_text().is_some_and(|text| covered(text, None)))
+        .map(Run::Value);
+    kept.chain(values).collect()
+}
+
+/// The runs of keys a [`Scan`] reads, in turn.
+enum Runs<'a> {
+    /// The date index over each interval.
+    Dates(std::slice::Iter<'a, DateInterval>),
+    /// The index of one field over each of its disjoint alternatives.
+    Field(IndexKind, std::vec::IntoIter<Run<'a>>),
+}
+
+impl Runs<'_> {
+    /// The stream of the next run, `None` after the last one.
+    fn next_stream(&mut self, dataset: &Dataset) -> Option<IdStream> {
+        match self {
+            Runs::Dates(intervals) => {
+                let interval = intervals.next()?;
+                Some(dataset.ids_in_date_range(interval.from, interval.to))
+            }
+            Runs::Field(index, runs) => Some(match runs.next()? {
+                Run::Value(value) => dataset.ids_with_value(*index, value),
+                Run::Prefix(prefix) => dataset.ids_with_prefix(*index, prefix),
+            }),
+        }
+    }
+}
+
+/// An index read over disjoint runs of keys, with the other indexed conditions checked per ID.
+struct Scan<'a> {
     dataset: &'a Dataset,
-    intervals: std::slice::Iter<'a, DateInterval>,
+    runs: Runs<'a>,
     stream: Option<IdStream>,
     /// The requested IDs, sorted, when there is an ID condition.
     ids: Option<&'a [i64]>,
-    equalities: &'a [Equality],
+    /// The equalities without prefixes, checked by point lookups.
+    equalities: Vec<&'a Equality>,
 }
 
-impl DateScan<'_> {
+impl Scan<'_> {
     fn next(&mut self, cancel: &dyn Fn() -> bool) -> Option<Result<i64, ExecError>> {
         loop {
             if cancel() {
@@ -309,14 +393,13 @@ impl DateScan<'_> {
         }
     }
 
-    /// The next ID of the current interval, opening the next interval when one ends.
+    /// The next ID of the current run, opening the next run when one ends.
     fn next_id(&mut self) -> Option<Result<i64, ReadError>> {
         loop {
             if let Some(item) = self.stream.as_mut().and_then(Iterator::next) {
                 return Some(item);
             }
-            let interval = self.intervals.next()?;
-            self.stream = Some(self.dataset.ids_in_date_range(interval.from, interval.to));
+            self.stream = Some(self.runs.next_stream(self.dataset)?);
         }
     }
 
@@ -324,7 +407,7 @@ impl DateScan<'_> {
         if self.ids.is_some_and(|ids| ids.binary_search(&id).is_err()) {
             return Ok(false);
         }
-        for equality in self.equalities {
+        for equality in &self.equalities {
             let mut found = false;
             for value in equality.values() {
                 if self.dataset.has_entry(equality.index(), value, id)? {
