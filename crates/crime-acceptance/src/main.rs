@@ -2,8 +2,8 @@
 //!
 //! ```text
 //! crime-acceptance --csv <file> --dataset <output folder> [--reference]
-//! crime-acceptance select --csv <file> [--where FIELD=VALUE]... [--range Date=FROM..TO]...
-//!                         [--ids-out <file>] [--rows-out <file>]
+//! crime-acceptance select --csv <file> [--where FIELD=VALUE]... [--startswith FIELD=PREFIX]...
+//!                         [--range Date=FROM..TO]... [--ids-out <file>] [--rows-out <file>]
 //! ```
 //!
 //! The verification prints one PASS, FAIL or SKIP line per check and a final result line, and
