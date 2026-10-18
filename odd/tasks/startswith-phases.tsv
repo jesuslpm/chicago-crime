@@ -1,0 +1,22 @@
+2026-10-18T08:59:32+01:00	mark	explore	
+2026-10-18T09:03:01+01:00	mark	wait	estimate
+2026-10-18T09:03:19+01:00	start	plan	
+2026-10-18T09:07:01+01:00	mark	implement	T1
+2026-10-18T09:11:36+01:00	mark	implement	T2
+2026-10-18T09:15:34+01:00	mark	checks	T3
+2026-10-18T09:16:16+01:00	mark	checks	T5
+2026-10-18T09:17:21+01:00	bg-start	acceptance	run-query-acceptance (AC-C, AC-S)
+2026-10-18T09:17:28+01:00	mark	review	RDD slice
+2026-10-18T09:18:18+01:00	bg-end	acceptance	run-query-acceptance (AC-C, AC-S)
+2026-10-18T09:18:33+01:00	bg-start	acceptance	run-query-acceptance (AC-C, AC-S) rerun
+2026-10-18T09:20:40+01:00	bg-start	review	RDD reviewers
+2026-10-18T09:21:12+01:00	bg-end	review	RDD reviewers
+2026-10-18T09:21:42+01:00	mark	fix	R2-001..003
+2026-10-18T09:23:40+01:00	mark	review	RDD last slice
+2026-10-18T09:25:11+01:00	bg-start	review	RDD reviewers last slice
+2026-10-18T09:25:35+01:00	bg-end	review	RDD reviewers last slice
+2026-10-18T09:26:04+01:00	mark	acceptance	wait for acceptance run
+2026-10-18T09:32:47+01:00	bg-end	acceptance	run-query-acceptance (AC-C, AC-S) rerun
+2026-10-18T09:33:07+01:00	mark	checks	final checks
+2026-10-18T09:33:55+01:00	end		
+2026-10-18T09:34:02+01:00	mark	close	report

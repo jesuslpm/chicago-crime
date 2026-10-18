@@ -61,12 +61,12 @@ The PRD wins on any product question; the parent rules C1–C11 still hold.
 
 | ID | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S1–S6, S8 | inline: CLI, query model, filters, JSON, help | pending | |
-| T2 | S3, S4, S6, S7 | inline: prefix index streams and plan | pending | |
-| T3 | S9 | delegated writer A (parallel with T1–T2: disjoint crate) | pending | |
-| T4 | S10 | delegated writer A after T3 (acceptance script section) | pending | |
-| T5 | S1 | inline: README | pending | |
-| T6 | S10 | acceptance run on the reference CSV, closing report | pending | |
+| T1 | S1–S6, S8 | inline: CLI, query model, filters, JSON, help | done (RED compile → GREEN) | `55e0278` |
+| T2 | S3, S4, S6, S7 | inline: prefix index streams and plan | done (5 RED → GREEN) | `abcb963` |
+| T3 | S9 | delegated writer A (parallel with T1–T2: disjoint crate) | done | `f159556` |
+| T4 | S10 | delegated writer A after T3 (acceptance script section) | done (parse check; run in T6) | `1a34a39` |
+| T5 | S1 | inline: README | done | `c190bef` |
+| T6 | S10 | acceptance run on the reference CSV, closing report | done: 91/91 PASS on `c190bef` | this report commit |
 
 ## Log
 
@@ -74,3 +74,35 @@ The PRD wins on any product question; the parent rules C1–C11 still hold.
 - **L2**: estimate 1–2 h sent at 09:03:02; user confirmed ("Sí"); start 09:03:19 +0100. RDD on (global).
 - **L3**: route — T3+T4 to one writer (the acceptance side, `crates/crime-acceptance` + the script) launched
   together with T1+T2 inline (`crates/crime-query`): disjoint edit surfaces, each several minutes of work.
+- **L4**: D1 revised before any code used it: `"values"` is always present (empty with only prefixes), so
+  every condition keeps today's shape; `"startswith"` is added only with prefixes. Writer told.
+- **L5**: RDD assess per commit: `55e0278` medium/under_budget. After T5 the slice `0971a37..c190bef` was
+  medium/under_budget (15 paths, 1512 lines); per the project closing rule its review was requested
+  (lenses resilience, readability, reliability; lineage `review-de594d3b5bfc6638`, consent granted per the
+  project rule).
+- **L6**: Writer A returned: selector `--startswith` with 8 tests, the AC-S1…AC-S12 section in
+  `run-query-acceptance.ps1` (`-Criterion` parameter on three helpers, AC-S12 = every AC-C row passed),
+  README selector paragraph. Its own selector run on the reference CSV gave CRIM 1256646, JA 269655,
+  THEFT+CRIM 3095148, H 5762199, District=8 0. Parent spot check: `cargo test -p crime-acceptance` green.
+- **L7**: Checks after T5: `cargo fmt --all --check` clean, clippy clean, `cargo test --workspace` 453 passed
+  (baseline 425).
+- **L8**: Incident: the first acceptance run was started from bash with `-WorkDir work\\query-acceptance`,
+  which PowerShell received as `workquery-acceptance` at the copy's root. Stopped after a few minutes and
+  rerun with `-WorkDir work/query-acceptance`. Deleting the stray folder (787 MB, untracked) was denied;
+  it is left for the user. RDD reviews exclude untracked files.
+- **L9**: RDD review 1 — commits `55e0278..c190bef` (base `0971a37`), lenses resilience, readability,
+  reliability; lineage `review-de594d3b5bfc6638`; result **approved**, acknowledged (authority burned).
+  Findings, all non-blocking: R2-001 WARNING `exec.rs:152-153` `on_record` mutated by `remove(0)` to pick
+  the driver; R2-002 SUGGESTION `exec.rs:371-373` `disjoint_runs` relies on distinct prefixes unstated;
+  R2-003 SUGGESTION `query.rs:130-142` `Equality::matches` re-implements `Value::accepts`. Resilience and
+  reliability: no findings. Resolution: all three fixed in `d6e3ae6` (crime-query 174 tests green, clippy
+  clean).
+- **L10**: RDD review 2 — last slice `d6e3ae6` (base `c190bef`), lenses readability, reliability; lineage
+  `review-f5c0d1972beb4cb1`; result **approved**, acknowledged (authority burned). Findings, non-blocking:
+  R2-001 SUGGESTION `query.rs:210-217` `Value::from_index` allocates a String per value per record on the
+  record-check path; R3-001 SUGGESTION `exec.rs:324-351` `disjoint_runs` relies on distinct prefixes (now
+  documented; `Builder` deduplicates). Resolution: left as follow-ups, no defect.
+- **L11**: Acceptance rerun 09:18:33–09:32:47 on the binaries of `c190bef`: **91/91 PASS, 30 criteria**
+  (AC-C1…AC-C18, AC-S1…AC-S12). AC-S8: H 15.2 MiB vs JK438266 7.5 MiB (ratio 2.02). AC-S3 took 23.4 s.
+  Final checks on `d6e3ae6`: fmt and clippy clean, 453 tests green. Phase log ended 09:33:55.
+- **Closing**: report [startswith-report.md](startswith-report.md). Not merged (worktree rule); nothing pushed.
