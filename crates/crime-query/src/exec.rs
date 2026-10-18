@@ -148,7 +148,12 @@ impl<'a> Execution<'a> {
             .equalities()
             .iter()
             .partition(|equality| equality.prefixes().is_empty());
-        let mut on_record = with_prefixes;
+        // Without a date, the first equality with prefixes drives the scan; every other one is
+        // checked on the record.
+        let (driver, on_record) = match (query.dates(), with_prefixes.split_first()) {
+            (None, Some((&first, rest))) => (Some(first), rest.to_vec()),
+            _ => (None, with_prefixes),
+        };
         let scan = |runs| {
             Candidates::Scan(Box::new(Scan {
                 dataset,
@@ -158,16 +163,13 @@ impl<'a> Execution<'a> {
                 equalities: by_lookup.clone(),
             }))
         };
-        let candidates = match query.dates() {
-            Some(intervals) => scan(Runs::Dates(intervals.iter())),
-            None if !on_record.is_empty() => {
-                let driver = on_record.remove(0);
-                scan(Runs::Field(
-                    driver.index(),
-                    disjoint_runs(driver).into_iter(),
-                ))
-            }
-            None => {
+        let candidates = match (query.dates(), driver) {
+            (Some(intervals), _) => scan(Runs::Dates(intervals.iter())),
+            (None, Some(driver)) => scan(Runs::Field(
+                driver.index(),
+                disjoint_runs(driver).into_iter(),
+            )),
+            (None, None) => {
                 let mut sources = Vec::new();
                 if query.ids().is_some() {
                     sources.push(Sorted::List(existing.into_iter()));
@@ -322,21 +324,29 @@ enum Run<'a> {
 /// The disjoint runs that cover every alternative of `equality`: each prefix that no shorter
 /// prefix of the field covers, then each value that no prefix covers. "Sin valor" is never
 /// covered: it starts with no prefix.
+///
+/// The query holds each prefix once, so a prefix covers another one exactly when it is a
+/// different, shorter string the other one starts with.
 fn disjoint_runs(equality: &Equality) -> Vec<Run<'_>> {
     let prefixes = equality.prefixes();
-    let covered = |text: &str, own: Option<&str>| {
+    let covered_by_another = |prefix: &str| {
         prefixes
             .iter()
-            .any(|prefix| Some(prefix.as_str()) != own && text.starts_with(prefix.as_str()))
+            .any(|other| other != prefix && prefix.starts_with(other.as_str()))
+    };
+    let covered = |text: &str| {
+        prefixes
+            .iter()
+            .any(|prefix| text.starts_with(prefix.as_str()))
     };
     let kept = prefixes
         .iter()
-        .filter(|prefix| !covered(prefix, Some(prefix)))
+        .filter(|prefix| !covered_by_another(prefix))
         .map(|prefix| Run::Prefix(prefix));
     let values = equality
         .values()
         .iter()
-        .filter(|value| !value.as_text().is_some_and(|text| covered(text, None)))
+        .filter(|value| !value.as_text().is_some_and(covered))
         .map(Run::Value);
     kept.chain(values).collect()
 }

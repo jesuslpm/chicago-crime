@@ -148,12 +148,10 @@ impl Equality {
     /// prefix, for when the engine checks this condition on the record instead of the index.
     pub fn matches(&self, record: &CrimeRecord) -> bool {
         let actual = record_value(self.field, record);
-        let is_value = |value: &IndexValue| match (value.as_text(), value.as_integer()) {
-            (Some(wanted), _) => matches!(&actual, Value::Text(text) if text == wanted),
-            (None, Some(wanted)) => actual == Value::Integer(wanted),
-            (None, None) => actual == Value::Nil,
-        };
-        self.values.iter().any(is_value) || starts_with_any(&self.prefixes, &actual)
+        self.values
+            .iter()
+            .any(|value| Value::from_index(value).accepts(&actual))
+            || starts_with_any(&self.prefixes, &actual)
     }
 }
 
@@ -209,6 +207,15 @@ enum Value {
 }
 
 impl Value {
+    /// A searched index value in the form a record's value is compared with.
+    fn from_index(value: &IndexValue) -> Value {
+        match (value.as_text(), value.as_integer()) {
+            (Some(text), _) => Value::Text(text.to_owned()),
+            (None, Some(integer)) => Value::Integer(integer),
+            (None, None) => Value::Nil,
+        }
+    }
+
     fn accepts(&self, actual: &Value) -> bool {
         match (self, actual) {
             (Value::Window(window), Value::Instant(instant)) => window.contains(*instant),
