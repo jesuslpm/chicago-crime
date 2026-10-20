@@ -27,6 +27,14 @@
 |---|---|---|
 | <situation> | <rule> | <message> |
 
+Cover every input the change accepts, including the existing values it does not name (for example the fields
+an option does not apply to), not only the new ones.
+
+## Output
+
+<The exact public output for each case: keys, shape and wording, with a literal example. Include the edge cases
+(empty lists, a condition with only the new part) and say whether existing output keeps its shape.>
+
 ## Reuse
 
 <Existing behavior, rules, screens or data this change relies on instead of rebuilding.>
@@ -34,6 +42,10 @@
 ## Out of scope
 
 - <Explicitly excluded item — where the next change starts>
+
+## Left to the implementation
+
+- <Observable point the user agreed not to fix, and why (for example, no performance target)>
 
 ## Acceptance criteria
 
