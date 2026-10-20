@@ -505,6 +505,8 @@ ODD aplica estos siete pasos a cada pedido, sin que nadie se lo pida:
 
 El trabajo pequeño no genera ningún documento: se resuelve directo, con su test y la batería de pruebas.
 
+La tabla de [Fases de ODD](fases.md) resume los siete pasos con los nombres que usa Gentle AI.
+
 ### 8.2 El documento de ejecución (*feature document*)
 
 Para el trabajo grande, ODD crea `odd/tasks/<feature>.md` y una copia en la memoria persistente del agente,
@@ -535,8 +537,16 @@ Ejemplos reales:
 2. **Test primero: RED → GREEN.** Cuando hay un test determinista posible, se escribe primero y se ve fallar,
    después se implementa hasta que pase y por último se refactoriza con los tests en verde. Hay un test por
    cada regla pedida, y otro por cada comportamiento existente que el cambio toca.
-3. **Comprobaciones de la tarea.** El test enfocado y la batería completa, más formato y lint. En Rust:
-   `cargo fmt`, `cargo clippy` y `cargo test`.
+3. **Comprobaciones de la tarea.** El test enfocado y la batería completa, más formato y lint:
+   - El *test enfocado* es solo el test de la regla de la tarea, el que se vio fallar en RED. Se ejecuta solo,
+     y responde en segundos si el cambio cumple la spec.
+   - La *batería completa* ejecuta todos los tests, y comprueba que el cambio no rompió nada que ya funcionaba.
+   - El *formato* comprueba que el código sigue el estilo estándar del lenguaje (sangría, espacios, saltos de
+     línea). No cambia el comportamiento: solo evita diffs con ruido y discusiones de estilo.
+   - El *lint* busca errores probables y código poco idiomático que compila pero conviene corregir.
+
+   En Rust: `cargo test <filtro>` para el test enfocado, `cargo test --workspace` para la batería,
+   `cargo fmt --all --check` para el formato y `cargo clippy` para el lint.
 4. **Un commit por tarea**, en la rama del feature, con mensaje *Conventional Commits* y los tests y la
    documentación de ese comportamiento. El identificador del commit queda anotado en el documento como
    evidencia.
