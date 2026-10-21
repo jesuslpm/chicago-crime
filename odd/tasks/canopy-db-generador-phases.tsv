@@ -1,0 +1,12 @@
+2026-10-21T08:16:58+01:00	mark	explore	
+2026-10-21T08:17:34+01:00	mark	wait	confirm estimate
+2026-10-21T08:18:02+01:00	start	plan	
+2026-10-21T08:24:12+01:00	mark	implement	T1
+2026-10-21T08:33:00+01:00	bg-start	checks	T1 differential
+2026-10-21T08:33:29+01:00	bg-end	checks	T1 differential
+2026-10-21T08:33:48+01:00	bg-start	checks	T1 differential
+2026-10-21T08:34:21+01:00	bg-end	checks	T1 differential
+2026-10-21T08:35:52+01:00	mark	checks	T1
+2026-10-21T08:37:24+01:00	mark	implement	T2
+2026-10-21T08:41:35+01:00	mark	checks	T2
+2026-10-21T08:43:18+01:00	mark	review	T1-T3
