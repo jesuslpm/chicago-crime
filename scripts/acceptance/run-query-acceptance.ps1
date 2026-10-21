@@ -520,6 +520,8 @@ function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switc
 
 # Every query that succeeds alone on the full dataset, once per distinct command line, for AC-B1:
 # without --output (the same query on stdout is recorded instead), memory measurements and batches.
+# A recorded query with --limit needs its unlimited result in Get-UnlimitedIds; a new limited query
+# on other conditions makes AC-B1 fail until a select for them is added there.
 $SingleQueries = New-Object System.Collections.Generic.List[object]
 $SingleQueryKeys = New-Object 'System.Collections.Generic.HashSet[string]'
 
@@ -851,7 +853,8 @@ function Read-JsonDocument([string]$Text) { try { $Text | ConvertFrom-Json } cat
 function Get-JsonIds($Document) { , @(@($Document.results) | ForEach-Object { [string]$_.ID } | Sort-Object) }
 
 # The IDs of the unlimited result of a limited query, from the selects on the CSV, or $null when
-# the script holds no select for its conditions.
+# the script holds no select for its conditions. Every limited query that Invoke-Query records for
+# AC-B1 must have its conditions here: today only THEFT and the CRIM prefix are limited.
 function Get-UnlimitedIds([string[]]$Arguments) {
     $conditions = New-Object System.Collections.Generic.List[string]
     for ($i = 0; $i -lt $Arguments.Count; $i++) {

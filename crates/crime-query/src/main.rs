@@ -6,7 +6,7 @@
 //! | Code | Meaning |
 //! |------|---------|
 //! | 0    | The query ran, even with no results; with `--batch`, every query of the batch. |
-//! | 1    | The query was rejected for the dataset or for its conditions, or it aborted; with `--batch`, also a batch file that cannot be read, has no query or repeats an output file. |
+//! | 1    | The query was rejected for the dataset or for its conditions, or it aborted; with `--batch`, also a batch file that cannot be read, is not UTF-8 or has no query, and a line rejected for its conditions or for repeating an output file. |
 //! | 2    | The command line, or a line of the batch, is not valid; nothing was queried. |
 //! | 130  | The analyst cancelled the query or the batch with Ctrl+C. |
 

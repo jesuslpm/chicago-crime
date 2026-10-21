@@ -41,7 +41,7 @@ mod query;
 mod run;
 mod tracked;
 
-pub use batch::{run_batch, split_words};
+pub use batch::run_batch;
 pub use dataset::{Dataset, OpenError, ReadError};
 pub use exec::{ExecError, Execution, Summary};
 pub use fields::{Field, FieldType};
