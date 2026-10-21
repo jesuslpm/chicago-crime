@@ -86,7 +86,10 @@ Verificado el 2026-10-12 sobre el repositorio y los datos:
 ### B. Consulta
 
 1. El analista ejecuta un comando con la carpeta del conjunto de datos y la consulta; el consultor
-   responde y termina (decisión D6).
+   responde y termina (decisión D6). *Anotación del 2026-10-21: sustituida en parte por el
+   [PRD del lote de consultas](canopy-db-lote.prd.md) (decisión K7 del [PRD de CanopyDB](canopy-db.prd.md));
+   una ejecución del consultor responde una consulta o un lote de consultas, y sigue arrancando,
+   respondiendo y terminando.*
 2. El consultor comprueba el manifiesto y que la versión del esquema sea compatible.
 3. Tipos de consulta de la primera versión:
    - **Por ID**: uno o varios.
@@ -243,7 +246,10 @@ No queda ninguna decisión abierta. Todas se tomaron el 2026-10-12 y ya están r
   resumen con el número de rechazados es la señal para detectarlo.
 - **D6 — Forma de uso del consultor** (2026-10-12): comandos de una sola ejecución; cada consulta arranca,
   responde y termina. Motivo: es lo más simple de automatizar, de encadenar con otras herramientas y de
-  probar. El modo interactivo queda para un cambio posterior.
+  probar. El modo interactivo queda para un cambio posterior. *Anotación del 2026-10-21: sustituida en
+  parte por el [PRD del lote de consultas](canopy-db-lote.prd.md) (decisión K7 del
+  [PRD de CanopyDB](canopy-db.prd.md)); una ejecución del consultor responde una consulta o un lote de
+  consultas, y sigue arrancando, respondiendo y terminando.*
 
 ## Referencias
 
