@@ -7,9 +7,10 @@
 
 use std::ffi::OsString;
 use std::num::NonZeroU64;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::error::{ContextKind, ContextValue, ErrorKind};
+use clap::parser::ValueSource;
 use clap::{ArgAction, ArgMatches, CommandFactory, FromArgMatches, Parser};
 
 use crate::messages;
@@ -23,7 +24,13 @@ Códigos de salida:
        abortado.
   2    La línea de comandos no es válida; no se ha consultado nada.
   130  El analista ha cancelado la consulta con Ctrl+C; no queda ningún archivo de salida a
-       medias.";
+       medias.
+
+Con --batch, 0 indica que se han ejecutado todas las consultas del lote; 1, que el archivo
+del lote no se puede leer, no es UTF-8, no tiene consultas o tiene una línea rechazada por sus
+condiciones o por repetir un archivo de salida, o que una consulta se ha rechazado o ha
+abortado; 2, que la línea de comandos o una línea del lote no tienen una forma válida; y 130,
+que el analista ha cancelado el lote. Si se cierra la salida estándar, el lote para con 0.";
 
 /// Command line options as typed by the analyst. The limit and the format are read as text so
 /// that their errors get the PRD messages instead of clap's.
@@ -31,7 +38,7 @@ Códigos de salida:
 #[command(
     name = "crime-query",
     about = "Consulta el conjunto de datos de delitos de Chicago publicado por el generador.",
-    override_usage = "crime-query --dataset <CARPETA> [opciones]",
+    override_usage = "crime-query --dataset <CARPETA> [opciones]\n     crime-query --dataset <CARPETA> --batch <ARCHIVO>",
     // `{options}` and `{after-help}` already bring the line breaks that separate them.
     help_template = "{about}\n\nUso: {usage}\n\nOpciones:\n{options}{after-help}\n",
     after_help = EXIT_CODES_HELP,
@@ -113,9 +120,47 @@ struct Args {
     )]
     output: Option<PathBuf>,
 
+    #[arg(
+        long,
+        value_name = "ARCHIVO",
+        help = "Ejecuta un lote: las consultas de ARCHIVO, una por línea, sobre el conjunto de \
+                --dataset, que se abre una vez; todas leen la misma versión. Cada línea lleva \
+                las opciones de una consulta suelta (--where, --startswith, --range, --limit, \
+                --count, --format y --output, también como --opción=valor), que con --batch no \
+                se admiten en la línea de comandos. El archivo va en UTF-8, con o sin BOM, y con \
+                finales de línea LF o CRLF. Se ignoran las líneas vacías y las que empiezan por #. \
+                Los espacios separan las palabras; unas comillas dobles o simples agrupan un \
+                texto con espacios, sin secuencias de escape. Antes de abrir el conjunto se \
+                comprueban todas las líneas: si alguna está mal, o dos líneas usan el mismo \
+                archivo de salida, no se ejecuta ninguna consulta y se indica la primera línea \
+                mal. Cada consulta escribe sus resultados como suelta; en la salida de errores \
+                van su cabecera (--- Consulta 2 de 3 (línea 4) ---), sus avisos y sus \
+                estadísticas, y al final la línea \"Lote completado\" con el tiempo total. Si una \
+                consulta falla o se cancela, el lote para ahí y las anteriores conservan sus \
+                resultados."
+    )]
+    // Read as text so that an empty path gets the PRD's "cannot read" message, not clap's.
+    #[arg(value_parser = clap::value_parser!(OsString))]
+    batch: Option<OsString>,
+
     #[arg(short, long, action = ArgAction::Help, help = "Muestra esta ayuda.")]
     help: Option<bool>,
 }
+
+/// The options of a single query that go on each line of a batch, never next to `--batch`, by
+/// clap id and as the analyst types them.
+const QUERY_OPTIONS: [(&str, &str); 7] = [
+    ("where", "--where"),
+    ("startswith", "--startswith"),
+    ("range", "--range"),
+    ("limit", "--limit"),
+    ("count", "--count"),
+    ("format", "--format"),
+    ("output", "--output"),
+];
+
+/// The options a batch line does not admit: they belong to the command line.
+const NOT_IN_BATCH: [&str; 4] = ["--dataset", "--batch", "--help", "-h"];
 
 /// How the records are written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,10 +192,21 @@ pub struct Options {
     pub output: Option<PathBuf>,
 }
 
+/// A valid command line with `--batch`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchOptions {
+    /// The generator's output folder, exactly as given.
+    pub dataset: PathBuf,
+    /// The batch file, exactly as given.
+    pub file: PathBuf,
+}
+
 /// Result of parsing the command line.
 #[derive(Debug)]
 pub enum Parsed {
     Run(Options),
+    /// A batch of queries, one per line of a file.
+    Batch(BatchOptions),
     /// The help text to print; the program then ends successfully.
     Help(String),
     /// A command-line error, already translated.
@@ -158,22 +214,87 @@ pub enum Parsed {
 }
 
 /// Parses the command line (`args` includes the program name).
+///
+/// The errors that exist without `--batch` come first, with their messages; then, with
+/// `--batch`, the first query option typed next to it.
 pub fn parse<I, T>(args: I) -> Parsed
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let parsed = Args::command()
-        .try_get_matches_from(args)
-        .and_then(|matches| Ok((Args::from_arg_matches(&matches)?, matches)));
-    let (args, matches) = match parsed {
+    let (args, matches) = match matched(args) {
         Ok(parsed) => parsed,
         Err(error) => return translate(&error),
     };
-    match validate(args, &matches) {
-        Ok(options) => Parsed::Run(options),
-        Err(message) => Parsed::Invalid(message),
+    let batch = args.batch.clone();
+    let options = match validate(args, &matches) {
+        Ok(options) => options,
+        Err(message) => return Parsed::Invalid(message),
+    };
+    let Some(file) = batch else {
+        return Parsed::Run(options);
+    };
+    match first_query_option(&matches) {
+        Some(option) => Parsed::Invalid(messages::option_with_batch(option)),
+        None => Parsed::Batch(BatchOptions {
+            dataset: options.dataset,
+            file: PathBuf::from(file),
+        }),
     }
+}
+
+/// Parses the words of one batch line into the options of its query on `dataset`, with the
+/// rules and messages of the same query typed alone. `Err` is the message, without the line
+/// number; every error here is one of form (exit code 2).
+pub fn parse_line(words: &[String], dataset: &Path) -> Result<Options, String> {
+    if let Some(option) = words.iter().find_map(|word| not_in_batch(word)) {
+        return Err(messages::option_not_in_batch(option));
+    }
+    let args = [
+        OsString::from("crime-query"),
+        "--dataset".into(),
+        dataset.into(),
+    ]
+    .into_iter()
+    .chain(words.iter().map(OsString::from));
+    let (args, matches) = match matched(args) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            return Err(match translate(&error) {
+                Parsed::Invalid(message) => message,
+                // `--help` and `-h` were refused above and `--dataset` is always there.
+                _ => messages::invalid_arguments(),
+            });
+        }
+    };
+    validate(args, &matches)
+}
+
+/// The option of [`NOT_IN_BATCH`] that `word` is, alone or as `--option=value`.
+fn not_in_batch(word: &str) -> Option<&'static str> {
+    let name = word.split_once('=').map_or(word, |(name, _)| name);
+    NOT_IN_BATCH.into_iter().find(|&option| option == name)
+}
+
+/// The query option typed first, as the analyst types it.
+fn first_query_option(matches: &ArgMatches) -> Option<&'static str> {
+    // `--count` has a default value when it is not typed; only what was typed counts.
+    QUERY_OPTIONS
+        .into_iter()
+        .filter(|&(id, _)| matches.value_source(id) == Some(ValueSource::CommandLine))
+        .filter_map(|(id, option)| Some((matches.indices_of(id)?.min()?, option)))
+        .min_by_key(|&(position, _)| position)
+        .map(|(_, option)| option)
+}
+
+fn matched<I, T>(args: I) -> Result<(Args, ArgMatches), clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    Args::command()
+        .try_get_matches_from(args)
+        .and_then(|matches| Ok((Args::from_arg_matches(&matches)?, matches)))
 }
 
 fn translate(error: &clap::Error) -> Parsed {

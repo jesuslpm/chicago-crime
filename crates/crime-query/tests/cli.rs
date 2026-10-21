@@ -307,3 +307,113 @@ fn the_help_describes_startswith_with_the_other_conditions() {
         "{text}"
     );
 }
+
+// Query batches (canopy-db-lote PRD).
+
+#[test]
+fn batch_takes_the_dataset_and_the_file_and_no_condition() {
+    match parsed(&with_dataset(&["--batch", "queries.txt"])) {
+        Parsed::Batch(options) => {
+            assert_eq!(options.dataset, PathBuf::from("out"));
+            assert_eq!(options.file, PathBuf::from("queries.txt"));
+        }
+        other => panic!("a batch should be accepted: {other:?}"),
+    }
+    match parsed(&with_dataset(&["--batch", ""])) {
+        Parsed::Batch(options) => assert_eq!(options.file, PathBuf::from("")),
+        other => panic!("an empty batch path is checked when read: {other:?}"),
+    }
+}
+
+#[test]
+fn query_options_next_to_batch_are_rejected_naming_the_first_typed() {
+    for (extra, option) in [
+        (&["--where", "ID=1"][..], "--where"),
+        (&["--startswith", "District=0"][..], "--startswith"),
+        (&["--range", "Date=2020-01-01.."][..], "--range"),
+        (&["--limit", "3"][..], "--limit"),
+        (&["--format", "json", "--where", "ID=1"][..], "--format"),
+        (&["--count", "--limit", "3"][..], "--count"),
+        (&["--format", "csv", "--output", "x.csv"][..], "--format"),
+    ] {
+        let mut args = with_dataset(extra);
+        args.extend(["--batch", "queries.txt"]);
+        assert_eq!(
+            invalid(&args),
+            format!(
+                "Con --batch, la opción {option} va en cada línea del lote, no en la línea de \
+                 comandos."
+            ),
+            "{args:?}"
+        );
+    }
+    // The errors that exist without --batch come first.
+    assert_eq!(
+        invalid(&with_dataset(&[
+            "--batch", "q.txt", "--count", "--format", "csv"
+        ])),
+        "\"Solo conteo\" no se combina con un formato de salida."
+    );
+}
+
+fn line(words: &[&str]) -> Result<Options, String> {
+    let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+    crime_query::cli::parse_line(&words, std::path::Path::new("out"))
+}
+
+#[test]
+fn a_batch_line_is_parsed_as_the_same_query_typed_alone() {
+    let from_line = line(&[
+        "--where=ID=1",
+        "--format",
+        "csv",
+        "--output",
+        "x.csv",
+        "--limit",
+        "2",
+    ])
+    .expect("a valid line");
+    let alone = options(&with_dataset(&[
+        "--where", "ID=1", "--format", "csv", "--output", "x.csv", "--limit", "2",
+    ]));
+    assert_eq!(from_line, alone);
+    assert_eq!(
+        line(&["--where", "Primary Type"]),
+        Err("La condición \"Primary Type\" no tiene la forma CAMPO=VALOR.".to_owned())
+    );
+    assert_eq!(
+        line(&["--count", "--format", "csv"]),
+        Err("\"Solo conteo\" no se combina con un formato de salida.".to_owned())
+    );
+    for (word, option) in [
+        ("--dataset", "--dataset"),
+        ("--dataset=x", "--dataset"),
+        ("--batch", "--batch"),
+        ("--help", "--help"),
+        ("-h", "-h"),
+    ] {
+        assert_eq!(
+            line(&["--where", "ID=1", word]),
+            Err(format!("la opción {option} no se admite dentro del lote.")),
+            "{word}"
+        );
+    }
+}
+
+#[test]
+fn the_help_describes_the_batch() {
+    let text = help(&["--help"]);
+    for expected in [
+        "crime-query --dataset <CARPETA> --batch <ARCHIVO>",
+        "--batch <ARCHIVO>",
+        "una por línea",
+        "con --batch no se admiten en la línea de comandos",
+        "Se ignoran las líneas vacías y las que empiezan por #.",
+        "sin secuencias de escape",
+        "Lote completado",
+        "Con --batch, 0 indica que se han ejecutado todas las consultas del lote",
+        "130,\nque el analista ha cancelado el lote",
+    ] {
+        assert!(text.contains(expected), "{expected:?} in:\n{text}");
+    }
+}

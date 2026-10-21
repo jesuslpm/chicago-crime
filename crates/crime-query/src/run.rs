@@ -46,20 +46,56 @@ pub fn run(
         Ok(dataset) => dataset,
         Err(error) => return report(stderr, error, exit_code::REJECTED),
     };
+    run_query(options, &query, &dataset, cancel, stdout, stderr).code()
+}
+
+/// How one query ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Outcome {
+    /// Every result was written and the stats line too.
+    Completed,
+    /// The consumer of stdout closed it: the query stopped quietly, without the stats line.
+    StdoutClosed,
+    /// The query was rejected, failed or was cancelled, with this exit code; its message is
+    /// already on stderr.
+    Failed(u8),
+}
+
+impl Outcome {
+    /// The exit code of a run made of this one query.
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Outcome::Completed | Outcome::StdoutClosed => exit_code::COMPLETED,
+            Outcome::Failed(code) => code,
+        }
+    }
+}
+
+/// Runs `query`, checked from `options`, on the open `dataset`: prepares the output file, starts
+/// the query, and writes its warnings, its results and its stats line. A query of a batch runs
+/// here exactly as it would alone.
+pub(crate) fn run_query(
+    options: &Options,
+    query: &Query,
+    dataset: &Dataset,
+    cancel: &dyn Fn() -> bool,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> Outcome {
     let temporary = match &options.output {
         Some(path) => match temporary_next_to(path) {
             Ok(file) => Some((path.as_path(), file)),
             Err(_) => {
-                return report(
+                return Outcome::Failed(report(
                     stderr,
                     messages::output_unwritable(path),
                     exit_code::REJECTED,
-                );
+                ));
             }
         },
         None => None,
     };
-    let mut execution = match Execution::start(&dataset, &query, cancel) {
+    let mut execution = match Execution::start(dataset, query, cancel) {
         Ok(execution) => execution,
         Err(error) => return failed(stderr, &error),
     };
@@ -76,8 +112,8 @@ pub fn run(
     };
     let job = Job {
         format,
-        query: &query,
-        dataset: &dataset,
+        query,
+        dataset,
     };
     let written = match temporary {
         Some((path, file)) => job.to_file(&mut execution, path, file, cancel, stderr),
@@ -86,9 +122,9 @@ pub fn run(
     match written {
         Ok(()) => {
             say(stderr, execution.summary().stats_line());
-            exit_code::COMPLETED
+            Outcome::Completed
         }
-        Err(code) => code,
+        Err(outcome) => outcome,
     }
 }
 
@@ -120,14 +156,14 @@ impl Job<'_> {
         writer.finish().map_err(Failure::Write)
     }
 
-    /// Writes the records to stdout. `Err` holds the exit code of a run that ends here,
-    /// without the stats line.
+    /// Writes the records to stdout. `Err` holds how a run that ends here ended, without the
+    /// stats line.
     fn to_stdout(
         &self,
         execution: &mut Execution,
         stdout: &mut dyn Write,
         stderr: &mut dyn Write,
-    ) -> Result<(), u8> {
+    ) -> Result<(), Outcome> {
         match self.write(execution, stdout) {
             Ok(_) => Ok(()),
             Err(Failure::Execution(error)) => Err(failed(stderr, &error)),
@@ -136,7 +172,7 @@ impl Job<'_> {
     }
 
     /// Writes the records to `file`, then replaces `path` with it. Every early return drops
-    /// `file`, which deletes it. `Err` holds the exit code of a run that ends here.
+    /// `file`, which deletes it. `Err` holds how a run that ends here ended.
     fn to_file(
         &self,
         execution: &mut Execution,
@@ -144,13 +180,13 @@ impl Job<'_> {
         mut file: NamedTempFile,
         cancel: &dyn Fn() -> bool,
         stderr: &mut dyn Write,
-    ) -> Result<(), u8> {
+    ) -> Result<(), Outcome> {
         let unwritable = |stderr: &mut dyn Write| {
-            Err(report(
+            Err(Outcome::Failed(report(
                 stderr,
                 messages::output_unwritable(path),
                 exit_code::REJECTED,
-            ))
+            )))
         };
         match self.write(execution, BufWriter::new(file.as_file_mut())) {
             Ok(_) => {}
@@ -169,7 +205,7 @@ impl Job<'_> {
 }
 
 /// Count only: the bare number on stdout, then the stats line.
-fn count(execution: Execution, stdout: &mut dyn Write, stderr: &mut dyn Write) -> u8 {
+fn count(execution: Execution, stdout: &mut dyn Write, stderr: &mut dyn Write) -> Outcome {
     let summary = match execution.count() {
         Ok(summary) => summary,
         Err(error) => return failed(stderr, &error),
@@ -178,7 +214,7 @@ fn count(execution: Execution, stdout: &mut dyn Write, stderr: &mut dyn Write) -
         return stdout_failed(stderr, &error);
     }
     say(stderr, summary.stats_line());
-    exit_code::COMPLETED
+    Outcome::Completed
 }
 
 /// The temporary file the output is written to, in the folder of `path` so that the final
@@ -207,29 +243,34 @@ fn temporary_next_to(path: &Path) -> io::Result<NamedTempFile> {
 /// A closed pipe means the consumer (`head`, a pager the analyst quit) wants no more results:
 /// the run stops quietly and counts as completed (exit code 0), without the stats line. Any
 /// other error is reported and the run fails (exit code 1).
-fn stdout_failed(stderr: &mut dyn Write, error: &io::Error) -> u8 {
+fn stdout_failed(stderr: &mut dyn Write, error: &io::Error) -> Outcome {
     if error.kind() == io::ErrorKind::BrokenPipe {
-        exit_code::COMPLETED
+        Outcome::StdoutClosed
     } else {
-        report(stderr, messages::stdout_unwritable(), exit_code::REJECTED)
+        Outcome::Failed(report(
+            stderr,
+            messages::stdout_unwritable(),
+            exit_code::REJECTED,
+        ))
     }
 }
 
 /// Reports why the execution ended early: 1 when a read failed, 130 when it was cancelled.
-fn failed(stderr: &mut dyn Write, error: &ExecError) -> u8 {
+fn failed(stderr: &mut dyn Write, error: &ExecError) -> Outcome {
     let code = match error {
         ExecError::Read(_) => exit_code::REJECTED,
         ExecError::Cancelled => exit_code::CANCELLED,
     };
-    report(stderr, error, code)
+    Outcome::Failed(report(stderr, error, code))
 }
 
-fn report(stderr: &mut dyn Write, message: impl Display, code: u8) -> u8 {
+/// Writes `message` on stderr and returns `code`.
+pub(crate) fn report(stderr: &mut dyn Write, message: impl Display, code: u8) -> u8 {
     say(stderr, message);
     code
 }
 
 /// One line on stderr. A failure to write it cannot be reported anywhere, so it is ignored.
-fn say(stderr: &mut dyn Write, message: impl Display) {
+pub(crate) fn say(stderr: &mut dyn Write, message: impl Display) {
     let _ = writeln!(stderr, "{message}");
 }
