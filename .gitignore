@@ -18,3 +18,6 @@ __pycache__/
 
 # Per-copy work folder for acceptance runs and generated datasets
 /work/
+
+# Build output of the CanopyDB reproductions
+/docs/canopy-db/repro/target/

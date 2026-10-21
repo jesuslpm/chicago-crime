@@ -1,0 +1,12 @@
+[package]
+name = "canopydb-repro"
+description = "Minimal reproductions of the CanopyDB findings H2 and H3 (docs/canopy-db/hallazgos.md)."
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Not a member of the project's workspace: it runs without the rest of the project.
+[workspace]
+
+[dependencies]
+canopydb = "=0.2.5"
