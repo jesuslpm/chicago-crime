@@ -28,8 +28,8 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crime_dataset::{
-    CURRENT_FILE_NAME, CurrentError, MANIFEST_FILE_NAME, Manifest, VERSION_DIR_PREFIX,
-    is_version_dir_name, resolve_current,
+    CURRENT_FILE_NAME, CurrentError, MANIFEST_FILE_NAME, VERSION_DIR_PREFIX, is_version_dir_name,
+    resolve_current,
 };
 
 use crate::Abort;
@@ -214,8 +214,8 @@ impl OutputFolder {
         }
     }
 
-    /// Publishes `version`, whose tables are complete and synced, with its `manifest` (see the
-    /// module documentation for the steps).
+    /// Publishes `version`, whose tables are complete and synced, with `manifest_json` as its
+    /// manifest (see the module documentation for the steps).
     ///
     /// Every failure before `CURRENT` is replaced, including a cancellation raised in `cancel`,
     /// leaves `CURRENT` untouched, and `version` is deleted when it drops. Once `CURRENT` is
@@ -224,13 +224,12 @@ impl OutputFolder {
     pub fn publish(
         mut self,
         mut version: NewVersion,
-        manifest: &Manifest,
+        manifest_json: &str,
         log: &mut RunLog,
         cancel: &CancelFlag,
     ) -> Result<Published, Abort> {
         let unwritable = |error: io::Error| Abort::output_io(&self.dir, &error);
-        let mut json = manifest.to_json();
-        json.push('\n');
+        let json = format!("{manifest_json}\n");
         write_synced(&version.dir.join(MANIFEST_FILE_NAME), json.as_bytes()).map_err(unwritable)?;
         self.switch_current(&version.name, cancel)?;
         version.published = true;

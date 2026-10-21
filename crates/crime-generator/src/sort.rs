@@ -89,11 +89,22 @@ impl<T: Sortable> ExternalSort<T> {
         segment_size: NonZeroUsize,
         compare: Compare<T>,
     ) -> io::Result<Self> {
+        Self::with_prefix(temp_dir, SORT_DIR_PREFIX, segment_size, compare)
+    }
+
+    /// [`ExternalSort::new`] with the sort folders of another application, named `prefix`
+    /// instead of [`SORT_DIR_PREFIX`].
+    pub fn with_prefix(
+        temp_dir: &Path,
+        prefix: &str,
+        segment_size: NonZeroUsize,
+        compare: Compare<T>,
+    ) -> io::Result<Self> {
         let mut attempts = 0;
         let (dir, hold) = loop {
             // `tempfile` appends random ASCII letters and digits and retries on a name collision.
             let dir = tempfile::Builder::new()
-                .prefix(&format!("{SORT_DIR_PREFIX}{}-", std::process::id()))
+                .prefix(&format!("{prefix}{}-", std::process::id()))
                 .rand_bytes(SORT_DIR_RANDOM_CHARS)
                 .tempdir_in(temp_dir)?;
             if let Some(hold) = FolderHold::take(dir.path()) {
@@ -116,6 +127,11 @@ impl<T: Sortable> ExternalSort<T> {
             dir,
             hold,
         })
+    }
+
+    /// The sort folder, deleted with the sort.
+    pub fn dir(&self) -> &Path {
+        self.dir.path()
     }
 
     pub fn push(&mut self, item: T) -> io::Result<()> {
@@ -190,7 +206,12 @@ impl<T: Sortable> ExternalSort<T> {
 /// Anything else, including the shape older versions wrote without the process ID, has no known
 /// owner and is never treated as a sort folder.
 pub fn sort_dir_owner(name: &str) -> Option<u32> {
-    let rest = name.strip_prefix(SORT_DIR_PREFIX)?;
+    sort_dir_owner_with_prefix(name, SORT_DIR_PREFIX)
+}
+
+/// [`sort_dir_owner`] for the sort folders of another application, named `prefix`.
+pub fn sort_dir_owner_with_prefix(name: &str, prefix: &str) -> Option<u32> {
+    let rest = name.strip_prefix(prefix)?;
     let (process_id, random) = rest.split_once('-')?;
     let positive = !process_id.is_empty()
         && !process_id.starts_with('0')
@@ -221,12 +242,26 @@ pub struct StaleSortDirs {
 /// processes, this one included: they may be sorting right now. Best effort: a folder that cannot
 /// be listed or deleted is skipped and reported in [`StaleSortDirs::kept`], and the run goes on.
 pub fn discard_stale_sort_dirs(temp_dir: &Path, is_alive: impl Fn(u32) -> bool) -> StaleSortDirs {
+    discard_stale_sort_dirs_with_prefix(temp_dir, SORT_DIR_PREFIX, is_alive)
+}
+
+/// [`discard_stale_sort_dirs`] for the sort folders of another application, named `prefix`:
+/// the folders of every other application are left alone.
+pub fn discard_stale_sort_dirs_with_prefix(
+    temp_dir: &Path,
+    prefix: &str,
+    is_alive: impl Fn(u32) -> bool,
+) -> StaleSortDirs {
     let mut outcome = StaleSortDirs::default();
     let Ok(entries) = fs::read_dir(temp_dir) else {
         return outcome;
     };
     for entry in entries.flatten() {
-        let Some(owner) = entry.file_name().to_str().and_then(sort_dir_owner) else {
+        let Some(owner) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| sort_dir_owner_with_prefix(name, prefix))
+        else {
             continue;
         };
         // `file_type` does not follow links: a link or junction is never a sort folder.

@@ -106,10 +106,19 @@ pub struct IndexTable {
 /// Every index must hold exactly one entry per record of the primary table (`valid`); the first
 /// index that does not is reported as an internal error.
 pub fn check_index_counts(valid: u64, tables: &[IndexTable]) -> Result<(), Abort> {
-    match tables.iter().find(|table| table.stats.entries != valid) {
-        Some(table) => Err(Abort::IndexCountMismatch {
-            index: table.kind.name(),
-            entries: table.stats.entries,
+    let entries: Vec<(IndexKind, u64)> = tables
+        .iter()
+        .map(|table| (table.kind, table.stats.entries))
+        .collect();
+    check_entry_counts(valid, &entries)
+}
+
+/// [`check_index_counts`] over the entries of each index, whatever its storage.
+pub fn check_entry_counts(valid: u64, indexes: &[(IndexKind, u64)]) -> Result<(), Abort> {
+    match indexes.iter().find(|(_, entries)| *entries != valid) {
+        Some(&(kind, entries)) => Err(Abort::IndexCountMismatch {
+            index: kind.name(),
+            entries,
             valid,
         }),
         None => Ok(()),

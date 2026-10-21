@@ -5,13 +5,13 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::{Path, PathBuf};
 
 use clap::error::{ContextKind, ContextValue, ErrorKind};
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, CommandFactory, FromArgMatches, Parser};
 use crime_dataset::Compression;
 
 use crate::index::DEFAULT_INDEX_SEGMENT_SIZE;
 use crate::memory::DEFAULT_MEMORY_LIMIT_MIB;
 use crate::messages;
-use crate::sort::DEFAULT_SEGMENT_SIZE;
+use crate::sort::{DEFAULT_SEGMENT_SIZE, SORT_DIR_PREFIX};
 
 /// Fallback folder name for the default log when the output path has none (a drive root).
 const FALLBACK_OUTPUT_NAME: &str = "dataset";
@@ -26,7 +26,34 @@ Códigos de salida:
   130  El operador ha cancelado la generación con Ctrl+C; el conjunto existente no se ha
        modificado.";
 
-/// Command line options as typed by the operator.
+/// What tells apart the applications that share these options and this pipeline: the same
+/// options, messages and exit codes, with their own name and description (decision K1 of the
+/// CanopyDB PRD).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct App {
+    /// Program name, in the help and its usage line.
+    pub name: &'static str,
+    /// First line of the help.
+    pub about: &'static str,
+    /// Help of `--no-compression`, which depends on how the application stores the tables.
+    pub no_compression_help: &'static str,
+    /// Name prefix of the sort folders (see [`SORT_DIR_PREFIX`]): each application discards
+    /// only its own.
+    pub sort_dir_prefix: &'static str,
+}
+
+/// The original generator, which writes LevelDB tables.
+pub const CRIME_GENERATOR: App = App {
+    name: "crime-generator",
+    about: "Genera el conjunto de datos de delitos de Chicago (SSTables y manifiesto) a partir del \
+            CSV.",
+    no_compression_help: "Escribe las tablas sin compresión. Por defecto se usa Snappy.",
+    sort_dir_prefix: SORT_DIR_PREFIX,
+};
+
+/// Command line options as typed by the operator. The name, the description and the help of
+/// `--no-compression` below are those of [`CRIME_GENERATOR`]; [`parse_for`] replaces them with
+/// those of another [`App`].
 #[derive(Debug, Parser)]
 #[command(
     name = "crime-generator",
@@ -111,13 +138,34 @@ pub enum Parsed {
     Invalid(String),
 }
 
-/// Parses the command line (`args` includes the program name).
+/// Parses the command line of the original generator (`args` includes the program name).
 pub fn parse<I, T>(args: I) -> Parsed
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let error = match Args::try_parse_from(args) {
+    parse_for(&CRIME_GENERATOR, args)
+}
+
+/// Parses the command line of `app` (`args` includes the program name).
+pub fn parse_for<I, T>(app: &App, args: I) -> Parsed
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let command = Args::command()
+        .name(app.name)
+        .bin_name(app.name)
+        .about(app.about)
+        .override_usage(format!(
+            "{} --input <ARCHIVO> --output <CARPETA> [opciones]",
+            app.name
+        ))
+        .mut_arg("no_compression", |arg| arg.help(app.no_compression_help));
+    let parsed = command
+        .try_get_matches_from(args)
+        .and_then(|matches| Args::from_arg_matches(&matches));
+    let error = match parsed {
         Ok(args) => return Parsed::Run(args),
         Err(error) => error,
     };

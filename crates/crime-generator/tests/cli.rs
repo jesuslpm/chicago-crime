@@ -210,3 +210,37 @@ fn help_lists_every_exit_code() {
     }
     assert!(section.contains("Ctrl+C"), "{text}");
 }
+
+/// The help of the original generator is exactly the one it showed before its options were
+/// shared with the CanopyDB generator (decision KG11 of the canopy-db-generador PRD).
+#[test]
+fn the_help_of_the_original_generator_is_unchanged() {
+    let Parsed::Help(text) = parse(["crime-generator", "--help"]) else {
+        panic!("--help shows the help");
+    };
+
+    assert_eq!(text, ORIGINAL_HELP);
+}
+
+const ORIGINAL_HELP: &str = "\
+Genera el conjunto de datos de delitos de Chicago (SSTables y manifiesto) a partir del CSV.
+
+Uso: crime-generator --input <ARCHIVO> --output <CARPETA> [opciones]
+
+Opciones:
+      --input <ARCHIVO>     CSV de delitos que se va a leer.
+      --output <CARPETA>    Carpeta donde se publica el conjunto de datos.
+      --temp-dir <CARPETA>  Carpeta para los archivos temporales de la ordenación. Por defecto, la carpeta temporal del sistema.
+      --log <ARCHIVO>       Archivo de log de la ejecución. Por defecto, junto a la carpeta de salida, con el nombre <carpeta>-<AAAAMMDD-hhmmss>.log.
+      --overwrite           Reemplaza el conjunto de datos que ya exista en la carpeta de salida.
+      --no-compression      Escribe las tablas sin compresión. Por defecto se usa Snappy.
+  -h, --help                Muestra esta ayuda.
+
+Códigos de salida:
+  0    La generación ha terminado y el conjunto se ha publicado, aunque haya registros
+       rechazados o un aviso de memoria.
+  1    La generación se ha cancelado por un error; el conjunto existente no se ha modificado.
+  2    Las opciones no son válidas; no se ha hecho nada.
+  130  El operador ha cancelado la generación con Ctrl+C; el conjunto existente no se ha
+       modificado.
+";
