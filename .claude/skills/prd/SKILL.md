@@ -6,7 +6,7 @@ effort: high
 license: MIT
 metadata:
   author: inercya
-  version: "1.2"
+  version: "1.3"
 ---
 
 ## Activation Contract
@@ -24,9 +24,14 @@ their time as agent time.
   numbers — those belong to the execution and the code.
 - Language: match the project's existing PRDs; with no precedent, ask the user once.
 - Location: reuse the project's PRD convention (search `**/*.prd.md`). With none, use
-  `docs/prd/<domain>/<domain>.prd.md` (general) and `docs/prd/<domain>/<change-name>.prd.md` (per change).
-- A per-change PRD names its general PRD in the `Parent document` header field.
-- Before declaring the parent PRD or project docs silent on a rule, re-read them. Rules that feel tacit are
+  `docs/prd/<domain>/<domain>.prd.md` (root) and `docs/prd/<domain>/<name>.prd.md` (module or change).
+- PRDs form a hierarchy: the root PRD of the product has no parent; every other PRD (a module, a change to a
+  module, a change to a change) names its direct parent in the `Parent document` header field. The number of
+  levels is the project's choice; do not force one.
+- The ancestry of a PRD is the chain of `Parent document` links from it up to the root. It inherits every rule
+  of its ancestry; a lower PRD states only what it adds or overrides, and when it overrides an ancestor's rule
+  it says so and the ancestor is annotated (*Decision Gates*).
+- Before declaring the ancestry or project docs silent on a rule, re-read them. Rules that feel tacit are
   usually written down.
 - `Starting state` reflects what already exists in code and data, verified by search — never assumed.
 - `Out of scope` is mandatory and explicit — it is the line the next change starts from.
@@ -41,14 +46,15 @@ their time as agent time.
 
 | Situation | Action |
 |---|---|
-| New module or domain | General PRD, no parent |
-| Change inside a domain | Per-change PRD with `Parent document` |
+| New product or domain | Root PRD, no parent |
+| New module, or change inside a module or domain | PRD whose `Parent document` is the closest PRD that covers it |
 | Correcting a rule of an earlier PRD | Annotate the earlier PRD; do not rewrite its history |
 | Bug fix, refactor or tooling with no product behavior change | No PRD; go straight to ODD |
 
 ## Execution Steps
 
-1. Read the parent PRD and the relevant project docs.
+1. Read the whole ancestry, from the direct parent up to the root (follow `Parent document` until it says
+   none), and the relevant project docs. Stop with an error if a link is broken or loops back.
 2. Verify the starting state in code and data; delegate the explorer (*Subagents*) when it exceeds the inline
    evidence budget.
 3. Draft from `assets/prd-template.md`; translate headings consistently when the PRD is not in English.
@@ -76,8 +82,9 @@ their time as agent time.
    session's row. A revision in another session adds a row and a total. To measure a past session, pass
    `--session <id>` (the file name of its history under `~/.claude/projects/`). On exit code 2, report the
    error and leave the section out.
-8. When the user authorizes implementation, hand the PRD path to the flow the user chose; that flow creates
-   its own documents, if it has any. For ODD, its feature document takes from the PRD:
+8. When the user authorizes implementation, hand the PRD path and its ancestry to the flow the user chose; that
+   flow reads every PRD of the ancestry up to the root before its first change, and creates its own documents,
+   if it has any. For ODD, its feature document takes from the PRD:
 
    - the acceptance criteria, validations, messages, output and examples, quoted verbatim in its `S#`;
    - `Out of scope` as the limit of its specs: nothing outside it gets a task;
@@ -92,7 +99,7 @@ Pass `model` and `effort` on every launch; they match the project's subagent mod
 | Role | When | `model` | `effort` | Input | Returns |
 |---|---|---|---|---|---|
 | Explorer (read-only) | Step 2, only when the starting state exceeds the inline evidence budget | `opus` | `medium` | The questions the `Starting state` section must answer | At most ~2k tokens of facts about code **and data**, each with `path:line` or the query that proves it |
-| Reviewer (read-only) | Step 4, on every draft before the user sees it | `sonnet` | `high` | The draft, the parent PRD and the project docs it relies on; not the conversation | Findings with the section they affect: acceptance criteria that cannot become a test, contradictions with the parent PRD, rules the docs already state, implementation details that leaked in, gaps in `Out of scope`; and the gap sweep (below) |
+| Reviewer (read-only) | Step 4, on every draft before the user sees it | `sonnet` | `high` | The draft, every PRD of its ancestry up to the root and the project docs it relies on; not the conversation | Findings with the section they affect: acceptance criteria that cannot become a test, contradictions with any PRD of the ancestry that the draft does not declare as an override, rules the docs already state, implementation details that leaked in, gaps in `Out of scope`; and the gap sweep (below) |
 | Translator | Step 6, once per translation | `sonnet` | `medium` | The final PRD and an earlier translation as a terminology reference | The translated file, with the original's headings, criterion IDs and CLI messages kept verbatim |
 
 The reviewer gets a fresh context and a model other than the writer's so it does not read what the writer meant

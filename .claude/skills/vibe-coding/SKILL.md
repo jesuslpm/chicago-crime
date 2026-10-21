@@ -71,7 +71,8 @@ vibe coding instead of a lightweight SDD.
 ### Before the first change
 
 1. Open the phase log with `phase_times.py mark <log> explore` (`closing-report` skill, *Phase log*). Read the
-   PRD and its parent completely, including their **Starting state** and **Reuse** sections. List the
+   PRD and its whole ancestry up to the root PRD (`prd` skill) completely, including their **Starting state**
+   and **Reuse** sections. List the
    acceptance criteria.
 2. **Map the starting state.** For each criterion, search the code for its domain terms, field names, messages
    and similar functions, types or validations. Classify each criterion as *already done*, *partly done*,

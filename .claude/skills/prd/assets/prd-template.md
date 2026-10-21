@@ -2,7 +2,7 @@
 
 **Version**: 1.0
 **Date**: YYYY-MM-DD
-**Parent document**: <path to the general PRD, or "none">
+**Parent document**: <path to the direct parent PRD, or "none" for the root PRD>
 
 ## Objective and context
 
@@ -53,7 +53,7 @@ an option does not apply to), not only the new ones.
 
 ## References
 
-- <Parent PRD, related PRDs, project docs>
+- <Ancestry, from the direct parent up to the root; related PRDs; project docs>
 
 ## Elaboration time
 

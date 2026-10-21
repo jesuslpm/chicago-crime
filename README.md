@@ -34,16 +34,19 @@ exact figures in the PRDs and the acceptance criteria refer to that extract.
 Every change starts with a product document and is then built with Organic Driven Development:
 
 ```text
-Parent PRD (app or large module) → child PRD (one per change) → ODD feature document
+Root PRD (product) → module PRD → … → change PRD → ODD feature document
   → tasks: test first, one commit each, automated review → acceptance on real data → merge into main
 ```
 
-- **PRD first.** The parent PRD describes the whole product. Each change gets a child PRD that names its
-  parent and adds only what that change needs. A PRD is written in business language: objective,
+- **PRD first.** PRDs form a hierarchy whose depth each project chooses. The root PRD describes the whole
+  product; every other PRD (a module, or a change to a module or to another change) names its direct
+  parent and adds only what it needs. A change is read together with its whole ancestry, up to the root:
+  for example, the [startswith PRD](docs/prd/chicago-crime/startswith.prd.md) builds on the query app PRD,
+  which builds on the root PRD. A PRD is written in business language: objective,
   starting state verified against the code and data, flow, validations and messages, decisions with
   their reasons, explicit out-of-scope items and acceptance criteria. The project skill in
   [`.claude/skills/prd`](.claude/skills/prd/SKILL.md) holds the template.
-  - [Parent PRD](docs/prd/chicago-crime/chicago-crime.prd.en.md) ([Spanish original](docs/prd/chicago-crime/chicago-crime.prd.md)): the generator and the query app.
+  - [Root PRD](docs/prd/chicago-crime/chicago-crime.prd.en.md) ([Spanish original](docs/prd/chicago-crime/chicago-crime.prd.md)): the generator and the query app.
   - [Generator PRD](docs/prd/chicago-crime/generador.prd.en.md) ([Spanish original](docs/prd/chicago-crime/generador.prd.md)): the generator, acceptance criteria AC-G1 to AC-G10.
   - [Query app PRD](docs/prd/chicago-crime/consultor.prd.md) (Spanish): the query app, acceptance criteria AC-C1 to AC-C18.
   - [Linux support PRD](docs/prd/chicago-crime/soporte-linux.prd.md) (Spanish): building, testing and running on Linux, acceptance criteria AC-L1 to AC-L9.
