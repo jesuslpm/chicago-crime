@@ -103,7 +103,9 @@ Las cifras exactas corresponden al CSV de referencia, con la misma salvedad que 
    contiene 8.656.904 entradas en orden estrictamente creciente de ID, hay 0 rechazados, y el manifiesto y el
    resumen coinciden con esas cifras.
 2. **AC-G2** (padre AC2) — Dado el CSV completo, cuando se ejecuta el generador, entonces el pico de memoria
-   privada comprometida no supera 512 MiB y el resumen final lo muestra.
+   privada comprometida no supera 512 MiB y el resumen final lo muestra. *(Anotación del 2026-10-21: el
+   generador CanopyDB debe cumplir los mismos 512 MiB (K2); si CanopyDB lo impide, se aplica K10 (criterio
+   AC-M4 de [canopy-db-generador.prd.md](canopy-db-generador.prd.md)).)*
 3. **AC-G3** (padre AC3 y AC12) — Dada la muestra de ID de AC3 del padre más un registro con hora en el salto
    de primavera, cuando se lee la tabla principal directamente, entonces cada campo es equivalente en valor al
    de la fila del CSV y la fecha de ese registro es exactamente la publicada.
@@ -147,6 +149,10 @@ No queda ninguna decisión abierta. Todas se tomaron el 2026-10-12 y ya están r
   Motivo: permite saber con certeza de qué extracto salió un conjunto, sin una pasada adicional.
 - **G5 — Salida determinista**: el mismo CSV produce SSTables idénticas byte a byte; el manifiesto queda
   excluido. Motivo: facilita verificar y comparar generaciones, y detecta cambios involuntarios.
+  *(Anotación del 2026-10-21: el generador CanopyDB no produce archivos idénticos byte a byte; dos
+  generaciones del mismo CSV guardan las mismas claves y valores (decisión K2 de
+  [canopy-db.prd.md](canopy-db.prd.md), criterio AC-M3 de
+  [canopy-db-generador.prd.md](canopy-db-generador.prd.md)). El generador original conserva G5.)*
 
 ## Referencias
 

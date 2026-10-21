@@ -107,7 +107,9 @@ The exact figures correspond to the reference CSV, with the same caveat as in th
    contains 8,656,904 entries in strictly ascending ID order, there are 0 rejected, and the manifest and
    the summary match those figures.
 2. **AC-G2** (parent AC2) — Given the full CSV, when the generator runs, then the peak private committed
-   memory does not exceed 512 MiB and the final summary shows it.
+   memory does not exceed 512 MiB and the final summary shows it. *(Annotation of 2026-10-21: the
+   CanopyDB generator must meet the same 512 MiB (K2); if CanopyDB prevents it, K10 applies (criterion
+   AC-M4 of [canopy-db-generador.prd.en.md](canopy-db-generador.prd.en.md)).)*
 3. **AC-G3** (parent AC3 and AC12) — Given the ID sample from the parent's AC3 plus a record with a time in
    the spring-forward gap, when the primary table is read directly, then every field is equivalent in value
    to the one in the CSV row and the date of that record is exactly the published one.
@@ -153,7 +155,10 @@ the PRD.
   additional pass.
 - **G5 — Deterministic output**: the same CSV produces byte-for-byte identical SSTables; the manifest is
   excluded. Reason: it makes it easier to verify and compare generations, and it detects unintended
-  changes.
+  changes. *(Annotation of 2026-10-21: the CanopyDB generator does not produce byte-for-byte identical
+  files; two generations of the same CSV store the same keys and values (decision K2 of
+  [canopy-db.prd.en.md](canopy-db.prd.en.md), criterion AC-M3 of
+  [canopy-db-generador.prd.en.md](canopy-db-generador.prd.en.md)). The original generator keeps G5.)*
 
 ## References
 
