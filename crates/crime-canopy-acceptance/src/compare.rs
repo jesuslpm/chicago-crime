@@ -31,6 +31,26 @@ const BATCHES_AHEAD: usize = 4;
 /// before each long step.
 pub fn compare(a: &Path, b: &Path, progress: &mut dyn FnMut(&str)) -> Report {
     let mut report = Report::default();
+    if same_version(a, b) {
+        // One process cannot open a CanopyDB base twice: read the one dataset on both sides.
+        progress("opening A, which is also B");
+        match Side::open(a) {
+            Ok(side) => {
+                for table in TABLES {
+                    progress(&format!("comparing {table}"));
+                    report
+                        .checks
+                        .push(compare_table(table, side.tables(), side.tables()));
+                }
+            }
+            Err(error) => report.checks.push(Check::new(
+                "COMPARE",
+                false,
+                format!("A and B {}: {error}", a.display()),
+            )),
+        }
+        return report;
+    }
     progress("opening A");
     let side_a = Side::open(a);
     progress("opening B");
@@ -58,6 +78,16 @@ pub fn compare(a: &Path, b: &Path, progress: &mut dyn FnMut(&str)) -> Report {
         }
     }
     report
+}
+
+/// Whether the output folders `a` and `b` name the same active version folder.
+fn same_version(a: &Path, b: &Path) -> bool {
+    let version = |output: &Path| {
+        dataset::resolve_current(output)
+            .ok()
+            .and_then(|version| std::fs::canonicalize(version).ok())
+    };
+    matches!((version(a), version(b)), (Some(a), Some(b)) if a == b)
 }
 
 /// The tables of one output folder.

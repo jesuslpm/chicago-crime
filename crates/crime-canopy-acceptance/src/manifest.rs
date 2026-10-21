@@ -28,7 +28,8 @@ pub const SCHEMA_VERSION: &str = "canopydb-2";
 /// `schema_version` of an SSTable manifest.
 pub const SSTABLE_SCHEMA_VERSION: u64 = 2;
 
-/// The fields of each object of the manifest, in the order the PRD fixes.
+/// The top-level fields of the manifest, in the order the PRD fixes; the fields of each nested
+/// object follow.
 const FIELDS: [&str; 8] = [
     "schema_version",
     "generated_at",

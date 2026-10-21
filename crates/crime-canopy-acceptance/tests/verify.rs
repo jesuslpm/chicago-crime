@@ -401,3 +401,54 @@ fn reading_the_base_twice_adds_no_file_and_leaves_the_manifest_identical() {
     assert!(compared.passed(), "{}", compared.render());
     assert_eq!(compared.checks.len(), 6, "{}", compared.render());
 }
+
+#[test]
+fn reading_the_base_leaves_its_stored_options_byte_identical() {
+    let fixture = Fixture::new();
+    let base = fixture.canopy_version().join("canopydb");
+    let database = fs::read_dir(&base)
+        .expect("the base can be listed")
+        .map(|entry| entry.expect("an entry").path())
+        .find(|path| path.is_dir())
+        .expect("the database folder");
+    let before = fs::read(database.join("OPTIONS")).expect("the options exist");
+
+    let report = verify_output(&fixture, &fixture.canopy, Options::default());
+
+    assert!(report.passed(), "{}", report.render());
+    assert_eq!(
+        fs::read(database.join("OPTIONS")).expect("the options exist"),
+        before
+    );
+}
+
+#[test]
+fn a_base_held_open_by_another_process_fails_ac_g1_and_stops() {
+    let fixture = Fixture::new();
+    let base = fixture.canopy_version().join("canopydb");
+    let mut options = canopydb::EnvOptions::new(&base);
+    options.page_cache_size = 8 * 1024 * 1024;
+    let _held = canopydb::Environment::with_options(options).expect("the base opens");
+
+    let (code, stdout) = run(&[
+        OsStr::new("--csv"),
+        fixture.csv.as_os_str(),
+        OsStr::new("--dataset"),
+        fixture.canopy.as_os_str(),
+    ]);
+
+    assert_eq!(code, Some(1), "{stdout}");
+    let criteria: Vec<&str> = outcome_lines(&stdout)
+        .iter()
+        .map(|line| line.split_whitespace().nth(1).expect("a criterion"))
+        .collect();
+    assert_eq!(
+        criteria,
+        ["LAYOUT", "MANIFEST-SCHEMA", "MANIFEST-FILES", "AC-G1"],
+        "{stdout}"
+    );
+    assert!(
+        outcome_lines(&stdout)[3].starts_with("FAIL  AC-G1  "),
+        "{stdout}"
+    );
+}

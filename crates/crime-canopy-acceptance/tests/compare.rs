@@ -206,3 +206,49 @@ fn an_invalid_command_line_exits_with_2() {
         assert!(stdout.is_empty(), "{args:?}: {stdout}");
     }
 }
+
+/// The `OPTIONS` file of the `crime` database of the CanopyDB dataset in `output`.
+fn options_file(fixture: &Fixture) -> std::path::PathBuf {
+    let base = fixture.canopy_version().join("canopydb");
+    let database = fs::read_dir(&base)
+        .expect("the base can be listed")
+        .map(|entry| entry.expect("an entry").path())
+        .find(|path| path.is_dir())
+        .expect("the database folder");
+    database.join("OPTIONS")
+}
+
+#[test]
+fn unreadable_stored_options_fail_without_rewriting_them() {
+    let fixture = Fixture::new();
+    let options = options_file(&fixture);
+    fs::write(&options, b"not the options").expect("the options can be replaced");
+
+    let (code, stdout) = compare(&fixture.sstable, &fixture.canopy);
+
+    assert_eq!(code, Some(1), "{stdout}");
+    let lines = outcome_lines(&stdout);
+    assert_eq!(lines.len(), 1, "{stdout}");
+    assert!(lines[0].starts_with("FAIL  COMPARE  B "), "{stdout}");
+    assert!(lines[0].contains("OPTIONS"), "{stdout}");
+    assert_eq!(
+        fs::read(&options).expect("the options exist"),
+        b"not the options"
+    );
+}
+
+#[test]
+fn the_same_dataset_on_both_sides_is_equal_without_waiting_for_its_lock() {
+    let fixture = Fixture::new();
+    let started = std::time::Instant::now();
+
+    let (code, stdout) = compare(&fixture.canopy, &fixture.canopy);
+
+    assert_eq!(code, Some(0), "{stdout}");
+    assert_eq!(outcome_lines(&stdout), all_equal(), "{stdout}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(4),
+        "no wait for its own lock: {:?}",
+        started.elapsed()
+    );
+}

@@ -11,26 +11,29 @@
 //! The database holds six trees named as the manifest's `tables`, with the same keys and values
 //! as the SSTables. The base is opened with a 64 MiB page cache (CanopyDB's default of 1 GiB
 //! gave a 1,161 MiB peak) and with the database options stored in the base, so that opening it
-//! rewrites nothing. It never creates a database or a tree: a missing one is an error.
+//! rewrites nothing; when they cannot be read, the base is not opened. It never creates a
+//! database or a tree: a missing one is an error.
 
 use std::fs;
 use std::path::Path;
 
 use canopydb::{Database, DbOptions, EnvOptions, Environment};
-use crime_acceptance::dataset::Tables;
+use crime_acceptance::dataset::{PRIMARY, Tables};
+use crime_acceptance::indexes::INDEXES;
 
 /// The folder of the CanopyDB base inside the version folder.
 pub const BASE_DIR: &str = "canopydb";
 /// The one database of the base.
 pub const DATABASE: &str = "crime";
-/// The trees of the database, in manifest order.
+/// The trees of the database, in manifest order: the primary table and the indexes of the
+/// original verifier.
 pub const TABLES: [&str; 6] = [
-    "primary",
-    "date",
-    "primary_type",
-    "district",
-    "community_area",
-    "case_number",
+    PRIMARY,
+    INDEXES[0].name,
+    INDEXES[1].name,
+    INDEXES[2].name,
+    INDEXES[3].name,
+    INDEXES[4].name,
 ];
 /// Page cache of the reader, as the generator's.
 pub const PAGE_CACHE_BYTES: usize = 64 * 1024 * 1024;
@@ -60,9 +63,11 @@ impl CanopyTables {
         };
         let mut options = EnvOptions::new(base);
         options.page_cache_size = PAGE_CACHE_BYTES;
+        // Read before opening: opening with other options would replace the stored ones.
+        let stored = stored_options(base)?;
         let environment = Environment::with_options(options).map_err(cannot_open)?;
         let database = environment
-            .get_database_with(DATABASE, stored_options(base))
+            .get_database_with(DATABASE, stored)
             .map_err(cannot_open)?
             .ok_or_else(|| {
                 format!(
@@ -78,24 +83,30 @@ impl CanopyTables {
 }
 
 /// The options stored with the `crime` database, which CanopyDB replaces with the opener's: passing
-/// them back leaves the base as it was. Without a readable copy, the generator's choice of no
-/// write-ahead log.
-fn stored_options(base: &Path) -> DbOptions {
-    let stored = fs::read_dir(base).ok().and_then(|entries| {
-        entries.flatten().find_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let is_database = name.starts_with(&format!("{DATABASE}_")) && name.ends_with("_l");
-            let bytes = is_database
-                .then(|| fs::read(entry.path().join(OPTIONS_FILE)).ok())
-                .flatten()?;
-            serde_json::from_slice::<DbOptions>(&bytes).ok()
+/// them back leaves the base as it was. An error, and the base stays closed, when they cannot be
+/// found or read.
+fn stored_options(base: &Path) -> Result<DbOptions, String> {
+    let unreadable = |reason: String| {
+        format!(
+            "the {OPTIONS_FILE} of the database {DATABASE:?} in {} cannot be read: {reason}",
+            base.display()
+        )
+    };
+    let entries = fs::read_dir(base).map_err(|error| unreadable(error.to_string()))?;
+    let database = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy())
+                .is_some_and(|name| {
+                    name.starts_with(&format!("{DATABASE}_")) && name.ends_with("_l")
+                })
         })
-    });
-    stored.unwrap_or_else(|| {
-        let mut options = DbOptions::new();
-        options.use_wal = false;
-        options
-    })
+        .ok_or_else(|| unreadable("there is no database folder".to_owned()))?;
+    let bytes =
+        fs::read(database.join(OPTIONS_FILE)).map_err(|error| unreadable(error.to_string()))?;
+    serde_json::from_slice::<DbOptions>(&bytes).map_err(|error| unreadable(error.to_string()))
 }
 
 impl Tables for CanopyTables {
