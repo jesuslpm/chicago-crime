@@ -2,7 +2,7 @@
 
 Informe de cierre de `startswith` (2026-10-18). Enfoque de ejecución: vibe coding.
 Fuente de producto: [PRD de búsqueda por prefijo](../prd/chicago-crime/startswith.prd.md). Documento de
-ejecución: ninguno (vibe coding). Registro de fases: [2026-10-18-startswith-phases.tsv](2026-10-18-startswith-phases.tsv).
+ejecución: ninguno (vibe coding).
 
 Rama `feat/startswith-vibe` en la copia `C:\wt\chicago-crime-startswith-vibe`, 8 commits locales sobre `0971a37` más
 el de este informe. No se ha fusionado en la base (copia de worktree: se fusiona cuando el desarrollador lo pida)
