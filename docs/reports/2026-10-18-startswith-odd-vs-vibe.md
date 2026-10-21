@@ -190,3 +190,8 @@ de la salida; vibe coding, en reutilización y en el alcance de sus tests.
   `docs/reports/2026-10-18-startswith-report.md` y `2026-10-18-startswith-phases.tsv`.
 - Velocidad de las consultas: medida el 2026-10-18 entre las 10:29 y las 10:32, con los binarios de release de
   cada copia y el conjunto de datos generado por la aceptación de vibe coding.
+
+Nota (2026-10-21): las dos ramas ya no existen; se eliminaron al descartar el ensayo. Las fuentes de ODD están
+en `main` desde la fusión `5d3d9e9`. De vibe coding solo se conserva el informe de cierre, en
+[2026-10-18-startswith-vibe-report.md](2026-10-18-startswith-vibe-report.md); su código y su registro de fases
+se perdieron con la rama.
