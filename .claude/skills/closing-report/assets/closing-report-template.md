@@ -56,7 +56,8 @@ of acceptance runs after a blocker).>
 
 ## Change report (`<base>..<head>`)
 
-<Paste the table produced by `scripts/numstat_by_area.py`, then the lockfiles/generated line.>
+<Paste the table produced by `scripts/numstat_by_area.py` (with its Code + / Comments + columns and their
+legend), then the lockfiles/generated line.>
 
 <One line comparing with the forecast, if a line forecast existed.>
 
