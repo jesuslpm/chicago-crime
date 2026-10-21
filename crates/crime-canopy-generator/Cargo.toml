@@ -1,0 +1,24 @@
+[package]
+name = "crime-canopy-generator"
+description = "Builds the Chicago crime dataset in a CanopyDB base (and its manifest) from the source CSV."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+canopydb.workspace = true
+crime-dataset.workspace = true
+# The pipeline of the original generator (decision KG11 of the child PRD): reading, validation,
+# sorting, publication, log, messages and summary. Only the storage of the tables differs.
+crime-generator = { path = "../crime-generator" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The failure injection of the shared pipeline, for the tests of this crate.
+crime-generator = { path = "../crime-generator", features = ["fail-points"] }
+# The original query app, which must refuse a CanopyDB dataset (AC-KG3).
+crime-query = { path = "../crime-query" }
+csv.workspace = true
+sstable.workspace = true
+tempfile.workspace = true
