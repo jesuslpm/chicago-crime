@@ -14,7 +14,13 @@ crime-generator = { path = "../crime-generator" }
 serde.workspace = true
 serde_json.workspace = true
 
+[features]
+# Injected failures of the engine for the tests (see `fault` in `src/lib.rs`). The dev-dependency
+# below turns it on for every test target of this crate; ordinary builds never include it.
+fail-points = []
+
 [dev-dependencies]
+crime-canopy-generator = { path = ".", features = ["fail-points"] }
 # The failure injection of the shared pipeline, for the tests of this crate.
 crime-generator = { path = "../crime-generator", features = ["fail-points"] }
 # The original query app, which must refuse a CanopyDB dataset (AC-KG3).

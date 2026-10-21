@@ -226,6 +226,9 @@ pub fn generate_with<S: Storage>(
     let result = build(config, app, storage, log, cancel, started);
     if let Err(abort) = &result {
         // Best effort: the console shows the lines even if the log has become unwritable.
+        if let Abort::WithDetail { detail, .. } = abort {
+            let _ = log.line(detail);
+        }
         let _ = log.line(&abort.to_string());
         if *abort != Abort::Cancelled {
             let _ = log.line(&messages::generation_cancelled());
@@ -252,7 +255,7 @@ fn sst_storage(config: &Config) -> SstStorage {
 fn build<S: Storage>(
     config: &Config,
     app: &App,
-    mut storage: S,
+    storage: S,
     log: &mut RunLog,
     cancel: &CancelFlag,
     started: Instant,
@@ -307,6 +310,9 @@ fn build<S: Storage>(
         IndexEntry::compare,
     )
     .map_err(temp_error)?;
+    // Declared after the version folder and the index sort, so an early return closes the
+    // storage first and only then deletes the folders it may still have open.
+    let mut storage = storage;
     storage.begin(version.path(), index_sort.dir())?;
     let duplicates = write_primary(config, sorted, &mut storage, log, cancel, |entry| {
         for index_entry in index::entries_of(entry)? {

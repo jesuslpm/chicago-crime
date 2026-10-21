@@ -43,6 +43,10 @@ pub enum Abort {
         entries: u64,
         valid: u64,
     },
+    /// `cause`, with one more line for the log that explains it: the technical detail of a
+    /// failure of a storage engine (decision K9 of the CanopyDB PRD). The message is the one of
+    /// `cause`; the run logs `detail` right before it.
+    WithDetail { detail: String, cause: Box<Abort> },
     /// The operator cancelled the run with Ctrl+C (see [`CancelFlag`](crate::cancel::CancelFlag)).
     /// Its message already says that the existing dataset is intact.
     Cancelled,
@@ -100,6 +104,7 @@ impl fmt::Display for Abort {
                 entries,
                 valid,
             } => messages::index_count_mismatch(index, *entries, *valid),
+            Abort::WithDetail { cause, .. } => cause.to_string(),
             Abort::Cancelled => messages::operator_cancelled(),
         };
         f.write_str(&message)

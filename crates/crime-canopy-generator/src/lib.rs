@@ -7,8 +7,10 @@
 //! the version folder (decision KG2), with the same keys and values as the LevelDB tables
 //! (decision K2), and describes them with the CanopyDB manifest (decision KG3).
 
+use std::any::Any;
 use std::fs;
 use std::io;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 
 use canopydb::{Database, DbOptions, EnvOptions, Environment, TreeOptions};
@@ -59,6 +61,16 @@ const STALL_MEMORY_BYTES: usize = 128 << 20;
 /// Entries written per transaction.
 const ENTRIES_PER_COMMIT: usize = 100_000;
 
+/// The line of the log that explains a failure of the engine (decision KG7): the error as
+/// CanopyDB gives it, on one line.
+pub fn engine_detail(error: &str) -> String {
+    let one_line: Vec<&str> = error
+        .split(['\r', '\n'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    format!("Detalle del error de CanopyDB: {}", one_line.join(" "))
+}
+
 /// The options a CanopyDB base of this application is opened with: the page cache of
 /// [`PAGE_CACHE_BYTES`] and no write-ahead log, so the base holds no log to replay and a reader
 /// adds no file to it (decision K6 of the parent PRD).
@@ -108,15 +120,37 @@ impl CanopyStorage {
         }
     }
 
-    /// The abort for a failure of the engine.
+    /// The abort for a failure of the engine (decision KG7): the message of the original
+    /// generator for the output folder, the only folder the engine writes to (it writes no
+    /// temporary files without its write-ahead log), with the error as the detail line.
     fn engine(&self, error: canopydb::Error) -> Abort {
-        match error {
-            canopydb::Error::Io(error) | canopydb::Error::FatalIo(error) => {
-                Abort::output_io(&self.output, &error)
+        let cause = match &error {
+            canopydb::Error::Io(io_error) | canopydb::Error::FatalIo(io_error) => {
+                Abort::output_io(&self.output, io_error)
             }
             _ => Abort::OutputUnwritable {
                 dir: self.output.clone(),
             },
+        };
+        Abort::WithDetail {
+            detail: engine_detail(&error.to_string()),
+            cause: Box::new(cause),
+        }
+    }
+
+    /// Runs `operation` of the engine, turning its error or its panic into the abort of the run.
+    fn guarded<T>(
+        &self,
+        operation: impl FnOnce() -> Result<T, canopydb::Error>,
+    ) -> Result<T, Abort> {
+        match catch_unwind(AssertUnwindSafe(operation)) {
+            Ok(result) => result.map_err(|error| self.engine(error)),
+            Err(payload) => Err(Abort::WithDetail {
+                detail: engine_detail(&panic_text(payload.as_ref())),
+                cause: Box::new(Abort::OutputUnwritable {
+                    dir: self.output.clone(),
+                }),
+            }),
         }
     }
 
@@ -151,7 +185,8 @@ impl CanopyStorage {
     /// Writes the pending entries of the current table in one transaction.
     fn commit(&mut self) -> Result<(), Abort> {
         let options = self.tree_options();
-        let result = (|| {
+        let result = self.guarded(|| {
+            fault::inject()?;
             let transaction = self.database().begin_write()?;
             {
                 let mut tree =
@@ -161,9 +196,9 @@ impl CanopyStorage {
                 }
             }
             transaction.commit().map(|_| ())
-        })();
+        });
         self.pending.clear();
-        result.map_err(|error| self.engine(error))
+        result
     }
 
     fn finish_table(&mut self) -> Result<(), Abort> {
@@ -181,11 +216,11 @@ impl Storage for CanopyStorage {
         self.base_dir = dir.join(BASE_DIR_NAME);
         // CanopyDB does not create the folder of its base.
         fs::create_dir(&self.base_dir).map_err(|error| Abort::output_io(&self.output, &error))?;
-        let environment = Environment::with_options(environment_options(&self.base_dir, scratch))
-            .map_err(|error| self.engine(error))?;
-        let database = environment
-            .get_or_create_database_with(DATABASE_NAME, database_options())
-            .map_err(|error| self.engine(error))?;
+        let environment = self
+            .guarded(|| Environment::with_options(environment_options(&self.base_dir, scratch)))?;
+        let database = self.guarded(|| {
+            environment.get_or_create_database_with(DATABASE_NAME, database_options())
+        })?;
         self.open = Some((environment, database));
         self.start_table(PRIMARY_TABLE_NAME)
     }
@@ -213,11 +248,13 @@ impl Storage for CanopyStorage {
     /// Moves everything to the data file and closes the base, so that it is ready to be read
     /// (flow step 5 of the child PRD), then lists its files.
     fn finish(mut self) -> Result<CanopyWritten, Abort> {
-        self.database()
-            .checkpoint()
-            .map_err(|error| self.engine(error))?;
+        self.guarded(|| self.database().checkpoint())?;
         // Closing waits for the background threads of the engine.
-        self.open = None;
+        let open = self.open.take();
+        self.guarded(|| {
+            drop(open);
+            Ok(())
+        })?;
         let version_dir = self
             .base_dir
             .parent()
@@ -235,6 +272,84 @@ impl Storage for CanopyStorage {
                 .collect(),
             files,
         })
+    }
+}
+
+/// The message of a panic, as `panic!` received it.
+fn panic_text(payload: &(dyn Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_owned()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "panic".to_owned()
+    }
+}
+
+/// Failures of the engine injected by the tests (feature `fail-points`); without the feature
+/// nothing is ever injected.
+pub mod fault {
+    /// A failure the next write of the base meets.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Fault {
+        /// The disk of the base is full.
+        DiskFull,
+        /// Any other failure of a write.
+        WriteFailure,
+        /// A failure of the engine itself, not of the disk.
+        Internal,
+        /// The engine panics.
+        Panic,
+        /// An I/O error whose text spans several lines.
+        MultiLine,
+    }
+
+    #[cfg(feature = "fail-points")]
+    std::thread_local! {
+        static ARMED: std::cell::Cell<Option<Fault>> = const { std::cell::Cell::new(None) };
+    }
+
+    /// Arms `fault` on this thread for the next write of the base, until the guard drops.
+    #[cfg(feature = "fail-points")]
+    pub fn arm(fault: Fault) -> Armed {
+        ARMED.with(|armed| armed.set(Some(fault)));
+        Armed { _private: () }
+    }
+
+    /// Disarms the fault when dropped.
+    #[cfg(feature = "fail-points")]
+    pub struct Armed {
+        _private: (),
+    }
+
+    #[cfg(feature = "fail-points")]
+    impl Drop for Armed {
+        fn drop(&mut self) {
+            ARMED.with(|armed| armed.set(None));
+        }
+    }
+
+    /// Meets the armed fault, once.
+    #[cfg(feature = "fail-points")]
+    pub(crate) fn inject() -> Result<(), canopydb::Error> {
+        use std::io::{Error, ErrorKind};
+        match ARMED.with(|armed| armed.take()) {
+            None => Ok(()),
+            Some(Fault::DiskFull) => Err(canopydb::Error::Io(Error::from(ErrorKind::StorageFull))),
+            Some(Fault::WriteFailure) => {
+                Err(canopydb::Error::Io(Error::other("injected write failure")))
+            }
+            Some(Fault::Internal) => Err(canopydb::Error::DatabaseHalted),
+            Some(Fault::Panic) => panic!("injected engine panic"),
+            Some(Fault::MultiLine) => {
+                Err(canopydb::Error::Io(Error::other("first line\nsecond line")))
+            }
+        }
+    }
+
+    #[cfg(not(feature = "fail-points"))]
+    pub(crate) fn inject() -> Result<(), canopydb::Error> {
+        Ok(())
     }
 }
 
