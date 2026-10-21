@@ -1,8 +1,12 @@
 ﻿<#
 .SYNOPSIS
-    Acceptance of the crime query app on any compatible CSV (query app PRD, AC-C1 to AC-C18).
+    Acceptance of the crime query app on any compatible CSV: the query app PRD (AC-C1 to AC-C18)
+    and the startswith PRD of its prefix conditions (AC-S1 to AC-S12).
 
 .DESCRIPTION
+    Both PRDs share one run: the AC-C rows are the consultor criteria repeated on the build that
+    holds the prefix conditions, and give AC-S12 ("los resultados no cambian").
+
     On the reference extract, recognized by the source SHA-256 in the dataset's manifest, it also
     requires the exact figures of the PRDs; on any other CSV every count is only compared with the
     independent filtering of that CSV.
@@ -21,6 +25,11 @@
       AC-C1..18  one PASS/FAIL row per criterion, several for some of them: AC-C10 has one row per
                  validation of the parent and child query tables, each provoked through the binary
                  with its exact message and the exit code of decision C6;
+      AC-S1..12  the same for the prefix conditions (`--startswith`): every count is compared with
+                 `crime-acceptance select --startswith` on the CSV, and on the reference extract the
+                 PRD figures (1.256.646 CRIM, 269.655 JA, 3.095.148 THEFT or CRIM, 5.762.199 H) are
+                 asserted too; AC-S11 has one row per row of the PRD's validation table; AC-S12
+                 passes when every AC-C row passed;
       verifier   crime-acceptance on the full dataset, with --reference on the reference extract
                  (AC-C18).
 
@@ -36,7 +45,7 @@
     verifier step here) reads them as the smallest and the largest IDs. Both readings are checked
     across the two scripts.
 
-    Memory (AC-C13) is the peak private committed bytes (PeakPagefileUsage, the counter behind
+    Memory (AC-C13, AC-S8) is the peak private committed bytes (PeakPagefileUsage, the counter behind
     PeakPagedMemorySize64), sampled every 10 ms and read once more after the process ends.
 
     It writes query-acceptance-report.md to -WorkDir and exits with 1 when any check fails. The
@@ -91,6 +100,12 @@ $Utf8 = New-Object System.Text.UTF8Encoding $false
 # Fixed figures of the reference extract (parent PRD, AC4 and AC5); -1 on another CSV (no figure).
 $TheftFigure = 1838502
 $NoCommunityAreaFigure = 613720
+# Fixed figures of the reference extract (startswith PRD); -1 on another CSV.
+$CrimFigure = 1256646        # Primary Type starts with CRIM
+$JaFigure = 269655           # Case Number starts with JA
+$TheftCrimFigure = 3095148   # Primary Type THEFT or starting with CRIM
+$CaseHFigure = 5762199       # Case Number starts with H
+$DistrictEightFigure = 0     # District starts with 8: codes are never padded
 # Queries shared by several criteria: a month whose first and last minutes both hold records on
 # the reference CSV, a day inside it, the spring-forward hour of 2019 and a rare primary type.
 $Month = 'Date=2019-08-01..2019-08-31'
@@ -128,6 +143,11 @@ $Messages = @{
     InvalidDate     = '"2019-13-01" no es una fecha válida. Formato esperado: AAAA-MM-DD [hh:mm].'
     InvertedRange   = 'La fecha inicial es posterior a la final.'
     Schema          = 'El conjunto usa el esquema v1 y este consultor admite v2. Regenera el conjunto.'
+    EmptyPrefix     = 'El prefijo de "Primary Type" no puede estar vacío.'
+    NotText         = '"Empieza por" solo se admite en campos de texto: Case Number, Primary Type, District, IUCR, Location Description, Beat y FBI Code.'
+    BlockCondition  = 'El campo "Block" no admite condiciones. Campos disponibles: ' + ($Conditionable -join ', ') + '.'
+    DescCondition   = 'El campo "Description" no admite condiciones. Campos disponibles: ' + ($Conditionable -join ', ') + '.'
+    PrefixForm      = 'La condición "Primary Type" no tiene la forma CAMPO=PREFIJO.'
 }
 function Get-NotFoundMessage([string]$Folder) { "No se encontró un conjunto de datos válido en $Folder." }
 function Get-UnreadableMessage([string]$Folder) { "No se pudo leer el conjunto de datos en $Folder." }
@@ -582,8 +602,8 @@ function Test-SameValue([string]$CsvValue, $JsonValue) {
     [math]::Abs($number - [double]$JsonValue) -le 1e-9
 }
 
-# Table, CSV and JSON of the same query (AC-C8): valid, the same records, nothing else on stdout.
-function Test-Formats([string]$Label, [string[]]$Arguments, [string[]]$ExpectedWarnings) {
+# Table, CSV and JSON of the same query (AC-C8, AC-S9): valid, the same records, nothing else on stdout.
+function Test-Formats([string]$Label, [string[]]$Arguments, [string[]]$ExpectedWarnings, [string]$Criterion = 'AC-C8') {
     $tableRun = Invoke-Query -Arguments $Arguments
     $csvRun = Invoke-Query -Arguments ($Arguments + @('--format', 'csv'))
     $jsonRun = Invoke-Query -Arguments ($Arguments + @('--format', 'json'))
@@ -637,18 +657,18 @@ function Test-Formats([string]$Label, [string[]]$Arguments, [string[]]$ExpectedW
     $evidence = '`{0}` as table, CSV and JSON: exit {1}/{2}/{3}; {4} records in each, the same IDs and field values (CSV parsed strictly and by ConvertFrom-Csv, JSON by ConvertFrom-Json, every CSV value found in order in its table row); stdout holds only results, stderr the stats line{5}' -f `
         (Format-Query $tableRun), $tableRun.ExitCode, $csvRun.ExitCode, $jsonRun.ExitCode, $count, $(if ($ExpectedWarnings) { ' and "' + ($ExpectedWarnings -join '", "') + '"' } else { '' })
     if ($problems.Count -gt 0) { $evidence += '; PROBLEMS: ' + (($problems | Select-Object -First 5) -join '; ') }
-    Add-Result "AC-C8 ($Label)" ($problems.Count -eq 0 -and $count -gt 0) $evidence
+    Add-Result "$Criterion ($Label)" ($problems.Count -eq 0 -and $count -gt 0) $evidence
 }
 
-# A query that must be refused (AC-C10): exactly one stderr line with the message, nothing on
-# stdout, and the exit code of decision C6.
+# A query that must be refused (AC-C10, AC-S11): exactly one stderr line with the message, nothing
+# on stdout, and the exit code of decision C6.
 #
 # With -AfterWriting, the query's output file is -AfterWriting and the query must fail after it
 # started writing records: while it runs, its temporary file `.<target name>.XXXXXX.crime-query.tmp`
 # must be seen holding more bytes than the header line. A run that fails when it opens the
 # dataset never creates that file, and one that fails before its first record writes the header
 # line at most. The run gets the properties TemporaryName, TemporaryBytes and WroteRecords.
-function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir, [string]$AfterWriting) {
+function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir, [string]$AfterWriting, [string]$Criterion = 'AC-C10') {
     $watch = $null
     if ($AfterWriting) {
         $watch = New-Object TemporaryOutputWatch -ArgumentList (Split-Path -Parent $AfterWriting), ('*' + $TemporarySuffix)
@@ -675,7 +695,7 @@ function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [i
         $run | Add-Member -NotePropertyName TemporaryBytes -NotePropertyValue $(if ($temporary.Count -eq 1) { $temporary[0].Value } else { 0 })
         $run | Add-Member -NotePropertyName WroteRecords -NotePropertyValue $wrote
     }
-    Add-Result "AC-C10 $Row" $ok $evidence
+    Add-Result "$Criterion $Row" $ok $evidence
     $run
 }
 
@@ -745,6 +765,11 @@ if (-not (Test-Sha256 $SourceSha256)) {
 if (-not $IsReference) {
     $TheftFigure = -1
     $NoCommunityAreaFigure = -1
+    $CrimFigure = -1
+    $JaFigure = -1
+    $TheftCrimFigure = -1
+    $CaseHFigure = -1
+    $DistrictEightFigure = -1
 }
 # The query app's CSV rows against the source rows: byte for byte on the reference extract, which
 # quotes every field like the query app does; field by field on another CSV, which may quote less
@@ -823,7 +848,7 @@ $listingRuns = [ordered]@{
     "CSV file of $RareType"               = Invoke-Query -Arguments @('--where', "Primary Type=$RareType", '--format', 'csv', '--output', (Join-Path $OutDir 'memory-rare.csv')) -SampleMemory
 }
 $memoryRows = New-Object System.Collections.Generic.List[string]
-function Test-MemoryGroup([string]$Label, $Runs) {
+function Test-MemoryGroup([string]$Label, $Runs, [string]$Criterion = 'AC-C13') {
     $peaks = @($Runs.Values | ForEach-Object { $_.PeakBytes })
     $min = ($peaks | Measure-Object -Minimum).Minimum
     $max = ($peaks | Measure-Object -Maximum).Maximum
@@ -836,13 +861,19 @@ function Test-MemoryGroup([string]$Label, $Runs) {
         '{0}: {1} results, {2}' -f $name, (Format-Count $resultCount), (Format-Mib $run.PeakBytes)
     }
     $ratio = if ($min -gt 0) { $max / $min } else { [double]::PositiveInfinity }
-    Add-Result "AC-C13 ($Label)" ($allOk -and $ratio -le $MemoryRatioLimit) ('{0}; largest/smallest peak = {1} (rule: at most {2}, same order whatever the number of results; the query app shares a block cache bounded to 2,048 blocks, about 8 MiB)' -f `
+    Add-Result "$Criterion ($Label)" ($allOk -and $ratio -le $MemoryRatioLimit) ('{0}; largest/smallest peak = {1} (rule: at most {2}, same order whatever the number of results; the query app shares a block cache bounded to 2,048 blocks, about 8 MiB)' -f `
             ($parts -join '; '), (Format-Invariant '{0:N2}' @($ratio)), $MemoryRatioLimit)
 }
 Test-MemoryGroup 'counts' $memoryRuns
 Test-MemoryGroup 'records written' $listingRuns
+# AC-S8: a prefix that spans 5.761.892 case numbers against one that spans a single one.
+$prefixMemoryRuns = [ordered]@{
+    'count Case Number starts with H'        = Invoke-Query -Arguments @('--startswith', 'Case Number=H', '--count') -SampleMemory
+    'count Case Number starts with JK438266' = Invoke-Query -Arguments @('--startswith', 'Case Number=JK438266', '--count') -SampleMemory
+}
+Test-MemoryGroup 'Case Number prefixes' $prefixMemoryRuns -Criterion 'AC-S8'
 Add-Section (@(
-        '## AC-C13: peak private memory'
+        '## AC-C13 and AC-S8: peak private memory'
         ''
         'Peak private committed bytes (PeakPagefileUsage, the counter behind PeakPagedMemorySize64), sampled every 10 ms and read again after the exit.'
         ''
@@ -878,6 +909,18 @@ Start-Select 'theft-month-street' @('--where', 'Primary Type=THEFT', '--range', 
 Start-Select 'theft-day' @('--where', 'Primary Type=THEFT', '--range', $Day, '--rows-out', $DayRows)
 Start-Select 'slice-1' @('--range', $Everything, '--rows-out', $Slice1Rows) $Slice1
 Start-Select 'slice-2' @('--range', $Everything, '--rows-out', $Slice2Rows) $Slice2
+# The prefix conditions (startswith PRD).
+$CrimIds = Join-Path $OutDir 'select-prefix-crim.txt'
+$CrimDayRows = Join-Path $OutDir 'select-prefix-crim-day.csv'
+Start-Select 'prefix-crim' @('--startswith', 'Primary Type=CRIM', '--ids-out', $CrimIds)
+Start-Select 'prefix-ja' @('--startswith', 'Case Number=JA')
+Start-Select 'theft-prefix-01' @('--where', 'Primary Type=THEFT', '--startswith', 'District=01')
+Start-Select 'prefix-resid-month' @('--startswith', 'Location Description=resid', '--range', $Month)
+Start-Select 'theft-or-prefix-crim' @('--where', 'Primary Type=THEFT', '--startswith', 'Primary Type=CRIM')
+Start-Select 'prefix-district-8' @('--startswith', 'District=8')
+Start-Select 'prefix-district-00' @('--startswith', 'District=00')
+Start-Select 'prefix-case-h' @('--startswith', 'Case Number=H')
+Start-Select 'prefix-crim-day' @('--startswith', 'Primary Type=CRIM', '--range', $Day, '--rows-out', $CrimDayRows)
 $verifierArguments = @('--csv', $Csv, '--dataset', $DatasetDir)
 if ($IsReference) { $verifierArguments += '--reference' }
 $verifierStarted = Start-Program -FilePath $AcceptanceExe -Arguments $verifierArguments
@@ -1254,6 +1297,103 @@ foreach ($sample in $sampleIds) {
 }
 Add-Result 'AC-C1' $c1Ok (($c1Rows -join '; ') + ' (each queried alone with `--format csv`; the source lines copied by `crime-acceptance select --where ID=... --rows-out`, the first and last also read from the CSV directly)')
 
+# --- AC-S1 to AC-S11: prefix conditions (startswith PRD) ---
+
+Write-Step 'AC-S: prefix conditions'
+$crimSet = [QueryAcceptance]::ReadIds($CrimIds)
+
+# AC-S1: the three spellings give the same count; a listing shows the type as in the CSV.
+$crimSpellings = @(foreach ($spelling in @('crim', 'Crim', 'CRIM')) {
+        Test-Count "AC-S1 (Primary Type starts with $spelling)" @('--startswith', "Primary Type=$spelling") 'prefix-crim' $CrimFigure
+    })
+$crimListing = Invoke-Query -Arguments @('--startswith', 'Primary Type=crim', '--limit', '20', '--format', 'csv')
+$crimRecords = Read-CsvRecords $crimListing.Stdout
+$crimTypes = if ($null -ne $crimRecords) { (@($crimRecords | ForEach-Object { $_[5] }) | Sort-Object -Unique) -join ', ' } else { '-' }
+$crimListed = $crimListing.ExitCode -eq 0 -and $null -ne $crimRecords -and $crimRecords.Count -eq 20 `
+    -and @($crimRecords | Where-Object { -not $_[5].StartsWith('CRIM', [System.StringComparison]::Ordinal) -or -not $crimSet.Contains([long]$_[0]) }).Count -eq 0
+Add-Result 'AC-S1 (listed as in the CSV)' $crimListed ('`{0}`: {1} records, all in the select result, Primary Type of each (uppercase as in the CSV): {2}' -f `
+        (Format-Query $crimListing), $(if ($null -ne $crimRecords) { $crimRecords.Count } else { 0 }), $crimTypes)
+
+# AC-S2: a prefix on the case number is an indexed condition on its own.
+$s2 = Test-Count 'AC-S2' @('--startswith', 'Case Number=JA') 'prefix-ja' $JaFigure -Extra '; no other condition'
+Add-Result 'AC-S2 (index reported)' ($null -ne $s2.Stats -and $s2.Stats.Indexes -eq 'Case Number') ('stats line reports the indexes used: "{0}"' -f $(if ($s2.Stats) { $s2.Stats.Indexes } else { 'missing' }))
+
+# AC-S3: an equality and a prefix on two indexed fields.
+$s3 = Test-Count 'AC-S3' @('--where', 'Primary Type=THEFT', '--startswith', 'District=01') 'theft-prefix-01'
+Add-Result 'AC-S3 (indexes reported)' ($null -ne $s3.Stats -and $s3.Stats.Indexes -eq 'Primary Type, District') ('stats line reports the indexes used: "{0}"' -f $(if ($s3.Stats) { $s3.Stats.Indexes } else { 'missing' }))
+
+# AC-S4: a prefix on a field without an index is a filter; alone it is refused (C10).
+$s4 = Test-Count 'AC-S4' @('--startswith', 'Location Description=resid', '--range', $Month) 'prefix-resid-month'
+Add-Result 'AC-S4 (filter reported)' ($null -ne $s4.Stats -and $s4.Stats.Indexes -eq 'Date' -and $s4.Stats.Filters -eq 'Location Description') `
+('stats line: indexes "{0}", filters without an index "{1}"' -f $(if ($s4.Stats) { $s4.Stats.Indexes } else { '-' }), $(if ($s4.Stats) { $s4.Stats.Filters } else { '-' }))
+$residAlone = Test-Rejection 'only prefixes on fields without an index' @('--startswith', 'Location Description=resid', '--count') $Messages.NoIndexed 1 -Criterion 'AC-S11'
+Add-Result 'AC-S4 (prefix alone rejected)' ($residAlone.ExitCode -eq 1 -and $residAlone.Stderr.Trim() -ceq $Messages.NoIndexed) `
+('`{0}`: exit {1}; stderr "{2}"' -f (Format-Query $residAlone), $residAlone.ExitCode, $residAlone.Stderr.Trim())
+
+# AC-S5: overlapping alternative prefixes count each record once.
+$crimAlone = $crimSpellings[2]
+$s5 = Test-Count 'AC-S5' @('--startswith', 'Primary Type=CRIM', '--startswith', 'Primary Type=CRIMINAL D') 'prefix-crim' $CrimFigure -Extra ('; the query with CRIM alone: {0}' -f (Format-Count $crimAlone.Count))
+Add-Result 'AC-S5 (no record counted twice)' ($s5.Count -ge 0 -and $s5.Count -eq $crimAlone.Count) ('CRIM or CRIMINAL D: {0}; CRIM alone: {1}' -f (Format-Count $s5.Count), (Format-Count $crimAlone.Count))
+
+# AC-S6 (P1): an equality and a prefix on the same field are alternatives.
+Test-Count 'AC-S6' @('--where', 'Primary Type=THEFT', '--startswith', 'Primary Type=CRIM') 'theft-or-prefix-crim' $TheftCrimFigure | Out-Null
+
+# AC-S7: codes are never padded; no match is an empty result without a warning (P4).
+$s7 = Test-Count 'AC-S7 (District starts with 8)' @('--startswith', 'District=8') 'prefix-district-8' $DistrictEightFigure
+$s7Warnings = @(Get-Lines $s7.Run.Stderr | Where-Object { $_ -ne $(if ($s7.Stats) { $s7.Stats.Line } else { '' }) })
+Add-Result 'AC-S7 (no error, no warning)' ($s7.Run.ExitCode -eq 0 -and $null -ne $s7.Stats -and $s7Warnings.Count -eq 0 -and ($DistrictEightFigure -lt 0 -or $s7.Count -eq 0)) `
+('`{0}`: exit {1}, count {2}; stderr besides the stats line: {3}' -f (Format-Query $s7.Run), $s7.Run.ExitCode, (Format-Count $s7.Count), $(if ($s7Warnings.Count -eq 0) { 'nothing' } else { $s7Warnings -join ' / ' }))
+Test-Count 'AC-S7 (District starts with 00)' @('--startswith', 'District=00') 'prefix-district-00' | Out-Null
+
+# AC-S8: the count behind the memory group (measured with AC-C13, on a quiet machine).
+$hRun = $prefixMemoryRuns['count Case Number starts with H']
+$hCount = Get-QueryCount $hRun
+$hFixedText = if ($CaseHFigure -ge 0) { '; PRD figure {0}' -f (Format-Count $CaseHFigure) } else { '' }
+Add-Result 'AC-S8 (count of H)' ($hCount -ge 0 -and $hCount -eq (Get-SelectCount 'prefix-case-h') -and ($CaseHFigure -lt 0 -or $hCount -eq $CaseHFigure)) `
+('`{0}`: {1}; select on the CSV: {2}{3}' -f (Format-Query $hRun), (Format-Count $hCount), (Format-Count (Get-SelectCount 'prefix-case-h')), $hFixedText)
+
+# AC-S9: table, CSV and JSON hold the same records; the JSON holds the prefix in lowercase.
+$crimDayArgs = @('--startswith', 'Primary Type=CRIM', '--range', $Day)
+Test-Formats 'Primary Type starts with CRIM on one day' $crimDayArgs @() -Criterion 'AC-S9'
+$crimDayRun = Invoke-Query -Arguments ($crimDayArgs + @('--format', 'csv'))
+$crimDayFile = Join-Path $OutDir 'query-prefix-crim-day.csv'
+Write-Utf8 $crimDayFile $crimDayRun.Stdout
+$crimDayDiff = if ($crimDayRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($crimDayFile, $CrimDayRows, $ByValue) } else { 'the query failed' }
+Add-Result 'AC-S9 (equals the CSV rows)' ($null -eq $crimDayDiff) ('`{0}`: {1} rows; select: {2}; the same rows {4}, in any order: {3}' -f `
+        (Format-Query $crimDayRun), (@(Get-Lines $crimDayRun.Stdout).Count - 1), (Get-SelectCount 'prefix-crim-day'), $(if ($null -eq $crimDayDiff) { 'yes' } else { $crimDayDiff }), $RowMatchText)
+$s9Run = Invoke-Query -Arguments ($crimDayArgs + @('--format', 'json'))
+$s9Document = try { $s9Run.Stdout | ConvertFrom-Json } catch { $null }
+$s9Prefixes = '-'
+$s9Ok = $false
+$s9Query = 'the JSON does not parse'
+if ($null -ne $s9Document) {
+    $s9Condition = @(@($s9Document.query.conditions) | Where-Object { $_.field -eq 'Primary Type' })
+    if ($s9Condition.Count -eq 1 -and $null -ne $s9Condition[0].PSObject.Properties['startswith']) { $s9Prefixes = @($s9Condition[0].startswith) -join ',' }
+    $s9Ok = $s9Run.ExitCode -eq 0 -and $s9Condition.Count -eq 1 -and $s9Prefixes -ceq 'crim'
+    $s9Query = $s9Document.query | ConvertTo-Json -Depth 6 -Compress
+}
+Add-Result 'AC-S9 (condition in the JSON)' $s9Ok ('`{0}`: exit {1}; query {2}; the Primary Type condition''s startswith holds [{3}] (expected the lowercase prefix crim)' -f `
+        (Format-Query $s9Run), $s9Run.ExitCode, $s9Query, $s9Prefixes)
+
+# AC-S10 (C11): a limit returns exactly N records of the unlimited result.
+$s10Run = Invoke-Query -Arguments @('--startswith', 'Primary Type=CRIM', '--limit', '100', '--format', 'csv')
+$s10Records = Read-CsvRecords $s10Run.Stdout
+$s10Count = if ($null -ne $s10Records) { $s10Records.Count } else { -1 }
+$s10InResult = $null -ne $s10Records -and @($s10Records | Where-Object { -not $crimSet.Contains([long]$_[0]) }).Count -eq 0
+$s10Distinct = $null -ne $s10Records -and @($s10Records | ForEach-Object { $_[0] } | Sort-Object -Unique).Count -eq $s10Count
+$s10Ok = $s10Run.ExitCode -eq 0 -and $crimSet.Count -gt 100 -and $crimSet.Count -eq (Get-SelectCount 'prefix-crim') -and $s10Count -eq 100 -and $s10InResult -and $s10Distinct
+Add-Result 'AC-S10' $s10Ok ('`{0}`: exit {1}, {2} records, distinct: {3}, all in the {4} IDs select lists for CRIM: {5}' -f `
+        (Format-Query $s10Run), $s10Run.ExitCode, $s10Count, $s10Distinct, (Format-Count $crimSet.Count), $s10InResult)
+
+# AC-S11: every row of the PRD's validation table (the C10 row is checked with AC-S4 above).
+Test-Rejection 'empty prefix' @('--startswith', 'Primary Type=') $Messages.EmptyPrefix 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'prefix on a field that is not text (Ward)' @('--startswith', 'Ward=1') $Messages.NotText 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'prefix on a field that is not text (Date)' @('--startswith', 'Date=2019') $Messages.NotText 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'prefix on Block' @('--startswith', 'Block=001') $Messages.BlockCondition 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'prefix on Description' @('--startswith', 'Description=SIMPLE') $Messages.DescCondition 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'prefix on a nonexistent field' @('--startswith', 'Gravedad=alta') $Messages.UnknownField 1 -Criterion 'AC-S11' | Out-Null
+Test-Rejection 'condition without =' @('--startswith', 'Primary Type') $Messages.PrefixForm 2 -Criterion 'AC-S11' | Out-Null
+
 # --- AC-C18: the independent verifier ---
 
 Write-Step 'AC-C18: waiting for the independent verifier'
@@ -1279,6 +1419,14 @@ Add-Section (@(
         (Format-Code $verifier.Stdout)
     ) -join "`n")
 
+# --- AC-S12: the consultor criteria give the same results ---
+
+$consultorRows = @($Results | Where-Object { $_.Criterion -match '^AC-C[0-9]+' })
+$consultorFailed = @($consultorRows | Where-Object { $_.Result -ne 'PASS' })
+$consultorCriteria = @($consultorRows | ForEach-Object { [regex]::Match($_.Criterion, '^AC-C[0-9]+').Value } | Sort-Object -Unique)
+Add-Result 'AC-S12' ($consultorRows.Count -gt 0 -and $consultorFailed.Count -eq 0) ('the consultor criteria repeated on this build: {0} AC-C rows of {1} criteria, not PASS: {2}' -f `
+        $consultorRows.Count, $consultorCriteria.Count, $(if ($consultorFailed.Count -eq 0) { 'none' } else { (@($consultorFailed | ForEach-Object { $_.Criterion }) -join ', ') }))
+
 # --- Report ---
 
 $selectRows = foreach ($select in $Selects.Values) {
@@ -1292,12 +1440,17 @@ Add-Section (@(
         $selectRows
     ) -join "`n")
 
-$ordered = @($Results | Sort-Object @{ Expression = { $m = [regex]::Match($_.Criterion, '^AC-C([0-9]+)'); if ($m.Success) { [int]$m.Groups[1].Value } else { 99 } } }, Order)
+# AC-C rows by criterion, then the rows of no criterion, then AC-S rows by criterion.
+$ordered = @($Results | Sort-Object @{ Expression = {
+            $m = [regex]::Match($_.Criterion, '^AC-([CS])([0-9]+)')
+            if (-not $m.Success) { 99 } elseif ($m.Groups[1].Value -eq 'C') { [int]$m.Groups[2].Value } else { 1000 + [int]$m.Groups[2].Value }
+        }
+    }, Order)
 $failed = @($Results | Where-Object { $_.Result -ne 'PASS' })
 $resultRows = foreach ($result in $ordered) {
     '| {0} | {1} | {2} |' -f $result.Criterion, $result.Result, $result.Evidence.Replace('|', '\|')
 }
-$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-C[0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
+$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-[CS][0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
 $overall = if ($failed.Count -eq 0) { "PASS: all $($Results.Count) checks passed ($($criteriaSeen.Count) criteria)" } else { "FAIL: $($failed.Count) of $($Results.Count) checks failed" }
 $duration = ((Get-Date) - $started).TotalSeconds
 $report = @(

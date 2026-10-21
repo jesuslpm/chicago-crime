@@ -250,3 +250,60 @@ fn the_help_is_in_spanish_and_ends_with_the_exit_codes() {
     }
     assert!(text.ends_with('\n'));
 }
+
+// Prefix conditions (startswith PRD).
+
+#[test]
+fn startswith_conditions_keep_their_place_among_the_others() {
+    let options = options(&with_dataset(&[
+        "--startswith",
+        "Primary Type=CRIM",
+        "--where",
+        "Primary Type=THEFT",
+        "--range",
+        "Date=2020-01-01..",
+        "--startswith",
+        " district =0 1=",
+        "--startswith",
+        "Case Number=",
+    ]));
+    assert_eq!(
+        options.conditions,
+        [
+            RawCondition::starts_with("Primary Type", "CRIM"),
+            RawCondition::equal("Primary Type", "THEFT"),
+            RawCondition::range("Date", "2020-01-01", ""),
+            RawCondition::starts_with(" district ", "0 1="),
+            // An empty prefix is a query rule (exit code 1), not a command-line one.
+            RawCondition::starts_with("Case Number", ""),
+        ]
+    );
+}
+
+#[test]
+fn a_startswith_without_equals_sign_is_rejected() {
+    assert_eq!(
+        invalid(&with_dataset(&["--startswith", "Primary Type"])),
+        "La condición \"Primary Type\" no tiene la forma CAMPO=PREFIJO."
+    );
+}
+
+#[test]
+fn the_help_describes_startswith_with_the_other_conditions() {
+    let text = help(&["--help"]);
+    for expected in [
+        "--startswith <CAMPO=PREFIJO>",
+        "Condición \"empieza por\"",
+        "Case Number, Primary Type y District",
+        "IUCR, Location Description, Beat y FBI Code",
+    ] {
+        assert!(text.contains(expected), "{expected:?} in:\n{text}");
+    }
+    let where_at = text.find("--where").expect("--where");
+    let startswith_at = text.find("--startswith").expect("--startswith");
+    let limit_at = text.find("--limit").expect("--limit");
+    assert!(
+        where_at < startswith_at && startswith_at < limit_at,
+        "{text}"
+    );
+}

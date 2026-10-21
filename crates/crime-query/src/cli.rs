@@ -1,7 +1,7 @@
 //! Command line options and the [`Options`] they resolve to. Help and errors are in Spanish.
 //!
 //! Everything checked here is the shape of the command line (exit code 2, decision C6): the
-//! options clap knows, `CAMPO=VALOR` and `Date=DESDE..HASTA`, the limit, the format and the
+//! options clap knows, `CAMPO=VALOR`, `CAMPO=PREFIJO` and `Date=DESDE..HASTA`, the limit, the format and the
 //! combinations of count only, format and output file. What the conditions say (fields, values,
 //! dates) is checked by [`crate::Query::build`] and rejected with exit code 1.
 
@@ -57,6 +57,20 @@ struct Args {
                 Las fechas van como AAAA-MM-DD [hh:mm] y abarcan el día o el minuto entero."
     )]
     conditions: Vec<String>,
+
+    #[arg(
+        long = "startswith",
+        id = "startswith",
+        value_name = "CAMPO=PREFIJO",
+        help = "Condición \"empieza por\": el campo empieza por PREFIJO, sin distinguir \
+                mayúsculas; el prefijo se toma tal cual, espacios incluidos, y los códigos no \
+                se completan con ceros. Solo en campos de texto. Sobre Case Number, Primary \
+                Type y District es una condición indexada y puede ir sola; sobre IUCR, Location \
+                Description, Beat y FBI Code es un filtro sin índice. Los prefijos y los valores \
+                de --where sobre un mismo campo son alternativos (O). Un campo \"sin valor\" no \
+                empieza por ningún prefijo."
+    )]
+    prefixes: Vec<String>,
 
     #[arg(
         long,
@@ -125,7 +139,7 @@ pub enum Mode {
 pub struct Options {
     /// The generator's output folder, exactly as given.
     pub dataset: PathBuf,
-    /// `--where` and `--range` in command-line order, split but not yet checked.
+    /// `--where`, `--range` and `--startswith` in command-line order, split but not yet checked.
     pub conditions: Vec<RawCondition>,
     pub limit: Option<NonZeroU64>,
     pub mode: Mode,
@@ -196,32 +210,26 @@ fn validate(args: Args, matches: &ArgMatches) -> Result<Options, String> {
     })
 }
 
-/// Every `--where` and `--range`, split, in the order they were typed, so that the first wrong
-/// one is the one reported.
+/// Every `--where`, `--range` and `--startswith`, split, in the order they were typed, so that
+/// the first wrong one is the one reported.
 fn conditions_in_order(args: &Args, matches: &ArgMatches) -> Result<Vec<RawCondition>, String> {
-    let positions = |id: &str| -> Vec<usize> {
-        matches
-            .indices_of(id)
-            .map(Iterator::collect)
-            .unwrap_or_default()
-    };
-    let mut typed: Vec<(usize, &str, bool)> = Vec::new();
-    for (position, text) in positions("where").into_iter().zip(&args.conditions) {
-        typed.push((position, text, false));
-    }
-    for (position, text) in positions("range").into_iter().zip(&args.range) {
-        typed.push((position, text, true));
+    type Split = fn(&str) -> Result<RawCondition, String>;
+    let options: [(&str, &[String], Split); 3] = [
+        ("where", &args.conditions, split_condition),
+        ("range", &args.range, split_range),
+        ("startswith", &args.prefixes, split_prefix),
+    ];
+    let mut typed: Vec<(usize, &str, Split)> = Vec::new();
+    for (id, texts, split) in options {
+        let positions = matches.indices_of(id).into_iter().flatten();
+        for (position, text) in positions.zip(texts) {
+            typed.push((position, text, split));
+        }
     }
     typed.sort_unstable_by_key(|&(position, ..)| position);
     typed
         .into_iter()
-        .map(|(_, text, is_range)| {
-            if is_range {
-                split_range(text)
-            } else {
-                split_condition(text)
-            }
-        })
+        .map(|(_, text, split)| split(text))
         .collect()
 }
 
@@ -231,6 +239,14 @@ fn split_condition(text: &str) -> Result<RawCondition, String> {
         .split_once('=')
         .ok_or_else(|| messages::malformed_condition(text))?;
     Ok(RawCondition::equal(field, value))
+}
+
+/// `CAMPO=PREFIJO`, split at the first `=`; an empty prefix is checked with the field.
+fn split_prefix(text: &str) -> Result<RawCondition, String> {
+    let (field, prefix) = text
+        .split_once('=')
+        .ok_or_else(|| messages::malformed_prefix(text))?;
+    Ok(RawCondition::starts_with(field, prefix))
 }
 
 /// `CAMPO=DESDE..HASTA` with at least one end.

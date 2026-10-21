@@ -1,8 +1,9 @@
 //! Searched index values and the streams of IDs read from an index table.
 //!
 //! Every index table holds the keys `pack((value, id))` with an empty value (decision D2), so
-//! the entries of one value are next to each other, sorted by ascending ID, and a date range is
-//! one run of keys sorted by date and then ID. A stream seeks to the first key of its value or
+//! the entries of one value are next to each other, sorted by ascending ID, and a date range or
+//! the text values that start with a prefix are one run of keys sorted by value and then ID.
+//! A stream seeks to the first key of its value or
 //! range and decodes key after key until the first one outside it; it holds one table iterator
 //! and never collects IDs, so its memory does not grow with the result (decision C7).
 
@@ -106,10 +107,12 @@ enum Bound {
     Value(IndexValue),
     /// At the first key whose date is later than these seconds.
     DatesUpTo(i64),
+    /// At the first key whose text value does not start with this lowercase prefix.
+    Prefix(String),
 }
 
-/// The IDs of one index value, in ascending ID order, or of one date range, in date and then ID
-/// order, read lazily from the index table.
+/// The IDs of one index value, in ascending ID order, or of one date range or text prefix, in
+/// value and then ID order, read lazily from the index table.
 ///
 /// A read failure anywhere during the stream ends it with one [`ReadError`], never with fewer
 /// IDs; nothing follows an error.
@@ -135,6 +138,24 @@ impl IdStream {
             table,
             value.prefix(),
             Bound::Value(value.clone()),
+            health,
+            folder,
+        )
+    }
+
+    /// Text values that start with `prefix`, already in the [`index_text`] form. Packed strings
+    /// sort as their UTF-8 bytes, so those values are one run of keys from the packed `(prefix,)`
+    /// on, sorted by value and then ID.
+    pub(crate) fn for_prefix(
+        table: &Table,
+        prefix: &str,
+        health: Arc<ReadHealth>,
+        folder: PathBuf,
+    ) -> Self {
+        Self::new(
+            table,
+            pack(&(prefix,)),
+            Bound::Prefix(prefix.to_owned()),
             health,
             folder,
         )
@@ -209,6 +230,9 @@ impl IdStream {
                 Element::Int(seconds) => seconds <= *last,
                 _ => return Some(Err(self.error(format!("malformed date key {key:02x?}")))),
             },
+            Bound::Prefix(prefix) => {
+                matches!(&value, Element::String(found) if found.starts_with(prefix.as_str()))
+            }
         };
         within.then_some(Ok(id))
     }

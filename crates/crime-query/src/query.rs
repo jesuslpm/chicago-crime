@@ -1,5 +1,5 @@
-//! The typed query: the raw `--where` and `--range` conditions checked, typed and grouped the
-//! way the engine resolves them (decision C10).
+//! The typed query: the raw `--where`, `--range` and `--startswith` conditions checked, typed and
+//! grouped the way the engine resolves them (decision C10).
 //!
 //! - The ID condition is a sorted list of distinct IDs, read from the primary table.
 //! - Each equality on an indexed field (case number, primary type, district, community area)
@@ -9,6 +9,11 @@
 //!   `Date=` alternative (OR), intersected with every range (AND), resolved per decision C2.
 //! - Every other conditionable field becomes a [`Filter`] the engine applies to the records the
 //!   indexes found (decision C3); its alternatives are OR.
+//! - A prefix ("empieza por", startswith PRD) is one more alternative of its field, next to the
+//!   field's values (decision P1): on case number, primary type or district it belongs to the
+//!   field's [`Equality`] and counts as an indexed condition (decision P3); on IUCR, Location
+//!   Description, Beat or FBI Code to its [`Filter`]. Prefixes are held in the [`index_text`]
+//!   form, so they compare as the values do (decision C1).
 //!
 //! Every condition is checked in command-line order, so the first wrong one is the one reported;
 //! only then is the indexed condition required.
@@ -39,6 +44,8 @@ pub enum RawCondition {
         from: String,
         to: String,
     },
+    /// `--startswith CAMPO=PREFIJO`.
+    StartsWith { field: String, prefix: String },
 }
 
 impl RawCondition {
@@ -54,6 +61,13 @@ impl RawCondition {
             field: field.to_owned(),
             from: from.to_owned(),
             to: to.to_owned(),
+        }
+    }
+
+    pub fn starts_with(field: &str, prefix: &str) -> Self {
+        Self::StartsWith {
+            field: field.to_owned(),
+            prefix: prefix.to_owned(),
         }
     }
 }
@@ -92,7 +106,7 @@ impl DateInterval {
 }
 
 /// An equality on a field with a secondary index other than the date: the IDs of every
-/// alternative value, joined.
+/// alternative value and of every alternative prefix, joined.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Equality {
     field: Field,
@@ -100,6 +114,8 @@ pub struct Equality {
     values: Vec<IndexValue>,
     /// Each alternative as the analyst first typed it, one per value.
     typed: Vec<String>,
+    /// The distinct prefixes in first-appearance order, in the [`index_text`] form.
+    prefixes: Vec<String>,
 }
 
 impl Equality {
@@ -121,6 +137,22 @@ impl Equality {
     pub fn typed(&self) -> &[String] {
         &self.typed
     }
+
+    /// The distinct alternative prefixes in first-appearance order, lowercase; only the text
+    /// fields (case number, primary type, district) have them.
+    pub fn prefixes(&self) -> &[String] {
+        &self.prefixes
+    }
+
+    /// Whether the record's field is any alternative value or starts with any alternative
+    /// prefix, for when the engine checks this condition on the record instead of the index.
+    pub fn matches(&self, record: &CrimeRecord) -> bool {
+        let actual = record_value(self.field, record);
+        self.values
+            .iter()
+            .any(|value| Value::from_index(value).accepts(&actual))
+            || starts_with_any(&self.prefixes, &actual)
+    }
 }
 
 /// An equality on a field without index, applied to each record the indexes found.
@@ -130,6 +162,8 @@ pub struct Filter {
     /// The distinct alternatives; text in the [`index_text`] form, dates as their day or
     /// minute, sorted and merged.
     values: Vec<Value>,
+    /// The distinct alternative prefixes of a text field, in the [`index_text`] form.
+    prefixes: Vec<String>,
 }
 
 impl Filter {
@@ -138,10 +172,22 @@ impl Filter {
     }
 
     /// Whether the record's field equals any alternative: text after lowercasing both sides
-    /// (decision C1), "sin valor" when the field is empty, a date within the day or minute.
+    /// (decision C1), "sin valor" when the field is empty, a date within the day or minute; or
+    /// whether it starts with any alternative prefix.
     pub fn matches(&self, record: &CrimeRecord) -> bool {
         let actual = record_value(self.field, record);
         self.values.iter().any(|wanted| wanted.accepts(&actual))
+            || starts_with_any(&self.prefixes, &actual)
+    }
+}
+
+/// Whether `actual` is text that starts with one of `prefixes`; "sin valor" never does.
+fn starts_with_any(prefixes: &[String], actual: &Value) -> bool {
+    match actual {
+        Value::Text(text) => prefixes
+            .iter()
+            .any(|prefix| text.starts_with(prefix.as_str())),
+        _ => false,
     }
 }
 
@@ -161,6 +207,15 @@ enum Value {
 }
 
 impl Value {
+    /// A searched index value in the form a record's value is compared with.
+    fn from_index(value: &IndexValue) -> Value {
+        match (value.as_text(), value.as_integer()) {
+            (Some(text), _) => Value::Text(text.to_owned()),
+            (None, Some(integer)) => Value::Integer(integer),
+            (None, None) => Value::Nil,
+        }
+    }
+
     fn accepts(&self, actual: &Value) -> bool {
         match (self, actual) {
             (Value::Window(window), Value::Instant(instant)) => window.contains(*instant),
@@ -250,12 +305,23 @@ impl Query {
                 field: field.name(),
                 indexed: field.is_indexed(),
                 applied: self.applied(field),
+                startswith: self.applied_prefixes(field),
             })
             .collect();
         Interpreted {
             conditions,
             limit: self.limit.map(NonZeroU64::get),
         }
+    }
+
+    /// The prefixes of `field`, when it has any.
+    fn applied_prefixes(&self, field: Field) -> Option<Vec<String>> {
+        let equality = self.equalities.iter().find(|e| e.field == field);
+        let filter = self.filters.iter().find(|f| f.field == field);
+        let prefixes = equality
+            .map(|equality| &equality.prefixes)
+            .or(filter.map(|filter| &filter.prefixes))?;
+        (!prefixes.is_empty()).then(|| prefixes.clone())
     }
 
     fn applied(&self, field: Field) -> Applied {
@@ -299,15 +365,19 @@ pub struct Interpreted {
     pub limit: Option<u64>,
 }
 
-/// One condition as applied: `{"field", "indexed", "values" | "intervals"}`.
+/// One condition as applied: `{"field", "indexed", "values" | "intervals", "startswith"?}`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AppliedCondition {
     /// The CSV header name.
     pub field: &'static str,
     /// Whether an index (or the primary table) resolves it, rather than a filter.
     pub indexed: bool,
+    /// The values; empty when the field has only prefixes.
     #[serde(flatten)]
     pub applied: Applied,
+    /// The alternative prefixes, lowercase; left out when the field has none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub startswith: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -363,6 +433,7 @@ impl Builder {
         match condition {
             RawCondition::Equal { field, value } => self.add_equal(field, value),
             RawCondition::Range { field, from, to } => self.add_range(field, from, to),
+            RawCondition::StartsWith { field, prefix } => self.add_starts_with(field, prefix),
         }
     }
 
@@ -385,40 +456,78 @@ impl Builder {
                     Value::Text(_) => IndexValue::text(raw),
                     other => unreachable!("{field:?} has no {other:?} values"),
                 };
-                let equality = match self.equalities.iter_mut().find(|e| e.field == field) {
-                    Some(equality) => equality,
-                    None => {
-                        self.equalities.push(Equality {
-                            field,
-                            index,
-                            values: Vec::new(),
-                            typed: Vec::new(),
-                        });
-                        self.equalities.last_mut().expect("just pushed")
-                    }
-                };
+                let equality = self.equality(field, index);
                 if !equality.values.contains(&value) {
                     equality.values.push(value);
                     equality.typed.push(raw.to_owned());
                 }
             }
             (_, None, value) => {
-                let filter = match self.filters.iter_mut().find(|f| f.field == field) {
-                    Some(filter) => filter,
-                    None => {
-                        self.filters.push(Filter {
-                            field,
-                            values: Vec::new(),
-                        });
-                        self.filters.last_mut().expect("just pushed")
-                    }
-                };
+                let filter = self.filter(field);
                 if !filter.values.contains(&value) {
                     filter.values.push(value);
                 }
             }
         }
         Ok(())
+    }
+
+    /// `CAMPO=PREFIJO`: one more alternative of the field's equality or filter.
+    fn add_starts_with(&mut self, typed: &str, raw: &str) -> Result<(), String> {
+        let field = Field::find(typed).ok_or_else(|| messages::unknown_field(typed))?;
+        if !field.is_conditionable() {
+            return Err(messages::field_not_conditionable(field.name()));
+        }
+        if field.field_type() != FieldType::Text {
+            return Err(messages::prefix_not_on_text());
+        }
+        if raw.is_empty() {
+            return Err(messages::empty_prefix(field.name()));
+        }
+        self.note(field);
+        let prefix = index_text(raw);
+        let prefixes = match field.index() {
+            Some(index) => &mut self.equality(field, index).prefixes,
+            None => &mut self.filter(field).prefixes,
+        };
+        if !prefixes.contains(&prefix) {
+            prefixes.push(prefix);
+        }
+        Ok(())
+    }
+
+    /// The equality on `field`, created empty with its first condition.
+    fn equality(&mut self, field: Field, index: IndexKind) -> &mut Equality {
+        let position = match self.equalities.iter().position(|e| e.field == field) {
+            Some(position) => position,
+            None => {
+                self.equalities.push(Equality {
+                    field,
+                    index,
+                    values: Vec::new(),
+                    typed: Vec::new(),
+                    prefixes: Vec::new(),
+                });
+                self.equalities.len() - 1
+            }
+        };
+        &mut self.equalities[position]
+    }
+
+    /// The filter on `field`, created empty with its first condition.
+    fn filter(&mut self, field: Field) -> &mut Filter {
+        let position = match self.filters.iter().position(|f| f.field == field) {
+            Some(position) => position,
+            None => {
+                self.filters.push(Filter {
+                    field,
+                    values: Vec::new(),
+                    prefixes: Vec::new(),
+                });
+                self.filters.len() - 1
+            }
+        };
+        &mut self.filters[position]
     }
 
     fn add_range(&mut self, typed: &str, from: &str, to: &str) -> Result<(), String> {

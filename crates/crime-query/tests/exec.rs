@@ -909,3 +909,303 @@ fn the_plan_returns_what_a_brute_force_filter_of_the_rows_returns() {
     }
     assert!(non_empty >= 20, "only {non_empty} rounds had results");
 }
+
+// Prefix conditions (startswith PRD).
+
+fn sw(field: &str, prefix: &str) -> RawCondition {
+    RawCondition::starts_with(field, prefix)
+}
+
+fn starts(row: &Row, name: &str, prefix: &str) -> bool {
+    lower(row, name).starts_with(&prefix.to_lowercase())
+}
+
+#[test]
+fn a_prefix_alone_on_an_indexed_field_finds_its_records() {
+    let rows = fixture_rows();
+    let fixture = Fixture::with_rows(&rows);
+    let dataset = open(&fixture);
+
+    for (name, prefix) in [
+        ("Case Number", "JA1"),
+        ("Case Number", "ja"),
+        ("Case Number", "JA100"),
+        ("Primary Type", "th"),
+        ("Primary Type", "BAT"),
+        ("Primary Type", "a"),
+        ("District", "00"),
+        ("District", "8"),
+        ("District", "0"),
+        ("District", "9"),
+        ("Case Number", "zz"),
+    ] {
+        let conditions = [sw(name, prefix)];
+        let want = expected(&rows, |row| starts(row, name, prefix));
+        let (got, warnings, _) = results(&dataset, &query(&conditions, None));
+        assert_eq!(got, want, "{name} {prefix}");
+        assert!(warnings.is_empty(), "no warning for a prefix: {warnings:?}");
+        assert_eq!(
+            count_of(&dataset, &query(&conditions, None)),
+            want.len() as u64
+        );
+    }
+}
+
+#[test]
+fn overlapping_alternatives_on_one_field_return_each_record_once() {
+    let rows = fixture_rows();
+    let fixture = Fixture::with_rows(&rows);
+    let dataset = open(&fixture);
+
+    let conditions = [
+        sw("Case Number", "ja"),
+        sw("Case Number", "JA1"),
+        eq("Case Number", "JA100"),
+        eq("Case Number", "JA000"),
+    ];
+    let (got, warnings, returned) = results(&dataset, &query(&conditions, None));
+    assert_eq!(got, expected(&rows, |_| true));
+    assert_eq!(returned, rows.len() as u64);
+    // The missing case number is still an equality alternative, and warned as typed (P4).
+    assert_eq!(warnings, [messages::missing_case_number("JA000")]);
+
+    let mixed = [
+        eq("Primary Type", "THEFT"),
+        sw("Primary Type", "BAT"),
+        eq("District", ""),
+        sw("District", "00"),
+    ];
+    let want = expected(&rows, |row| {
+        (lower(row, "Primary Type") == "theft" || starts(row, "Primary Type", "bat"))
+            && (col(row, "District").is_empty() || starts(row, "District", "00"))
+    });
+    assert_eq!(ids_of(&dataset, &mixed), want);
+}
+
+#[test]
+fn a_prefix_is_intersected_with_the_other_indexed_conditions() {
+    let rows = fixture_rows();
+    let fixture = Fixture::with_rows(&rows);
+    let dataset = open(&fixture);
+
+    let cases: [(&[RawCondition], Check); 5] = [
+        (
+            &[eq("Primary Type", "THEFT"), sw("District", "00")],
+            Box::new(|row| lower(row, "Primary Type") == "theft" && starts(row, "District", "00")),
+        ),
+        (
+            &[
+                sw("District", "00"),
+                eq("ID", "10"),
+                eq("ID", "40"),
+                eq("ID", "5"),
+            ],
+            Box::new(|row| [10, 40, 5].contains(&id(row)) && starts(row, "District", "00")),
+        ),
+        (
+            &[sw("Case Number", "JA1"), sw("Primary Type", "t")],
+            Box::new(|row| starts(row, "Case Number", "ja1") && starts(row, "Primary Type", "t")),
+        ),
+        (
+            &[range("2020-01-01", "2020-01-02"), sw("Case Number", "ja")],
+            Box::new(|row| {
+                at("01/01/2020 12:00:00 AM") <= date(row)
+                    && date(row) <= at("01/02/2020 11:59:59 PM")
+                    && starts(row, "Case Number", "ja")
+            }),
+        ),
+        (
+            &[
+                eq("Community Area", "42"),
+                sw("District", "0"),
+                sw("Location Description", "VEH"),
+            ],
+            Box::new(|row| {
+                col(row, "Community Area") == "42"
+                    && starts(row, "District", "0")
+                    && starts(row, "Location Description", "veh")
+            }),
+        ),
+    ];
+    for (conditions, predicate) in cases {
+        let want = expected(&rows, predicate);
+        assert_eq!(ids_of(&dataset, conditions), want, "{conditions:?}");
+        assert_eq!(
+            count_of(&dataset, &query(conditions, None)),
+            want.len() as u64,
+            "{conditions:?}"
+        );
+    }
+}
+
+#[test]
+fn a_prefix_scan_crosses_the_blocks_of_the_index() {
+    let rows = many_rows(3_000);
+    let fixture = Fixture::with_rows(&rows);
+    let dataset = open(&fixture);
+
+    for prefix in ["jb", "JB1", "jb29", "jb3000", "jb30001", "ja", "jc"] {
+        let want = expected(&rows, |row| starts(row, "Case Number", prefix));
+        let conditions = [sw("Case Number", prefix)];
+        assert_eq!(ids_of(&dataset, &conditions), want, "{prefix}");
+        assert_eq!(
+            count_of(&dataset, &query(&conditions, None)),
+            want.len() as u64
+        );
+    }
+    let limited = query(&[sw("Case Number", "jb")], Some(7));
+    let (ids, _, returned) = results(&dataset, &limited);
+    assert_eq!(returned, 7);
+    assert_eq!(ids.len(), 7);
+}
+
+#[test]
+fn the_summary_reports_prefixes_as_indexes_or_filters() {
+    let fixture = Fixture::with_rows(&fixture_rows());
+    let dataset = open(&fixture);
+
+    let query = query(
+        &[
+            sw("District", "00"),
+            sw("Location Description", "veh"),
+            eq("Primary Type", "THEFT"),
+            sw("IUCR", "03"),
+        ],
+        None,
+    );
+    let summary = Execution::start(&dataset, &query, &never)
+        .expect("starts")
+        .count()
+        .expect("no read fails");
+    assert_eq!(summary.indexes, [Field::PrimaryType, Field::District]);
+    assert_eq!(summary.filters, [Field::Iucr, Field::LocationDescription]);
+}
+
+/// Prefixes of the values of `domain`, from one character to the whole value, in mixed case.
+fn prefixes_of(random: &mut Random, domain: &[&str]) -> String {
+    let value = random.pick(domain);
+    let cut = 1 + random.below(value.len().max(1));
+    let prefix: String = value.chars().take(cut).collect();
+    if random.chance(50) {
+        prefix.to_uppercase()
+    } else {
+        prefix
+    }
+}
+
+/// Up to two values and up to two prefixes of `field`, at least one of either.
+fn prefix_alternatives(
+    random: &mut Random,
+    field: &'static str,
+    domain: &[&str],
+    conditions: &mut Vec<RawCondition>,
+    checks: &mut Vec<Check>,
+) {
+    let values: Vec<String> = (0..random.below(3))
+        .map(|_| random.pick(domain).to_owned())
+        .collect();
+    let mut prefixes: Vec<String> = (0..random.below(3))
+        .map(|_| prefixes_of(random, domain))
+        .filter(|prefix| !prefix.is_empty())
+        .collect();
+    if values.is_empty() && prefixes.is_empty() {
+        prefixes.push(prefixes_of(random, domain));
+        prefixes.retain(|prefix| !prefix.is_empty());
+        if prefixes.is_empty() {
+            prefixes.push("0".to_owned());
+        }
+    }
+    for value in &values {
+        conditions.push(eq(field, value));
+    }
+    for prefix in &prefixes {
+        conditions.push(sw(field, prefix));
+    }
+    let values: Vec<String> = values.iter().map(|value| value.to_lowercase()).collect();
+    let prefixes: Vec<String> = prefixes
+        .iter()
+        .map(|prefix| prefix.to_lowercase())
+        .collect();
+    checks.push(Box::new(move |row| {
+        let actual = lower(row, field);
+        values.contains(&actual)
+            || (!actual.is_empty() && prefixes.iter().any(|prefix| actual.starts_with(prefix)))
+    }));
+}
+
+#[test]
+fn the_plan_with_prefixes_returns_what_a_brute_force_filter_of_the_rows_returns() {
+    let mut random = Random(0x2545_f491_4f6c_dd1d);
+    let rows = random_rows(&mut random, 3_000);
+    let fixture = Fixture::with_rows(&rows);
+    let dataset = open(&fixture);
+    let cases: Vec<String> = (0..40).map(|n| format!("JD{}", n * 37)).collect();
+    let cases: Vec<&str> = cases.iter().map(String::as_str).collect();
+    let mut non_empty = 0;
+
+    for round in 0..80 {
+        let mut conditions = Vec::new();
+        let mut checks: Vec<Check> = Vec::new();
+        if random.chance(15) {
+            let wanted: Vec<i64> = (0..1 + random.below(300))
+                .map(|_| random.below(21_100) as i64)
+                .collect();
+            for value in &wanted {
+                conditions.push(eq("ID", &value.to_string()));
+            }
+            checks.push(Box::new(move |row| wanted.contains(&id(row))));
+        }
+        if random.chance(25) {
+            let day = 1 + random.below(10) as i64;
+            let start = CivilDateTime::from_parts(2020, 1, day, 0, 0, 0).expect("valid");
+            let end = CivilDateTime::from_parts(2020, 1, day, 23, 59, 59).expect("valid");
+            conditions.push(range(
+                &format!("2020-01-{day:02}"),
+                &format!("2020-01-{day:02}"),
+            ));
+            checks.push(Box::new(move |row| start <= date(row) && date(row) <= end));
+        }
+        for (field, domain, percent) in [
+            ("Case Number", &cases[..], 30),
+            ("Primary Type", &TYPES[..], 50),
+            ("District", &DISTRICTS[..], 40),
+            ("Location Description", &PLACES[..], 25),
+        ] {
+            if random.chance(percent) {
+                prefix_alternatives(&mut random, field, domain, &mut conditions, &mut checks);
+            }
+        }
+        if random.chance(30) {
+            alternatives(
+                &mut random,
+                "Community Area",
+                &AREAS,
+                &mut conditions,
+                &mut checks,
+            );
+        }
+        if Query::build(&conditions).is_err() {
+            prefix_alternatives(
+                &mut random,
+                "Primary Type",
+                &TYPES,
+                &mut conditions,
+                &mut checks,
+            );
+        }
+
+        let want = expected(&rows, |row| checks.iter().all(|check| check(row)));
+        let query = query(&conditions, None);
+        let (got, _, _) = results(&dataset, &query);
+        assert_eq!(got, want, "round {round}: {conditions:?}");
+        assert_eq!(
+            count_of(&dataset, &query),
+            want.len() as u64,
+            "round {round}"
+        );
+        if !want.is_empty() {
+            non_empty += 1;
+        }
+    }
+    assert!(non_empty >= 20, "only {non_empty} rounds found records");
+}

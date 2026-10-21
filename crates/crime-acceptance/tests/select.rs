@@ -350,3 +350,179 @@ fn a_wrong_command_line_exits_2_and_an_unreadable_file_exits_1() {
     assert_eq!(no_csv.status.code(), Some(2));
     assert!(stderr(&no_csv).contains("--csv"));
 }
+
+#[test]
+fn equality_alone_still_selects_whole_values_only() {
+    let fixture = Fixture::new("\n");
+
+    assert_eq!(
+        count(&fixture.select(&["--where", "Primary Type=THEFT"])),
+        "4\n"
+    );
+    assert_eq!(
+        count(&fixture.select(&["--where", "Primary Type=TH"])),
+        "0\n",
+        "--where is equality, never a prefix"
+    );
+    assert_eq!(count(&fixture.select(&["--where", "District=00"])), "0\n");
+}
+
+#[test]
+fn a_prefix_compares_after_lowercasing_both_sides() {
+    let fixture = Fixture::new("\n");
+
+    for prefix in ["Primary Type=th", "Primary Type=Th", "PRIMARY TYPE=TH"] {
+        assert_eq!(
+            count(&fixture.select(&["--startswith", prefix])),
+            "4\n",
+            "{prefix}: Theft, THEFT and theft"
+        );
+    }
+    assert_eq!(
+        count(&fixture.select(&["--startswith", "Case Number=jk4"])),
+        "5\n"
+    );
+}
+
+#[test]
+fn a_prefix_is_taken_as_is_spaces_included() {
+    let fixture = Fixture::new("\n");
+
+    let cases: [(&str, &str); 3] = [
+        ("Location Description=vehicle ", "4\n"),
+        ("Location Description=vehicle non", "4\n"),
+        ("Location Description= vehicle", "0\n"),
+    ];
+    for (prefix, expected) in cases {
+        assert_eq!(
+            count(&fixture.select(&["--startswith", prefix])),
+            expected,
+            "{prefix:?}"
+        );
+    }
+}
+
+#[test]
+fn a_prefix_is_never_padded() {
+    let fixture = Fixture::new("\n");
+
+    assert_eq!(
+        count(&fixture.select(&["--startswith", "District=8"])),
+        "1\n",
+        "8 is not a prefix of 008"
+    );
+    assert_eq!(
+        count(&fixture.select(&["--startswith", "District=00"])),
+        "4\n",
+        "003 and 008"
+    );
+    assert_eq!(count(&fixture.select(&["--startswith", "Beat=314"])), "0\n");
+}
+
+#[test]
+fn an_empty_field_never_starts_with_a_prefix() {
+    let fixture = Fixture::new("\n");
+
+    assert_eq!(
+        count(&fixture.select(&["--startswith", "Location Description=v"])),
+        "4\n",
+        "ID 77 has no location description"
+    );
+    assert_eq!(
+        count(&fixture.select(&[
+            "--startswith",
+            "Location Description=v",
+            "--where",
+            "Location Description=",
+        ])),
+        "5\n",
+        "sin valor asked with --where is one more alternative"
+    );
+}
+
+#[test]
+fn prefixes_and_values_of_one_field_are_alternatives() {
+    let fixture = Fixture::new("\n");
+
+    assert_eq!(
+        count(&fixture.select(&[
+            "--where",
+            "Primary Type=ARSON",
+            "--startswith",
+            "Primary Type=th",
+        ])),
+        "5\n"
+    );
+    assert_eq!(
+        count(&fixture.select(&[
+            "--startswith",
+            "Primary Type=th",
+            "--startswith",
+            "Primary Type=thef",
+        ])),
+        "4\n",
+        "a row meeting two overlapping prefixes counts once"
+    );
+}
+
+#[test]
+fn prefixes_on_different_fields_must_all_hold() {
+    let fixture = Fixture::new("\n");
+
+    assert_eq!(
+        count(&fixture.select(&[
+            "--startswith",
+            "Primary Type=th",
+            "--startswith",
+            "District=00",
+        ])),
+        "3\n"
+    );
+    assert_eq!(
+        count(&fixture.select(&[
+            "--startswith",
+            "District=00",
+            "--where",
+            "Primary Type=ARSON",
+        ])),
+        "1\n"
+    );
+}
+
+#[test]
+fn a_prefix_that_cannot_be_applied_is_a_usage_error() {
+    let fixture = Fixture::new("\n");
+
+    for condition in [
+        "Primary Type=",
+        "Primary Type",
+        "Color=r",
+        "Ward=2",
+        "ID=1",
+        "Date=2026",
+        "Updated On=10",
+        "Arrest=t",
+        "Latitude=41",
+        "Block=064",
+        "Description=ATT",
+        "Location=(",
+    ] {
+        let output = fixture.select(&["--startswith", condition]);
+        assert_eq!(output.status.code(), Some(2), "{condition}");
+        assert!(stdout(&output).is_empty(), "{condition}");
+        let report = stderr(&output);
+        assert!(
+            report.contains("--startswith") && report.contains("usage: crime-acceptance select"),
+            "{condition}: {report}"
+        );
+    }
+    let empty = stderr(&fixture.select(&["--startswith", "Primary Type="]));
+    assert!(empty.contains("empty"), "{empty}");
+    let not_text = stderr(&fixture.select(&["--startswith", "Ward=2"]));
+    assert!(
+        not_text.contains(
+            "Case Number, Primary Type, District, IUCR, Location Description, Beat, FBI Code"
+        ),
+        "{not_text}"
+    );
+}

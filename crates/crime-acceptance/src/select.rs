@@ -15,6 +15,12 @@
 //!   minute. `--range FIELD=FROM..TO` (decision C2) starts at 00:00:00 of FROM without a time, ends
 //!   at the last second of TO's day without a time or of its minute with one, and may leave either
 //!   end empty; every range must hold, together with the field's `--where` values.
+//! - `--startswith FIELD=PREFIX` (startswith PRD): the CSV field begins with PREFIX, both sides
+//!   lowercased with `str::to_lowercase` (C1). PREFIX is taken as is, spaces included, and never
+//!   padded (`8` does not begin `008`, `00` does); it cannot be empty, and an empty CSV field
+//!   begins with no prefix. Only the text columns Case Number, Primary Type, District, IUCR,
+//!   Location Description, Beat and FBI Code take one. Prefixes and `--where` values of one field
+//!   are alternatives (OR, decision P1); different fields must all hold (AND).
 //! - Dates are naive civil seconds of the published text ([`civil`], decision D3): no time zone,
 //!   so a time in the spring-forward hour is a valid time.
 //!
@@ -40,11 +46,15 @@ use crate::verify::check_header;
 
 /// The command line of `select`, printed after a usage error.
 pub const USAGE: &str = "usage: crime-acceptance select --csv <file> [--where FIELD=VALUE]... \
-[--range Date=FROM..TO]... [--ids-out <file>] [--rows-out <file>]
+[--startswith FIELD=PREFIX]... [--range Date=FROM..TO]... [--ids-out <file>] [--rows-out <file>]
 
   --csv <file>            the source CSV
   --where FIELD=VALUE     equality on a CSV column, named in any case; FIELD= means the field is
                           empty; values of one field are OR, different fields are AND
+  --startswith FIELD=PREFIX
+                          the field begins with PREFIX, in any case, taken as is (no padding);
+                          on Case Number, Primary Type, District, IUCR, Location Description,
+                          Beat and FBI Code; OR with the field's other values and prefixes
   --range FIELD=FROM..TO  inclusive range on Date or Updated On, each end AAAA-MM-DD [hh:mm] or
                           empty; several ranges are AND
   --ids-out <file>        write the matching IDs, one per line, ascending
@@ -56,6 +66,17 @@ error. Exit code 0 on success, 1 when a file cannot be read or written, 2 when t
 is not valid.";
 
 const READ_BUFFER_BYTES: usize = 1 << 20;
+
+/// The columns `--startswith` applies to: the text columns that take conditions.
+const PREFIX_COLUMNS: [&str; 7] = [
+    "Case Number",
+    "Primary Type",
+    "District",
+    "IUCR",
+    "Location Description",
+    "Beat",
+    "FBI Code",
+];
 
 /// How the text of a column is compared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +107,8 @@ enum Wanted {
     Empty,
     /// Already lowercase.
     Text(String),
+    /// A prefix, already lowercase and never empty.
+    Prefix(String),
     Integer(i64),
     Boolean(bool),
     Decimal(f64),
@@ -99,6 +122,7 @@ impl Wanted {
         match self {
             Wanted::Empty => text.is_empty(),
             Wanted::Text(wanted) => text.to_lowercase() == *wanted,
+            Wanted::Prefix(prefix) => !text.is_empty() && text.to_lowercase().starts_with(prefix),
             Wanted::Integer(wanted) => text.parse::<i64>().ok() == Some(*wanted),
             Wanted::Boolean(wanted) => {
                 let stored = match text.to_lowercase().as_str() {
@@ -119,7 +143,8 @@ impl Wanted {
 /// The conditions of one run. Without any, every row matches.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Selection {
-    /// Each conditioned column with its alternatives, in first-appearance order.
+    /// Each conditioned column with its alternatives (values and prefixes), in first-appearance
+    /// order.
     equalities: Vec<(usize, Vec<Wanted>)>,
     /// Each range with its column; all must hold.
     ranges: Vec<(usize, Wanted)>,
@@ -133,11 +158,35 @@ impl Selection {
             .ok_or_else(|| format!("--where {condition:?} is not FIELD=VALUE"))?;
         let column = column(name)?;
         let wanted = wanted(column, value)?;
+        self.add_alternative(column, wanted);
+        Ok(())
+    }
+
+    /// Adds `FIELD=PREFIX`.
+    pub fn add_startswith(&mut self, condition: &str) -> Result<(), String> {
+        let (name, prefix) = condition
+            .split_once('=')
+            .ok_or_else(|| format!("--startswith {condition:?} is not FIELD=PREFIX"))?;
+        let column = column(name)?;
+        if !PREFIX_COLUMNS.contains(&HEADER[column]) {
+            return Err(format!(
+                "--startswith {condition:?}: prefixes apply to the text columns {} only",
+                PREFIX_COLUMNS.join(", ")
+            ));
+        }
+        if prefix.is_empty() {
+            return Err(format!("--startswith {condition:?}: the prefix is empty"));
+        }
+        self.add_alternative(column, Wanted::Prefix(prefix.to_lowercase()));
+        Ok(())
+    }
+
+    /// One more alternative of `column`: its values and prefixes are OR.
+    fn add_alternative(&mut self, column: usize, wanted: Wanted) {
         match self.equalities.iter_mut().find(|(c, _)| *c == column) {
             Some((_, alternatives)) => alternatives.push(wanted),
             None => self.equalities.push((column, vec![wanted])),
         }
-        Ok(())
     }
 
     /// Adds `FIELD=FROM..TO`.
@@ -289,6 +338,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Request, String
         match arg.to_str() {
             Some("--csv") => csv = Some(PathBuf::from(value("a file")?)),
             Some("--where") => selection.add_where(&text(value("FIELD=VALUE")?)?)?,
+            Some("--startswith") => selection.add_startswith(&text(value("FIELD=PREFIX")?)?)?,
             Some("--range") => selection.add_range(&text(value("FIELD=FROM..TO")?)?)?,
             Some("--ids-out") => ids_out = Some(PathBuf::from(value("a file")?)),
             Some("--rows-out") => rows_out = Some(PathBuf::from(value("a file")?)),
