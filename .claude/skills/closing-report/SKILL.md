@@ -95,7 +95,7 @@ Return the report path, the real-versus-estimated time line and the list of pend
 - `assets/closing-report-template.md` — report skeleton with per-section guidance.
 - `scripts/numstat_by_area.py` — lines added and removed by area, with totals; lockfiles, binaries and
   `--apart` globs listed apart; renames counted under their destination. The lines added in code files
-  (Rust, Python, PowerShell, JavaScript/TypeScript, TOML, YAML, shell) are split into code and comments
+  (the languages of its `LANGUAGES` table, which the table's legend names) are split into code and comments
   (line and block comments, doc comments, Python docstrings); blank lines count in neither, and other files
   show `—`.
 - `scripts/phase_times.py` — phase log during the run and, at its end, the time by phase and by commit.

@@ -30,15 +30,16 @@ LABELS = {
     "es": {
         "area": "Área", "files": "Archivos", "total": "Total", "code": "Código +", "comments": "Comentarios +",
         "apart": "Aparte (lockfiles, generados o binarios)",
-        "legend": "Código + y Comentarios + desglosan las líneas añadidas en archivos de código (Rust, Python, "
-                  "PowerShell, JavaScript/TypeScript, TOML, YAML y shell); las líneas en blanco no cuentan en "
-                  "ninguna de las dos.",
+        "legend": "Código + y Comentarios + desglosan las líneas añadidas en archivos de código ({languages}); "
+                  "las líneas en blanco no cuentan en ninguna de las dos.",
+        "and": " y ",
     },
     "en": {
         "area": "Area", "files": "Files", "total": "Total", "code": "Code +", "comments": "Comments +",
         "apart": "Apart (lockfiles, generated or binary)",
-        "legend": "Code + and Comments + split the lines added in code files (Rust, Python, PowerShell, "
-                  "JavaScript/TypeScript, TOML, YAML and shell); blank lines count in neither.",
+        "legend": "Code + and Comments + split the lines added in code files ({languages}); blank lines count in "
+                  "neither.",
+        "and": " and ",
     },
 }
 
@@ -146,7 +147,10 @@ def classify_c_like(text: str, rust: bool):
                 continue
             code = True
             raw = re.match(r'r(#*)"', line[i:]) if rust else None
-            if raw and (i == 0 or not _ident(line[i - 1]) or (line[i - 1] == "b" and (i < 2 or not _ident(line[i - 2])))):
+            # `r"`, `r#"` or `br"` starts a raw string only when the `r` (or its `b` prefix) is not the tail
+            # of an identifier such as `for"`.
+            prefix = i - 1 if i and line[i - 1] == "b" else i
+            if raw and (prefix == 0 or not _ident(line[prefix - 1])):
                 quote, i = ('"' + raw.group(1), False), i + raw.end()
             elif c == '"' or (not rust and c in "'`"):
                 quote, i = (c, True), i + 1
@@ -160,6 +164,8 @@ def classify_c_like(text: str, rust: bool):
                     i += 1
             else:
                 i += 1
+        if quote and not rust and quote[0] in "'\"":
+            quote = None  # JavaScript quoted strings end with the line; only template literals span lines
         kinds.append(_kind(line, code, comment))
     return kinds
 
@@ -168,20 +174,26 @@ def _ident(c: str) -> bool:
     return c.isalnum() or c == "_"
 
 
-def classify_hash(text: str, powershell: bool = False):
-    """Classify the lines of a language whose comments start with `#` (PowerShell adds `<# #>` and here-strings)."""
+def classify_hash(text: str, powershell: bool = False, toml: bool = False):
+    """Classify the lines of a language whose comments start with `#`.
+
+    PowerShell adds `<# #>` comments and here-strings, and TOML adds triple-quoted strings, all tracked across
+    lines. Other strings end with the line, so a YAML block scalar line that starts with `#` counts as a
+    comment.
+    """
     kinds = []
     block = False  # inside a PowerShell <# #> comment
-    here = None  # terminator of an open PowerShell here-string
+    here = None  # terminator of an open PowerShell here-string or TOML multi-line string
     for line in text.split("\n"):
         line = line.rstrip("\r")
         code = comment = False
         i, n = 0, len(line)
         if here:
-            if not line.startswith(here):
+            end = 0 if line.startswith(here) else (line.find(here) if toml else -1)
+            if end == -1:
                 kinds.append(_kind(line, True, False))
                 continue
-            here, i, code = None, len(here), True
+            here, i, code = None, end + len(here), True
         while i < n:
             c = line[i]
             if block:
@@ -204,7 +216,13 @@ def classify_hash(text: str, powershell: bool = False):
             if powershell and line[i:].rstrip() in ('@"', "@'"):
                 here = line[i + 1] + "@"
                 break
-            if c in "'\"":
+            if toml and line.startswith(c * 3, i) and c in "'\"":
+                end = line.find(c * 3, i + 3)
+                if end == -1:
+                    here = c * 3
+                    break
+                i = end + 3
+            elif c in "'\"":
                 escape = "`" if powershell else "\\"
                 j = i + 1
                 while j < n and line[j] != c:
@@ -241,24 +259,30 @@ def classify_python(text: str):
     return [_kind(line, number in code, number in comment) for number, line in enumerate(text.split("\n"), 1)]
 
 
-LANGUAGES = {
-    **dict.fromkeys([".rs"], lambda text: classify_c_like(text, rust=True)),
-    **dict.fromkeys([".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"], lambda text: classify_c_like(text, rust=False)),
-    **dict.fromkeys([".py"], classify_python),
-    **dict.fromkeys([".ps1", ".psm1", ".psd1"], lambda text: classify_hash(text, powershell=True)),
-    **dict.fromkeys([".toml", ".yml", ".yaml", ".sh", ".bash"], classify_hash),
-}
+# The languages whose added lines are split, in the order the legend names them.
+LANGUAGES = [
+    ("Rust", [".rs"], lambda text: classify_c_like(text, rust=True)),
+    ("Python", [".py"], classify_python),
+    ("PowerShell", [".ps1", ".psm1", ".psd1"], lambda text: classify_hash(text, powershell=True)),
+    ("JavaScript/TypeScript", [".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"],
+     lambda text: classify_c_like(text, rust=False)),
+    ("TOML", [".toml"], lambda text: classify_hash(text, toml=True)),
+    ("YAML", [".yml", ".yaml"], classify_hash),
+    ("shell", [".sh", ".bash"], classify_hash),
+]
+CLASSIFIERS = {ext: classifier for _, extensions, classifier in LANGUAGES for ext in extensions}
 
 
-def language_of(path: str):
+def classifier_for(path: str):
+    """The line classifier for the extension of `path`, or None when it is not a code file."""
     name = path.rsplit("/", 1)[-1]
     dot = name.rfind(".")
-    return LANGUAGES.get(name[dot:].lower()) if dot > 0 else None
+    return CLASSIFIERS.get(name[dot:].lower()) if dot > 0 else None
 
 
 def classify(path: str, text: str):
     """Kind of every line of `text` (BLANK, CODE or COMMENT), by the language of `path`."""
-    return language_of(path)(text)
+    return classifier_for(path)(text)
 
 
 def count_added(kinds, line_numbers):
@@ -328,7 +352,8 @@ def is_apart(added: str, path: str, apart_globs) -> bool:
 
 
 def summarize(entries, apart_globs, breakdown=None):
-    """Counts by area; `breakdown` maps a code file to the (code, comments) of its added lines."""
+    """Counts by area; `breakdown` maps a code file to the (code, comments) of its added lines, or to None when
+    the file could not be read (it then has no split)."""
     breakdown = breakdown or {}
     areas = defaultdict(Counts)
     apart = []
@@ -340,8 +365,9 @@ def summarize(entries, apart_globs, breakdown=None):
         counts.added += int(added)
         counts.removed += int(removed)
         counts.files += 1
-        if language_of(path):
-            code, comments = breakdown.get(path, (0, 0))
+        split = breakdown.get(path, (0, 0))
+        if classifier_for(path) and split is not None:
+            code, comments = split
             counts.code += code
             counts.comments += comments
             counts.code_files += 1
@@ -375,7 +401,8 @@ def render(areas, apart, lang):
         f"| **{t['total']}** | **{thousands(total.added, lang)}** | **{thousands(total.removed, lang)}** "
         f"| **{split(total.code, total)}** | **{split(total.comments, total)}** | **{total.files}** |"
     )
-    lines += ["", t["legend"]]
+    names = [name for name, _, _ in LANGUAGES]
+    lines += ["", t["legend"].format(languages=", ".join(names[:-1]) + t["and"] + names[-1])]
     if apart:
         lines.append("")
         lines.append(f"{t['apart']}: " + ", ".join(f"`{p}` (+{a} −{r})" for p, a, r in apart))
@@ -402,16 +429,20 @@ def main(argv=None) -> int:
     if patch.returncode != 0:
         print(f"git diff failed: {patch.stderr.decode('utf-8', 'replace').strip()}", file=sys.stderr)
         return 2
-    added = added_lines(patch.stdout.decode("utf-8", errors="replace"))
+    added_by_path = added_lines(patch.stdout.decode("utf-8", errors="replace"))
     breakdown = {}
-    for count, _, path in entries:
-        if is_apart(count, path, args.apart) or not language_of(path) or path not in added:
+    for added_column, _, path in entries:
+        if is_apart(added_column, path, args.apart) or not classifier_for(path) or path not in added_by_path:
             continue
         blob = git("show", f"{args.head}:{path}")
         if blob.returncode != 0:
-            print(f"git show failed: {blob.stderr.decode('utf-8', 'replace').strip()}", file=sys.stderr)
-            return 2
-        breakdown[path] = count_added(classify(path, blob.stdout.decode("utf-8", errors="replace")), added[path])
+            # For example a submodule, whose commit is not in this repository: the file gets no split.
+            error = blob.stderr.decode("utf-8", "replace").strip()
+            print(f"warning: no code/comment split for {path}: {error}", file=sys.stderr)
+            breakdown[path] = None
+            continue
+        text = blob.stdout.decode("utf-8", errors="replace")
+        breakdown[path] = count_added(classify(path, text), added_by_path[path])
     areas, apart = summarize(entries, args.apart, breakdown)
     print(render(areas, apart, args.lang))
     return 0

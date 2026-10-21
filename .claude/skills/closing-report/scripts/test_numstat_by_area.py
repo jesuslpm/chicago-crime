@@ -64,6 +64,10 @@ class RustClassifierTests(unittest.TestCase):
         text = "let p = r\"C:\\\";\n// after\nfn f<'a>(x: &'a str) {}\n// after lifetime\nlet c = '\\'';\n// end"
         self.assertEqual(self.kinds(text), [C, K, C, K, C, K])
 
+    def test_byte_raw_strings_and_identifiers_ending_in_r(self):
+        text = 'let b = br"\\";\n// after\nlet n = for_r"x";\n// after identifier'
+        self.assertEqual(self.kinds(text), [C, K, C, K])
+
     def test_attributes_are_code(self):
         self.assertEqual(self.kinds("#[derive(Debug)]\n#![allow(dead_code)]"), [C, C])
 
@@ -111,10 +115,18 @@ class HashClassifierTests(unittest.TestCase):
         text = "// c\nconst u = 'http://x';\nconst t = `\n// in template\n`;\n/* c */"
         self.assertEqual(nba.classify("site/app.mjs", text), [K, C, C, C, C, K])
 
+    def test_javascript_apostrophe_does_not_open_a_string_past_its_line(self):
+        text = "const t = <p>Don't</p>;\n// still a comment\nconst u = 1;"
+        self.assertEqual(nba.classify("site/app.jsx", text), [C, K, C])
+
+    def test_toml_multi_line_strings_hide_hash_lines(self):
+        text = 'doc = """\n# not a comment\n"""\n# comment\ns = \'\'\'one line\'\'\' # trailing'
+        self.assertEqual(nba.classify("Cargo.toml", text), [C, C, C, K, C])
+
     def test_files_that_are_not_code_have_no_classifier(self):
-        self.assertIsNone(nba.language_of("docs/a.md"))
-        self.assertIsNone(nba.language_of("data.json"))
-        self.assertIsNotNone(nba.language_of("crates/a/src/lib.rs"))
+        self.assertIsNone(nba.classifier_for("docs/a.md"))
+        self.assertIsNone(nba.classifier_for("data.json"))
+        self.assertIsNotNone(nba.classifier_for("crates/a/src/lib.rs"))
 
 
 class AddedLinesTests(unittest.TestCase):
@@ -261,6 +273,18 @@ class MainTests(unittest.TestCase):
             self.assertEqual(nba.main(["nope"]), 2)
         self.assertIn("fatal: bad revision", err.getvalue())
         self.assertIn("--end-of-options", run.call_args.args[0])
+
+    def test_unreadable_code_file_loses_only_its_split(self):
+        numstat = mock.Mock(returncode=0, stdout="3\t0\tcrates/a/src/lib.rs\0", stderr="")
+        patch = mock.Mock(returncode=0, stdout=b"+++ crates/a/src/lib.rs\n@@ -0,0 +1,3 @@\n+a\n+b\n+c\n", stderr=b"")
+        show = mock.Mock(returncode=128, stdout=b"", stderr=b"fatal: bad object")
+        out = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+        with mock.patch.object(nba.subprocess, "run", side_effect=[numstat, patch, show]), \
+                mock.patch("sys.stdout", out), mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.assertEqual(nba.main(["base"]), 0)
+        out.flush()
+        self.assertIn("| `crates/a` | 3 | 0 | — | — | 1 |", out.buffer.getvalue().decode("utf-8"))
+        self.assertIn("warning: no code/comment split for crates/a/src/lib.rs: fatal: bad object", err.getvalue())
 
     def test_apart_globs_match_case_exactly(self):
         _, apart = nba.summarize([("5", "0", "docs/Slides.HTML")], ["*.html"])
