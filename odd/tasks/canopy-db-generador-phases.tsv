@@ -24,3 +24,9 @@
 2026-10-21T09:06:07+01:00	bg-start	acceptance	T8 run-canopy-acceptance full
 2026-10-21T09:06:30+01:00	mark	docs	T9
 2026-10-21T09:35:11+01:00	bg-end	acceptance	T8 run-canopy-acceptance full
+2026-10-21T09:36:19+01:00	bg-start	acceptance	T8 original acceptance
+2026-10-21T09:36:20+01:00	mark	review	last slice
+2026-10-21T09:57:26+01:00	bg-end	acceptance	T8 original acceptance
+2026-10-21T09:57:40+01:00	mark	checks	final
+2026-10-21T09:58:23+01:00	end		
+2026-10-21T09:58:27+01:00	mark	close	T9
