@@ -9,7 +9,7 @@ sorting under a fixed memory budget, and product-driven development.
 |---|---|---|
 | Generator (`crime-generator`) | Done and verified | Reads the CSV once and publishes a primary table keyed by ID, five secondary indexes and a manifest, with a peak memory of about 93 MiB (limit 512 MiB). |
 | CanopyDB generator (`crime-canopy-generator`) | Done | The same generator, options and messages, publishing the dataset in a [CanopyDB](https://github.com/arthurprs/canopydb) base instead of LevelDB tables, to compare the two engines ([module PRD](docs/prd/chicago-crime/canopy-db.prd.md)). See [CanopyDB generator](#canopydb-generator). |
-| Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory. |
+| Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory; one query per run, or a batch of queries from a file. |
 
 ## Get the dataset
 
@@ -211,8 +211,9 @@ What CanopyDB does differently from its documentation or from this project's nee
 
 ## Run the query app
 
-Each run answers one query and ends. Point `--dataset` at the generator's output folder, the one that
-holds `CURRENT`; the query app reads the active version and never writes to that folder.
+Each run answers one query, or a batch of queries read from a file (`--batch`, see **Batches** below),
+and ends. Point `--dataset` at the generator's output folder, the one that holds `CURRENT`; the query
+app reads the active version and never writes to that folder.
 
 ```powershell
 # How many thefts in district 008?
@@ -238,6 +239,7 @@ target\release\crime-query.exe --dataset C:\datasets\chicago --where "Primary Ty
 | `--count` | Print only the number of results. It cannot be combined with `--format`. |
 | `--format table\|csv\|json` | Output format; `table` by default. |
 | `--output <ARCHIVO>` | Write the CSV or JSON results to this file instead of the standard output. An existing file is overwritten without asking. Not available with `table` or `--count`. |
+| `--batch <ARCHIVO>` | Run the queries of this file, one per line, over the dataset opened once. With it, the query options above go on each line of the file, not on the command line. |
 | `-h`, `--help` | Show the help. |
 
 **Conditions.** `CAMPO` is a CSV column name in any case (`"Primary Type"`, `district`). Every
@@ -294,11 +296,48 @@ and the error message on the standard error flag the output as incomplete.
 Memory does not grow with the result: counting all 1.8 million thefts uses about as much as counting
 a rare type. The command line and the messages are in Spanish.
 
+**Batches.** `--batch <ARCHIVO>` runs several queries in one run
+([canopy-db-lote PRD](docs/prd/chicago-crime/canopy-db-lote.prd.md)): the query app opens the dataset
+once and runs the queries of the file one after the other, in file order, all on the version it opened
+even if the generator publishes another one meanwhile.
+
+```text
+# Thefts and "criminal" types in January 2020
+--where "Primary Type=THEFT" --range Date=2020-01-01..2020-01-31 --count
+--startswith "Primary Type=CRIM" --range Date=2020-01-01..2020-01-31 --format csv --output crim.csv
+
+--where ID=13209277 --format json
+```
+
+```powershell
+target\release\crime-query.exe --dataset C:\datasets\chicago --batch queries.txt
+```
+
+- Each line is a query written with the options of a single query (`--where`, `--startswith`,
+  `--range`, `--limit`, `--count`, `--format`, `--output`, also as `--option=value`), not
+  `--dataset`, `--batch` or `--help`. Next to `--batch`, the command line takes only `--dataset`.
+- The file is UTF-8, with or without a BOM, with LF or CRLF line ends. Empty lines and lines starting
+  with `#` are skipped; a `#` anywhere else is a plain character. Spaces and tabs separate words;
+  double or single quotes group a text with spaces and may open mid-word (`--where="Primary Type=THEFT"`);
+  there are no escapes, so `\` in a Windows path is a plain character. Relative `--output` paths
+  resolve from the current folder.
+- The whole file is checked before the dataset is opened. The first wrong line (`Línea 5: …`, with the
+  message the query would get alone), two lines writing the same output file (paths compared after
+  resolving `.` and `..`, ignoring case on Windows) or an output equal to the batch file reject the
+  batch, and nothing runs.
+- The standard output gets exactly what each query would write alone, one after the other, with
+  nothing in between; give each query its own `--output` to keep CSV or JSON results apart. The
+  standard error gets, for each query, a header `--- Consulta 2 de 3 (línea 4) ---` followed by its
+  warnings and its closing line, and at the end `Lote completado: 3 consultas en 0,152 s.`, with the
+  time of the whole run.
+- A query that fails, or Ctrl+C, stops the batch there: earlier queries keep their results and output
+  files, the current one leaves no half-written file, and later ones do not run.
+
 | Exit code | Meaning |
 |---|---|
-| 0 | The query ran, even with no results. |
-| 1 | The query was rejected because of the dataset or its conditions, or it aborted. |
-| 2 | The command line is not valid; nothing was queried. |
+| 0 | The query ran, even with no results. With `--batch`, every query of the batch ran. |
+| 1 | The query was rejected because of the dataset or its conditions, or it aborted. With `--batch`, also a batch file that cannot be read, is not UTF-8, has no query or repeats an output file, or a line rejected for its conditions. |
+| 2 | The command line, or a line of the batch, is not valid; nothing was queried. |
 | 130 | Cancelled with Ctrl+C; no half-written output file is left. |
 
 ## Verify

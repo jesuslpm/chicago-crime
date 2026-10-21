@@ -20,12 +20,16 @@
 //! - [`run()`]: one run of a valid command line, from the conditions to the exit code, with the
 //!   results on stdout or in the output file and everything else on stderr (decisions C5, C6
 //!   and C8);
+//! - [`run_batch()`]: a batch of queries, one per line of a file, checked whole before the
+//!   dataset is opened once, then run one after the other as they would run alone (decision K7
+//!   of the canopy-db PRD);
 //! - [`cli`]: the command line in Spanish, and [`exit_code`];
 //! - [`messages`]: every user-facing text.
 //!
 //! Nothing here holds IDs or records in memory in proportion to a result (decision C7): streams
 //! read one index entry at a time, lookups read one entry and the output writes one record.
 
+mod batch;
 pub mod cli;
 mod dataset;
 mod exec;
@@ -37,6 +41,7 @@ mod query;
 mod run;
 mod tracked;
 
+pub use batch::run_batch;
 pub use dataset::{Dataset, OpenError, ReadError};
 pub use exec::{ExecError, Execution, Summary};
 pub use fields::{Field, FieldType};

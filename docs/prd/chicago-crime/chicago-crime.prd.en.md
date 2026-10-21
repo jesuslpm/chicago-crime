@@ -87,7 +87,9 @@ Verified on 2026-10-12 against the repository and the data:
 ### B. Query
 
 1. The analyst runs a command with the dataset folder and the query; the query app answers and exits
-   (decision D6).
+   (decision D6). *Annotation of 2026-10-21: partly replaced by the
+   [query batch PRD](canopy-db-lote.prd.en.md) (decision K7 of the [CanopyDB PRD](canopy-db.prd.en.md)); a run
+   of the query app answers one query or a batch of queries, and still starts, answers and exits.*
 2. The query app checks the manifest and that the schema version is compatible.
 3. Query types in the first version:
    - **By ID**: one or several.
@@ -245,7 +247,9 @@ the PRD.
   summary with the number of rejected records is the signal to detect it.
 - **D6 — Query app usage mode** (2026-10-12): single-run commands; each query starts, answers and exits.
   Reason: it is the simplest to automate, to chain with other tools and to test. The interactive mode is
-  left for a later change.
+  left for a later change. *Annotation of 2026-10-21: partly replaced by the
+  [query batch PRD](canopy-db-lote.prd.en.md) (decision K7 of the [CanopyDB PRD](canopy-db.prd.en.md)); a run
+  of the query app answers one query or a batch of queries, and still starts, answers and exits.*
 
 ## References
 

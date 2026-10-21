@@ -390,7 +390,8 @@ Todas se tomaron con el usuario el 2026-10-20.
   su propia verificación de AC-C13 (2,21 entre el archivo CSV de todos los robos y el conteo de un tipo raro).
   El pico de un lote no se ha medido nunca con el consultor original: lo mide por primera vez
   `canopy-db-consultor` al verificar AC-M8, y si el original no cumple el cociente, es un fallo del proyecto y se
-  corrige.
+  corrige. *Anotación del 2026-10-21: en el lote, las consultas ya comprobadas del archivo se pueden guardar; lo
+  que no crece es la memoria de cada consulta (decisión B7 del [PRD del lote de consultas](canopy-db-lote.prd.md)).*
 - **K9 — Errores del motor**: un error de CanopyDB sin equivalente en las aplicaciones originales (por ejemplo,
   una base dañada o que no se puede abrir) se muestra con el mensaje existente más cercano, y su detalle va solo
   al log o a la salida de errores. Motivo: el contrato mantiene los mensajes sin cambiar una palabra, y el detalle

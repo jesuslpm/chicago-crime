@@ -129,19 +129,24 @@ pub fn stats(count: u64, elapsed: Duration, indexes: &[&str], filters: &[&str]) 
     } else {
         "resultados"
     };
-    let millis = (elapsed.as_micros() + 500) / 1_000;
     let filters = if filters.is_empty() {
         "ninguno".to_owned()
     } else {
         filters.join(", ")
     };
     format!(
-        "{} {results} en {},{:03} s. Índices usados: {}. Filtros sin índice: {filters}.",
+        "{} {results} en {} s. Índices usados: {}. Filtros sin índice: {filters}.",
         thousands(u128::from(count)),
-        thousands(millis / 1_000),
-        millis % 1_000,
+        seconds(elapsed),
         indexes.join(", ")
     )
+}
+
+/// `elapsed` in seconds with three decimals, a decimal comma and Spanish thousands separators,
+/// rounded to the millisecond: `0,041`, `1.234,500`.
+fn seconds(elapsed: Duration) -> String {
+    let millis = (elapsed.as_micros() + 500) / 1_000;
+    format!("{},{:03}", thousands(millis / 1_000), millis % 1_000)
 }
 
 pub fn query_cancelled() -> String {
@@ -166,6 +171,71 @@ pub fn output_unwritable(path: &Path) -> String {
 /// Writing the results to stdout failed for a reason other than a closed pipe.
 pub fn stdout_unwritable() -> String {
     "No se puede escribir en la salida estándar.".to_owned()
+}
+
+// Query batches (`--batch`, canopy-db-lote PRD). The batch file and the output paths are shown
+// exactly as the analyst wrote them; line and query numbers go without thousands separators.
+
+/// A query option typed on the command line together with `--batch`.
+pub fn option_with_batch(option: &str) -> String {
+    format!(
+        "Con --batch, la opción {option} va en cada línea del lote, no en la línea de comandos."
+    )
+}
+
+pub fn batch_unreadable(file: &Path) -> String {
+    format!("No se puede leer el lote {}.", file.display())
+}
+
+pub fn batch_not_utf8(file: &Path) -> String {
+    format!("El lote {} no es un texto UTF-8 válido.", file.display())
+}
+
+/// The file has only empty lines and comments, or nothing at all.
+pub fn batch_empty(file: &Path) -> String {
+    format!("El lote {} no contiene ninguna consulta.", file.display())
+}
+
+/// A message about line `number` of the batch file: a batch rule or a single query's message,
+/// unchanged.
+pub fn on_line(number: usize, message: impl Display) -> String {
+    format!("Línea {number}: {message}")
+}
+
+pub fn unclosed_quote() -> String {
+    "falta cerrar unas comillas.".to_owned()
+}
+
+/// `--dataset`, `--batch`, `--help` or `-h` inside a batch line.
+pub fn option_not_in_batch(option: &str) -> String {
+    format!("la opción {option} no se admite dentro del lote.")
+}
+
+/// An output file that an earlier line of the batch already writes.
+pub fn output_reused(path: &Path, earlier_line: usize) -> String {
+    format!(
+        "el archivo de salida {} ya lo usa la línea {earlier_line}.",
+        path.display()
+    )
+}
+
+pub fn output_is_batch(path: &Path) -> String {
+    format!("el archivo de salida {} es el propio lote.", path.display())
+}
+
+/// The header written on stderr before query `index` (from 1) of `total`, on line `line`.
+pub fn batch_header(index: usize, total: usize, line: usize) -> String {
+    format!("--- Consulta {index} de {total} (línea {line}) ---")
+}
+
+/// The last line of a batch whose queries all ran; the time covers the whole run.
+pub fn batch_completed(total: usize, elapsed: Duration) -> String {
+    let queries = if total == 1 { "consulta" } else { "consultas" };
+    format!(
+        "Lote completado: {} {queries} en {} s.",
+        thousands(total as u128),
+        seconds(elapsed)
+    )
 }
 
 /// `1838502` as `1.838.502`.

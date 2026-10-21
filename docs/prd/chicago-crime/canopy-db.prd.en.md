@@ -391,7 +391,9 @@ All were made with the user on 2026-10-20.
   does not meet today in its own AC-C13 check (2.21 between the CSV file of all the thefts and the count of a
   rare type). The peak of a batch has never been measured with the original query app: `canopy-db-consultor`
   measures it for the first time when verifying AC-M8, and if the original does not meet the ratio, it is a
-  failure of the project and is fixed.
+  failure of the project and is fixed. *Annotation of 2026-10-21: in a batch, the checked queries of the file
+  may be kept; what does not grow is the memory of each query (decision B7 of the
+  [query batch PRD](canopy-db-lote.prd.en.md)).*
 - **K9 — Engine errors**: a CanopyDB error with no equivalent in the original applications (for example, a
   damaged database or one that cannot be opened) is shown with the closest existing message, and its detail
   goes only to the log or to the error output. Reason: the contract keeps the messages unchanged down to the

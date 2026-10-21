@@ -47,6 +47,9 @@ Sigue el flujo B del documento padre. Esta entrega concreta los puntos siguiente
 
 1. El analista ejecuta el consultor indicando la carpeta de salida del generador (la que contiene el puntero
    a la versión activa) y una o varias condiciones. Cada ejecución responde una consulta y termina (D6).
+   *Anotación del 2026-10-21: sustituida en parte por el [PRD del lote de consultas](canopy-db-lote.prd.md)
+   (decisión K7 del [PRD de CanopyDB](canopy-db.prd.md)); una ejecución del consultor responde una consulta
+   o un lote de consultas, y sigue arrancando, respondiendo y terminando.*
 2. El consultor localiza la versión activa, lee su manifiesto y comprueba que la versión del esquema es
    compatible. Si el generador publica una versión nueva mientras tanto, la consulta en curso termina sobre
    la versión que abrió.
@@ -222,7 +225,11 @@ el cuerpo del PRD.
   de resultados, tiempo e índices usados van a la salida de errores.
 - **C6 — Códigos de salida** (confirmada el 2026-10-13): 0 si la consulta se ejecuta, aunque no haya resultados; 1 si se
   rechaza por el conjunto o por los datos de la consulta, o si aborta; 2 si la línea de comandos no es
-  válida; 130 si el analista la cancela con Ctrl+C. Motivo: coincide con el generador.
+  válida; 130 si el analista la cancela con Ctrl+C. Motivo: coincide con el generador. *Anotación del
+  2026-10-21: una ejecución del consultor responde una consulta o un lote de consultas
+  ([PRD del lote de consultas](canopy-db-lote.prd.md), decisión K7 del [PRD de CanopyDB](canopy-db.prd.md));
+  el código 2 vale también para una línea del lote mal formada (decisión B4 del
+  [PRD del lote de consultas](canopy-db-lote.prd.md)).*
 - **C7 — Memoria** (confirmada el 2026-10-13, revisada el mismo día a petición del usuario): sin límite fijo
   como el del generador, pero el consumo no crece con el tamaño del resultado. Contar `THEFT` (1,8 millones)
   usa una memoria comparable a la de contar un tipo raro. Motivo: el padre exige no cargar el conjunto

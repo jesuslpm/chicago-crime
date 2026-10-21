@@ -1,11 +1,14 @@
 ﻿<#
 .SYNOPSIS
-    Acceptance of the crime query app on any compatible CSV: the query app PRD (AC-C1 to AC-C18)
-    and the startswith PRD of its prefix conditions (AC-S1 to AC-S12).
+    Acceptance of the crime query app on any compatible CSV: the query app PRD (AC-C1 to AC-C18),
+    the startswith PRD of its prefix conditions (AC-S1 to AC-S12) and the batch PRD of its query
+    batches (canopy-db-lote: AC-B1, AC-B2, AC-B4, AC-B5, AC-B8 and AC-B10, which verify AC-M7 and
+    AC-M9 of the CanopyDB PRD with this query app).
 
 .DESCRIPTION
-    Both PRDs share one run: the AC-C rows are the consultor criteria repeated on the build that
-    holds the prefix conditions, and give AC-S12 ("los resultados no cambian").
+    The PRDs share one run: the AC-C rows are the consultor criteria repeated on the build that
+    holds the prefix conditions and the batches, and give AC-S12 ("los resultados no cambian");
+    the AC-C and AC-S rows together give AC-B10 (AC-M9: the existing checks pass unchanged).
 
     On the reference extract, recognized by the source SHA-256 in the dataset's manifest, it also
     requires the exact figures of the PRDs; on any other CSV every count is only compared with the
@@ -30,6 +33,18 @@
                  PRD figures (1.256.646 CRIM, 269.655 JA, 3.095.148 THEFT or CRIM, 5.762.199 H) are
                  asserted too; AC-S11 has one row per row of the PRD's validation table; AC-S12
                  passes when every AC-C row passed;
+      AC-B       the batches (`--batch <ARCHIVO>`): AC-B1 runs, in one batch, every query that
+                 succeeded alone on the full dataset in this run (Invoke-Query records each one),
+                 counts first (one number per line on stdout), then tables (on stdout), then CSV
+                 and JSON with an --output file each, and compares each with its single run: the
+                 same count, the same records (limited ones: as many as the limit, all from the
+                 unlimited result), the same warnings and stats line under its header, and the
+                 final line; AC-B2 publishes a new version while a batch on a copy of the swap
+                 dataset is held in its second query, like AC-C12, and checks that every query
+                 and every JSON output shows the version the batch opened; AC-B4 and AC-B5 provoke
+                 a representative set of batch rejections end to end (the exhaustive set is in
+                 the Rust tests); AC-B8 presses a real Ctrl+C during the second of three queries
+                 with output files; AC-B10 passes when every AC-C and AC-S row passed;
       verifier   crime-acceptance on the full dataset, with --reference on the reference extract
                  (AC-C18).
 
@@ -38,7 +53,10 @@
     AC-C12 publishes version 2 while the query on version 1 is held in flight: its standard output
     is read only up to its first rows, so it cannot finish, and is read to the end once CURRENT has
     switched. AC-C12 passes only if the publication completed during the query: CURRENT names
-    version 2 and the version 1 folder is gone while the query still runs.
+    version 2 and the version 1 folder is gone while the query still runs. AC-B2 and AC-B8 use
+    the same two techniques on a batch: AC-B2 holds the batch's standard output inside its second
+    query (the first one, a count, has ended), and AC-B8 presses Ctrl+C once the second query's
+    temporary output file holds 1 MiB.
 
     AC-C1 reads "el primero, el último" of the parent AC3 as the first and the last CSV rows; the
     generator verifier's AC-G3-SAMPLE (crime-acceptance, run by run-acceptance.ps1 and by the
@@ -148,11 +166,20 @@ $Messages = @{
     BlockCondition  = 'El campo "Block" no admite condiciones. Campos disponibles: ' + ($Conditionable -join ', ') + '.'
     DescCondition   = 'El campo "Description" no admite condiciones. Campos disponibles: ' + ($Conditionable -join ', ') + '.'
     PrefixForm      = 'La condición "Primary Type" no tiene la forma CAMPO=PREFIJO.'
+    WhereForm       = 'La condición "Primary Type" no tiene la forma CAMPO=VALOR.'
+    WhereWithBatch  = 'Con --batch, la opción --where va en cada línea del lote, no en la línea de comandos.'
 }
 function Get-NotFoundMessage([string]$Folder) { "No se encontró un conjunto de datos válido en $Folder." }
 function Get-UnreadableMessage([string]$Folder) { "No se pudo leer el conjunto de datos en $Folder." }
 function Get-UnwritableMessage([string]$Path) { "No se puede escribir el archivo de salida $Path." }
+# Batch messages (canopy-db-lote PRD): the batch file and the output paths as they were written.
+function Get-BatchUnreadableMessage([string]$File) { "No se puede leer el lote $File." }
+function Get-BatchEmptyMessage([string]$File) { "El lote $File no contiene ninguna consulta." }
+function Get-OutputReusedMessage([int]$Line, [string]$Path, [int]$Earlier) { "Línea ${Line}: el archivo de salida $Path ya lo usa la línea $Earlier." }
+function Get-BatchHeader([int]$Index, [int]$Total, [int]$Line) { "--- Consulta $Index de $Total (línea $Line) ---" }
 $StatsPattern = '^(?<count>[0-9.]+) resultados? en [0-9.]+,[0-9]{3} s\. Índices usados: (?<indexes>.*)\. Filtros sin índice: (?<filters>.*)\.$'
+$BatchHeaderPattern = '^--- Consulta (?<index>[0-9]+) de (?<total>[0-9]+) \(línea (?<line>[0-9]+)\) ---$'
+$BatchCompletedPattern = '^Lote completado: (?<total>[0-9.]+) consultas? en [0-9.]+,[0-9]{3} s\.$'
 
 # --- CSV helpers (compiled: they read millions of lines) ---
 
@@ -491,10 +518,22 @@ function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switc
     Invoke-Program -FilePath $GeneratorExe -Arguments $arguments
 }
 
+# Every query that succeeds alone on the full dataset, once per distinct command line, for AC-B1:
+# without --output (the same query on stdout is recorded instead), memory measurements and batches.
+# A recorded query with --limit needs its unlimited result in Get-UnlimitedIds; a new limited query
+# on other conditions makes AC-B1 fail until a select for them is added there.
+$SingleQueries = New-Object System.Collections.Generic.List[object]
+$SingleQueryKeys = New-Object 'System.Collections.Generic.HashSet[string]'
+
 function Invoke-Query([string[]]$Arguments, [string]$Dataset = $DatasetDir, [switch]$SampleMemory) {
     $all = @('--dataset', $Dataset)
     if ($Arguments) { $all += $Arguments }
-    Invoke-Program -FilePath $QueryExe -Arguments $all -SampleMemory:$SampleMemory
+    $run = Invoke-Program -FilePath $QueryExe -Arguments $all -SampleMemory:$SampleMemory
+    if (-not $SampleMemory -and $Dataset -eq $DatasetDir -and $run.ExitCode -eq 0 -and $Arguments `
+            -and $Arguments -notcontains '--output' -and $Arguments -notcontains '--batch') {
+        if ($SingleQueryKeys.Add(($Arguments -join [char]0x1F))) { $SingleQueries.Add([pscustomobject]@{ Arguments = @($Arguments); Run = $run }) }
+    }
+    $run
 }
 
 function Format-Query($Run) { Format-Command 'crime-query' ($Run.Arguments | Select-Object -Skip 2) }
@@ -699,6 +738,160 @@ function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [i
     $run
 }
 
+# --- Batches (canopy-db-lote PRD) ---
+
+# One batch line: every word in double quotes (in single quotes if it holds a double quote), which
+# the batch file reads as one word without escapes (decision B2).
+function Format-BatchLine([string[]]$Words) {
+    (@($Words | ForEach-Object { if ($_.Contains('"')) { "'" + $_ + "'" } else { '"' + $_ + '"' } }) -join ' ')
+}
+
+# Writes a batch file of -WorkDir's inputs folder (BOM-less UTF-8, LF, a final line feed) and
+# returns its path.
+function New-BatchFile([string]$Name, [string[]]$Lines) {
+    $path = Join-Path $InputDir $Name
+    Write-Utf8 $path ((@($Lines) -join "`n") + "`n")
+    $path
+}
+
+function Format-BatchLines([string[]]$Lines) {
+    (@($Lines | ForEach-Object { '`' + $_.Replace($WorkDir, '<work>') + '`' }) -join ' / ')
+}
+
+# The stderr of a batch: the lines before the first header, one section per header with the
+# lines under it, and the final line with what follows it.
+function Read-BatchStderr([string]$Stderr) {
+    $sections = New-Object System.Collections.Generic.List[object]
+    $before = New-Object System.Collections.Generic.List[string]
+    $final = $null
+    $afterFinal = 0
+    foreach ($line in Get-Lines $Stderr) {
+        $header = [regex]::Match($line, $BatchHeaderPattern)
+        $completed = [regex]::Match($line, $BatchCompletedPattern)
+        if ($null -ne $final) { $afterFinal++ }
+        elseif ($header.Success) {
+            $sections.Add([pscustomobject]@{
+                    Header = $line
+                    Index  = [int]$header.Groups['index'].Value
+                    Total  = [int]$header.Groups['total'].Value
+                    Line   = [int]$header.Groups['line'].Value
+                    Lines  = New-Object System.Collections.Generic.List[string]
+                })
+        }
+        elseif ($completed.Success) { $final = $completed }
+        elseif ($sections.Count -gt 0) { $sections[$sections.Count - 1].Lines.Add($line) }
+        else { $before.Add($line) }
+    }
+    [pscustomobject]@{ Sections = $sections; Before = $before; Final = $final; AfterFinal = $afterFinal }
+}
+
+# The problems of a batch's stderr against its expected form (decision B3): one header per query
+# that ran, in order, with its number, the total and its line; with -Completed, the final line
+# last with the total; without it, no final line.
+function Test-BatchShape($Parsed, [int]$Total, [int[]]$Lines, [switch]$Completed) {
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($Parsed.Before.Count -gt 0) { $problems.Add('stderr before the first header: "' + ($Parsed.Before -join ' / ') + '"') }
+    if ($Parsed.Sections.Count -ne $Lines.Count) { $problems.Add(('{0} headers, expected {1}' -f $Parsed.Sections.Count, $Lines.Count)) }
+    for ($i = 0; $i -lt [math]::Min($Parsed.Sections.Count, $Lines.Count); $i++) {
+        $expected = Get-BatchHeader ($i + 1) $Total $Lines[$i]
+        if ($Parsed.Sections[$i].Header -cne $expected) { $problems.Add(('header {0} is "{1}", expected "{2}"' -f ($i + 1), $Parsed.Sections[$i].Header, $expected)) }
+    }
+    if ($Completed) {
+        if ($null -eq $Parsed.Final) { $problems.Add('no final line "Lote completado: ..."') }
+        elseif ([long]$Parsed.Final.Groups['total'].Value.Replace('.', '') -ne $Total) { $problems.Add(('final line "{0}", expected {1} queries' -f $Parsed.Final.Value, $Total)) }
+        if ($Parsed.AfterFinal -gt 0) { $problems.Add(('{0} lines after the final line' -f $Parsed.AfterFinal)) }
+    }
+    elseif ($null -ne $Parsed.Final) { $problems.Add(('a final line "{0}"' -f $Parsed.Final.Value)) }
+    $problems.ToArray()
+}
+
+# The problems of a batch query's stderr section against the same query alone: the same warnings
+# in the same order and exactly one stats line, with the same count, indexes and filters.
+function Compare-BatchSection($Section, $Alone) {
+    if ($null -eq $Section) { return @('no stderr section') }
+    $problems = New-Object System.Collections.Generic.List[string]
+    $batchStatsLines = @($Section.Lines | Where-Object { $_ -match $StatsPattern })
+    $batchWarnings = @($Section.Lines | Where-Object { $_ -notmatch $StatsPattern })
+    $aloneWarnings = @(Get-Lines $Alone.Stderr | Where-Object { $_ -notmatch $StatsPattern })
+    if (($batchWarnings -join ' / ') -cne ($aloneWarnings -join ' / ')) { $problems.Add(('{0}: stderr "{1}", alone "{2}"' -f $Section.Header, ($batchWarnings -join ' / '), ($aloneWarnings -join ' / '))) }
+    $batchStats = Get-Stats ($Section.Lines -join "`n")
+    $aloneStats = Get-Stats $Alone.Stderr
+    if ($batchStatsLines.Count -ne 1 -or $null -eq $aloneStats) { $problems.Add(('{0}: {1} stats lines, alone {2}' -f $Section.Header, $batchStatsLines.Count, $(if ($aloneStats) { 1 } else { 0 }))) }
+    elseif ($batchStats.Count -ne $aloneStats.Count -or $batchStats.Indexes -cne $aloneStats.Indexes -or $batchStats.Filters -cne $aloneStats.Filters) {
+        $problems.Add(('{0}: stats "{1}", alone "{2}"' -f $Section.Header, $batchStats.Line, $aloneStats.Line))
+    }
+    $problems.ToArray()
+}
+
+# The tables of a batch's stdout: one block of data rows per header and separator line, and the
+# number of lines before the first header.
+function Read-TableBlocks([string[]]$Lines) {
+    $blocks = New-Object System.Collections.Generic.List[object]
+    $stray = 0
+    $current = $null
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i].StartsWith('ID ') -and $i + 1 -lt $Lines.Count -and $Lines[$i + 1] -match '^[- ]+$') {
+            $current = New-Object System.Collections.Generic.List[string]
+            $blocks.Add($current)
+            $i++
+        }
+        elseif ($null -ne $current) { $current.Add($Lines[$i]) }
+        else { $stray++ }
+    }
+    [pscustomobject]@{ Blocks = $blocks; Stray = $stray }
+}
+
+function Format-Problems($List) { if ($List.Count -eq 0) { '' } else { '; PROBLEMS: ' + (($List | Select-Object -First 5) -join '; ') } }
+
+function Get-TableIds([string[]]$Rows) { , @($Rows | ForEach-Object { ($_ -split '\s+')[0] } | Sort-Object) }
+
+function Get-CsvIds($Records) { , @($Records | ForEach-Object { $_[0] } | Sort-Object) }
+
+# The parsed JSON document of a text, or $null.
+function Read-JsonDocument([string]$Text) { try { $Text | ConvertFrom-Json } catch { $null } }
+
+function Get-JsonIds($Document) { , @(@($Document.results) | ForEach-Object { [string]$_.ID } | Sort-Object) }
+
+# The IDs of the unlimited result of a limited query, from the selects on the CSV, or $null when
+# the script holds no select for its conditions. Every limited query that Invoke-Query records for
+# AC-B1 must have its conditions here: today only THEFT and the CRIM prefix are limited.
+function Get-UnlimitedIds([string[]]$Arguments) {
+    $conditions = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $Arguments.Count; $i++) {
+        if ($Arguments[$i] -eq '--limit' -or $Arguments[$i] -eq '--format') { $i++ } else { $conditions.Add($Arguments[$i]) }
+    }
+    $key = ($conditions -join '|').ToLowerInvariant()
+    if ($key -eq '--where|primary type=theft') { return , $theftSet }
+    if ($key -eq '--startswith|primary type=crim') { return , $crimSet }
+    $null
+}
+
+# The problem of a limited query's IDs (C11): exactly as many as the limit, distinct, all from the
+# unlimited result; or $null.
+function Test-LimitedIds([string[]]$Ids, [long]$Limit, [string[]]$Arguments) {
+    $unlimited = Get-UnlimitedIds $Arguments
+    if ($null -eq $unlimited) { return 'no select holds the unlimited result of these conditions' }
+    $distinct = @($Ids | Sort-Object -Unique).Count
+    $outside = @($Ids | Where-Object { -not $unlimited.Contains([long]$_) }).Count
+    if ($Ids.Count -ne $Limit -or $distinct -ne $Limit -or $outside -gt 0) {
+        return ('{0} records ({1} distinct, {2} outside the unlimited result of {3}), limit {4}' -f $Ids.Count, $distinct, $outside, (Format-Count $unlimited.Count), $Limit)
+    }
+    $null
+}
+
+# A batch that must be refused before any query runs (AC-B4, AC-B5): exactly one stderr line with
+# the message, nothing on stdout, the exit code, and no file created in the batch rejection folder.
+function Test-BatchRejection([string]$Criterion, [string]$Row, [string]$BatchFile, [string[]]$Lines, [string]$Message, [int]$ExitCode, [string[]]$Extra = @()) {
+    $before = @(Get-EntryNames $BatchRejectedDir) -join ', '
+    $run = Invoke-Query -Arguments (@('--batch', $BatchFile) + $Extra)
+    $after = @(Get-EntryNames $BatchRejectedDir) -join ', '
+    $stderrLines = @(Get-Lines $run.Stderr)
+    $ok = $run.ExitCode -eq $ExitCode -and $stderrLines.Count -eq 1 -and $stderrLines[0] -ceq $Message -and $run.Stdout -eq '' -and $after -ceq $before
+    $linesText = if ($Lines) { '; batch lines ' + (Format-BatchLines $Lines) } else { '' }
+    Add-Result "$Criterion $Row" $ok ('`{0}`{1}: exit {2} (expected {3}); stderr "{4}"; stdout empty: {5}; output folder unchanged ({6}): {7}' -f `
+            (Format-Query $run), $linesText, $run.ExitCode, $ExitCode, ($stderrLines -join ' / ').Replace($WorkDir, '<work>'), ($run.Stdout -eq ''), $(if ($after) { $after } else { 'empty' }), ($after -ceq $before))
+}
+
 # --- Preparation ---
 
 $started = Get-Date
@@ -713,6 +906,8 @@ $SmallDir = Join-Path $WorkDir 'small'
 $Schema1Dir = Join-Path $WorkDir 'schema1'
 $DamagedDir = Join-Path $WorkDir 'damaged'
 $SwapDir = Join-Path $WorkDir 'swap'
+# A copy of the swap dataset that AC-B2 republishes while a batch holds it open.
+$BatchSwapDir = Join-Path $WorkDir 'batch-swap'
 $EmptyDir = Join-Path $WorkDir 'no-dataset'
 $IncompleteDir = Join-Path $WorkDir 'incomplete'
 $TempDir = Join-Path $WorkDir 'temp'
@@ -721,7 +916,7 @@ $InputDir = Join-Path $WorkDir 'inputs'
 $OutDir = Join-Path $WorkDir 'outputs'
 $ReportPath = Join-Path $WorkDir 'query-acceptance-report.md'
 Write-Step "Cleaning the entries of a previous query acceptance in $WorkDir"
-foreach ($path in @($DatasetDir, $LegacyDatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)) {
+foreach ($path in @($DatasetDir, $LegacyDatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $BatchSwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
 }
 foreach ($dir in @($TempDir, $LogDir, $InputDir, $OutDir, $EmptyDir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
@@ -1394,6 +1589,331 @@ Test-Rejection 'prefix on Description' @('--startswith', 'Description=SIMPLE') $
 Test-Rejection 'prefix on a nonexistent field' @('--startswith', 'Gravedad=alta') $Messages.UnknownField 1 -Criterion 'AC-S11' | Out-Null
 Test-Rejection 'condition without =' @('--startswith', 'Primary Type') $Messages.PrefixForm 2 -Criterion 'AC-S11' | Out-Null
 
+# --- AC-B1 (AC-M7): every query that succeeded alone, again in one batch ---
+
+# Counts first, so that stdout starts with one number per count query; then tables, which can
+# only go to stdout; then CSV and JSON, each with an output file of its own. Every check above is
+# done by now, so the batch holds every query that succeeded alone on the full dataset.
+$b1Entries = @(foreach ($single in $SingleQueries) {
+        $arguments = [string[]]$single.Arguments
+        $formatAt = [array]::IndexOf($arguments, '--format')
+        $limitAt = [array]::IndexOf($arguments, '--limit')
+        [pscustomobject]@{
+            Arguments = $arguments
+            Kind      = if ($arguments -contains '--count') { 'count' } elseif ($formatAt -ge 0) { $arguments[$formatAt + 1] } else { 'table' }
+            Limit     = if ($limitAt -ge 0) { [long]$arguments[$limitAt + 1] } else { [long]-1 }
+            Run       = $single.Run
+            Output    = $null
+            Line      = 0
+        }
+    })
+$b1Entries = @(@($b1Entries | Where-Object { $_.Kind -eq 'count' }) + @($b1Entries | Where-Object { $_.Kind -eq 'table' }) + @($b1Entries | Where-Object { $_.Kind -ne 'count' -and $_.Kind -ne 'table' }))
+Write-Step ('AC-B1: the {0} queries that succeeded alone, again in one batch' -f $b1Entries.Count)
+$b1Out = Join-Path $OutDir 'batch-all'
+$b1AloneDir = Join-Path $OutDir 'batch-all-alone'
+foreach ($dir in @($b1Out, $b1AloneDir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+# A comment and an empty line first: the line of each query is its number plus 2.
+$b1Lines = New-Object System.Collections.Generic.List[string]
+$b1Lines.Add('# AC-B1: every query of the query acceptance that succeeded alone on the full dataset')
+$b1Lines.Add('')
+for ($i = 0; $i -lt $b1Entries.Count; $i++) {
+    $entry = $b1Entries[$i]
+    $words = $entry.Arguments
+    if ($entry.Kind -ne 'count' -and $entry.Kind -ne 'table') {
+        $entry.Output = Join-Path $b1Out ('q{0:D3}.{1}' -f ($i + 1), $entry.Kind)
+        $words = @($words) + @('--output', $entry.Output)
+    }
+    $b1Lines.Add((Format-BatchLine $words))
+    $entry.Line = $b1Lines.Count
+}
+$b1File = New-BatchFile 'batch-all.txt' $b1Lines.ToArray()
+$b1Run = Invoke-Query -Arguments @('--batch', $b1File)
+$b1Parsed = Read-BatchStderr $b1Run.Stderr
+$b1Counts = @($b1Entries | Where-Object { $_.Kind -eq 'count' })
+$b1Tables = @($b1Entries | Where-Object { $_.Kind -eq 'table' })
+$b1Files = @($b1Entries | Where-Object { $_.Kind -ne 'count' -and $_.Kind -ne 'table' })
+$b1StdoutLines = @(Get-Lines $b1Run.Stdout)
+$b1CountLines = @($b1StdoutLines | Select-Object -First $b1Counts.Count)
+$b1TableBlocks = Read-TableBlocks @($b1StdoutLines | Select-Object -Skip $b1Counts.Count)
+$b1Problems = @{}
+foreach ($group in @('counts', 'tables', 'files', 'stderr')) { $b1Problems[$group] = New-Object System.Collections.Generic.List[string] }
+foreach ($problem in @(Test-BatchShape $b1Parsed $b1Entries.Count @($b1Entries | ForEach-Object { $_.Line }) -Completed)) { $b1Problems['stderr'].Add($problem) }
+if ($b1Run.ExitCode -ne 0) { $b1Problems['stderr'].Add("exit $($b1Run.ExitCode)") }
+if ($b1TableBlocks.Stray -gt 0 -or $b1TableBlocks.Blocks.Count -ne $b1Tables.Count) {
+    $b1Problems['tables'].Add(('stdout holds {0} count lines, then {1} lines outside a table and {2} tables, expected {3} and {4}' -f $b1CountLines.Count, $b1TableBlocks.Stray, $b1TableBlocks.Blocks.Count, $b1Counts.Count, $b1Tables.Count))
+}
+$b1Rows = New-Object System.Collections.Generic.List[string]
+$countIndex = 0
+$tableIndex = 0
+for ($i = 0; $i -lt $b1Entries.Count; $i++) {
+    $entry = $b1Entries[$i]
+    $section = if ($i -lt $b1Parsed.Sections.Count) { $b1Parsed.Sections[$i] } else { $null }
+    $own = New-Object System.Collections.Generic.List[string]
+    foreach ($problem in @(Compare-BatchSection $section $entry.Run)) { $b1Problems['stderr'].Add($problem) }
+    $aloneText = '-'
+    $batchText = '-'
+    switch ($entry.Kind) {
+        'count' {
+            $alone = Get-QueryCount $entry.Run
+            $value = if ($countIndex -lt $b1CountLines.Count) { $b1CountLines[$countIndex] } else { '(missing)' }
+            $countIndex++
+            $aloneText = Format-Count $alone
+            $batchText = $value
+            if ($value -notmatch '^[0-9]+$' -or [long]$value -ne $alone) { $own.Add(('stdout count "{0}", alone {1}' -f $value, $alone)) }
+        }
+        'table' {
+            $aloneRows = Read-TableRows $entry.Run.Stdout
+            $aloneIds = if ($null -ne $aloneRows) { Get-TableIds $aloneRows } else { , @() }
+            $batchIds = if ($tableIndex -lt $b1TableBlocks.Blocks.Count) { Get-TableIds $b1TableBlocks.Blocks[$tableIndex].ToArray() } else { $null }
+            $tableIndex++
+            $aloneText = '{0} records' -f $aloneIds.Count
+            $batchText = if ($null -ne $batchIds) { '{0} records' -f $batchIds.Count } else { '(no table)' }
+            if ($null -eq $batchIds) { $own.Add('no table on stdout') }
+            elseif ($entry.Limit -ge 0) { $limited = Test-LimitedIds $batchIds $entry.Limit $entry.Arguments; if ($limited) { $own.Add($limited) } }
+            elseif (($batchIds -join ',') -cne ($aloneIds -join ',')) { $own.Add('the table IDs differ from the table alone') }
+        }
+        default {
+            $exists = Test-Path -LiteralPath $entry.Output -PathType Leaf
+            $batchFileText = if ($exists) { [System.IO.File]::ReadAllText($entry.Output, $Utf8) } else { $null }
+            if (-not $exists) { $own.Add('no output file') }
+            elseif ($entry.Kind -eq 'csv') {
+                $aloneRecords = Read-CsvRecords $entry.Run.Stdout
+                $batchRecords = Read-CsvRecords $batchFileText
+                $aloneText = if ($null -ne $aloneRecords) { '{0} records' -f $aloneRecords.Count } else { '(not CSV)' }
+                $batchText = if ($null -ne $batchRecords) { '{0} records' -f $batchRecords.Count } else { '(not CSV)' }
+                if ($null -eq $batchRecords) { $own.Add('the file does not parse as CSV') }
+                elseif ($entry.Limit -ge 0) { $limited = Test-LimitedIds (Get-CsvIds $batchRecords) $entry.Limit $entry.Arguments; if ($limited) { $own.Add($limited) } }
+                else {
+                    $aloneFile = Join-Path $b1AloneDir ('q{0:D3}.csv' -f ($i + 1))
+                    Write-Utf8 $aloneFile $entry.Run.Stdout
+                    $difference = [QueryAcceptance]::CompareRowSets($aloneFile, $entry.Output, $false)
+                    if ($null -ne $difference) { $own.Add("the rows differ from the CSV alone: $difference") }
+                }
+            }
+            else {
+                $aloneDocument = Read-JsonDocument $entry.Run.Stdout
+                $batchDocument = Read-JsonDocument $batchFileText
+                $aloneText = if ($null -ne $aloneDocument) { '{0} records' -f @($aloneDocument.results).Count } else { '(not JSON)' }
+                $batchText = if ($null -ne $batchDocument) { '{0} records' -f @($batchDocument.results).Count } else { '(not JSON)' }
+                if ($null -eq $batchDocument -or $null -eq $aloneDocument) { $own.Add('a JSON document does not parse') }
+                else {
+                    if (($batchDocument.dataset | ConvertTo-Json -Compress) -cne ($aloneDocument.dataset | ConvertTo-Json -Compress) -or $batchDocument.dataset.version -ne $current) { $own.Add(('dataset {0}, alone {1}' -f ($batchDocument.dataset | ConvertTo-Json -Compress), ($aloneDocument.dataset | ConvertTo-Json -Compress))) }
+                    if (($batchDocument.query | ConvertTo-Json -Depth 6 -Compress) -cne ($aloneDocument.query | ConvertTo-Json -Depth 6 -Compress)) { $own.Add('the interpreted query differs from the JSON alone') }
+                    $batchIds = Get-JsonIds $batchDocument
+                    if ($entry.Limit -ge 0) { $limited = Test-LimitedIds $batchIds $entry.Limit $entry.Arguments; if ($limited) { $own.Add($limited) } }
+                    elseif (($batchIds -join ',') -cne ((Get-JsonIds $aloneDocument) -join ',')) { $own.Add('the IDs differ from the JSON alone') }
+                }
+            }
+        }
+    }
+    $group = if ($entry.Kind -eq 'count') { 'counts' } elseif ($entry.Kind -eq 'table') { 'tables' } else { 'files' }
+    foreach ($problem in $own) { $b1Problems[$group].Add(('line {0}: {1}' -f $entry.Line, $problem)) }
+    $b1Rows.Add(('| {0} | `{1}` | {2} | {3} | {4} |' -f $entry.Line, (Format-Command 'crime-query' $entry.Arguments).Replace('|', '\|'), $aloneText, $batchText, $(if ($own.Count -eq 0) { 'same' } else { ($own -join '; ').Replace('|', '\|') })))
+}
+$b1Expected = @($b1Files | ForEach-Object { Split-Path -Leaf $_.Output } | Sort-Object) -join ', '
+$b1Found = @(Get-EntryNames $b1Out) -join ', '
+if ($b1Found -cne $b1Expected) { $b1Problems['files'].Add("the output folder holds [$b1Found], expected [$b1Expected]") }
+$b1Command = Format-Query $b1Run
+Add-Result 'AC-B1 (counts on stdout)' ($b1Counts.Count -gt 0 -and $b1Problems['counts'].Count -eq 0) ('`{0}`, lines {1}: {2} count queries (`--count`) first; stdout starts with one number per query, in order, each the number of the same query alone{3}' -f `
+        $b1Command, $(if ($b1Counts.Count) { '{0}-{1}' -f $b1Counts[0].Line, $b1Counts[-1].Line } else { '-' }), $b1Counts.Count, (Format-Problems $b1Problems['counts']))
+Add-Result 'AC-B1 (tables on stdout)' ($b1Problems['tables'].Count -eq 0) ('then {0} table queries: stdout holds after the numbers exactly {0} tables, each with the IDs of the same query alone (any order), and nothing else{1}' -f `
+        $b1Tables.Count, (Format-Problems $b1Problems['tables']))
+Add-Result 'AC-B1 (CSV and JSON output files)' ($b1Files.Count -gt 0 -and $b1Problems['files'].Count -eq 0) ('then {0} CSV and JSON queries, each with its own `--output`: unlimited ones hold the rows of the same query alone (CSV, byte for byte in any order) or its IDs, interpreted query and dataset (JSON, version {1}); the {2} limited ones exactly as many distinct records as the limit, all from the unlimited result of the select on the CSV; the output folder holds only these files{3}' -f `
+        $b1Files.Count, $current, @($b1Entries | Where-Object { $_.Limit -ge 0 }).Count, (Format-Problems $b1Problems['files']))
+Add-Result 'AC-B1 (stderr)' ($b1Problems['stderr'].Count -eq 0) ('exit {0}; {1} headers `--- Consulta <i> de {2} (línea <n>) ---` in order, each followed by the same warnings and a stats line with the same count, indexes and filters as the query alone; last line "{3}"{4}' -f `
+        $b1Run.ExitCode, $b1Parsed.Sections.Count, $b1Entries.Count, $(if ($b1Parsed.Final) { $b1Parsed.Final.Value } else { '-' }), (Format-Problems $b1Problems['stderr']))
+Add-Section (@(
+        '## AC-B1: every query that succeeded alone, in one batch'
+        ''
+        ('`{0}`: exit {1}, {2} queries recorded by Invoke-Query (each distinct command line that succeeded on the full dataset, without --output, memory runs or batches). The CSV and JSON queries get `--output <work>\outputs\batch-all\qNNN.<format>` in the batch. Records: the count, or the records of the output.' -f $b1Command, $b1Run.ExitCode, $b1Entries.Count)
+        ''
+        '| Line | Query alone | Alone | Batch | Result |'
+        '|---|---|---|---|---|'
+        $b1Rows
+    ) -join "`n")
+
+# --- AC-B4, AC-B5: batches refused before any query runs (a representative set end to end) ---
+
+Write-Step 'AC-B4 and AC-B5: batch rejections'
+$BatchRejectedDir = Join-Path $OutDir 'batch-rejected'
+New-Item -ItemType Directory -Path $BatchRejectedDir | Out-Null
+$rejectedFirst = Format-BatchLine @('--where', "ID=$firstId", '--format', 'csv', '--output', (Join-Path $BatchRejectedDir 'line-1.csv'))
+$rejectedSecond = Format-BatchLine @('--where', 'Primary Type=THEFT', '--format', 'json', '--output', (Join-Path $BatchRejectedDir 'line-2.json'))
+$formLines = @($rejectedFirst, $rejectedSecond, '', '# the third query is on line 5',
+    (Format-BatchLine @('--where', 'Primary Type', '--format', 'csv', '--output', (Join-Path $BatchRejectedDir 'line-5.csv'))),
+    (Format-BatchLine @('--where', 'Gravedad=alta', '--count')))
+Test-BatchRejection 'AC-B4' '(line 5 refused for its form, after an empty line and a comment; a later bad line is not reported)' (New-BatchFile 'batch-form.txt' $formLines) $formLines ('Línea 5: ' + $Messages.WhereForm) 2
+$conditionLines = @($rejectedFirst, $rejectedSecond, '', '# the third query is on line 5',
+    (Format-BatchLine @('--where', 'Gravedad=alta', '--format', 'csv', '--output', (Join-Path $BatchRejectedDir 'line-5.csv'))),
+    (Format-BatchLine @('--where', 'Primary Type', '--count')))
+Test-BatchRejection 'AC-B4' '(line 5 refused for its conditions; a later line with a bad form is not reported)' (New-BatchFile 'batch-conditions.txt' $conditionLines) $conditionLines ('Línea 5: ' + $Messages.UnknownField) 1
+$missingBatch = Join-Path $InputDir 'no-such-batch.txt'
+Test-BatchRejection 'AC-B5' '(batch file that does not exist)' $missingBatch @() (Get-BatchUnreadableMessage $missingBatch) 1
+$emptyLines = @('# only comments and empty lines', '', '   ', '   # an indented comment')
+$emptyBatch = New-BatchFile 'batch-empty.txt' $emptyLines
+Test-BatchRejection 'AC-B5' '(batch without any query)' $emptyBatch $emptyLines (Get-BatchEmptyMessage $emptyBatch) 1
+$oneLines = @((Format-BatchLine @('--where', "ID=$firstId", '--format', 'csv', '--output', (Join-Path $BatchRejectedDir 'one.csv'))))
+Test-BatchRejection 'AC-B5' '(--where on the command line with --batch)' (New-BatchFile 'batch-one.txt' $oneLines) $oneLines $Messages.WhereWithBatch 2 -Extra @('--where', 'ID=634')
+$reusedPath = Join-Path $BatchRejectedDir 'sub\..\REUSED.csv'
+$reusedLines = @((Format-BatchLine @('--where', "ID=$firstId", '--format', 'csv', '--output', (Join-Path $BatchRejectedDir 'reused.csv'))),
+    (Format-BatchLine @('--where', "ID=$lastId", '--format', 'csv', '--output', $reusedPath)))
+Test-BatchRejection 'AC-B5' '(the same output file on two lines, written differently)' (New-BatchFile 'batch-reused.txt' $reusedLines) $reusedLines (Get-OutputReusedMessage 2 $reusedPath 1) 1
+
+# --- AC-B2 (AC-M7): a batch keeps the version it opened ---
+
+# A copy of the swap dataset, which holds slice 2 since AC-C12. The batch's first query (a count)
+# ends, its second one writes slice 2 to stdout, held after its first 1,000 rows; slice 1 is
+# published as a new version meanwhile; every later query must still read the version the batch
+# opened, and each JSON output must name it.
+Write-Step 'AC-B2: publishing a new version while a batch is held in its second query'
+$null = Copy-Dataset $SwapDir $BatchSwapDir
+$b2Old = Get-CurrentName $BatchSwapDir
+$slice1Id = [long]([QueryAcceptance]::FirstAndLastRows($Slice1)[0].Split(',')[0].Trim('"'))
+$slice2Id = [long]([QueryAcceptance]::FirstAndLastRows($Slice2)[0].Split(',')[0].Trim('"'))
+$b2Out = Join-Path $OutDir 'batch-swap'
+New-Item -ItemType Directory -Path $b2Out | Out-Null
+$b2Queries = @(
+    [pscustomobject]@{ Query = @('--where', 'Primary Type=THEFT', '--count'); Output = $null; Alone = $true }
+    [pscustomobject]@{ Query = @('--range', $Everything, '--format', 'csv'); Output = $null; Alone = $false }
+    [pscustomobject]@{ Query = @('--where', "ID=$slice2Id", '--where', "ID=$slice1Id", '--format', 'json'); Output = (Join-Path $b2Out 'ids.json'); Alone = $true }
+    [pscustomobject]@{ Query = @('--where', "Primary Type=$RareType", '--format', 'json'); Output = (Join-Path $b2Out 'rare.json'); Alone = $true }
+    [pscustomobject]@{ Query = @('--where', 'Primary Type=THEFT', '--range', $Everything, '--count'); Output = $null; Alone = $true }
+)
+# Each query alone on the version the batch will open, before the batch starts.
+$b2Before = @{}
+for ($i = 0; $i -lt $b2Queries.Count; $i++) { if ($b2Queries[$i].Alone) { $b2Before[$i] = Invoke-Query -Dataset $BatchSwapDir -Arguments $b2Queries[$i].Query } }
+$b2Lines = @($b2Queries | ForEach-Object { if ($_.Output) { Format-BatchLine (@($_.Query) + @('--output', $_.Output)) } else { Format-BatchLine $_.Query } })
+$b2File = New-BatchFile 'batch-swap.txt' $b2Lines
+$b2Batch = Start-Program -FilePath $QueryExe -Arguments @('--dataset', $BatchSwapDir, '--batch', $b2File) -HoldStdout
+$b2Start = Get-Date
+$b2Reader = $b2Batch.Process.StandardOutput
+$b2Held = New-Object System.Text.StringBuilder
+# The count of the first query, then the CSV header and 1,000 rows of the second.
+for ($i = 0; $i -lt 1002; $i++) {
+    $line = $b2Reader.ReadLine()
+    if ($null -eq $line) { break }
+    [void]$b2Held.Append($line).Append("`n")
+}
+$b2HeldAt = Get-Date
+$b2RunningAtPublish = -not $b2Batch.Process.HasExited
+$b2Publish = Invoke-Generator -Source $Slice1 -Output $BatchSwapDir -Log (Join-Path $LogDir 'batch-swap-new.log') -Overwrite
+$b2PublishedAt = Get-Date
+$b2New = Get-CurrentName $BatchSwapDir
+$b2OldGone = -not (Test-Path -LiteralPath (Join-Path $BatchSwapDir $b2Old))
+$b2RunningAfterPublish = -not $b2Batch.Process.HasExited
+[void]$b2Held.Append($b2Reader.ReadToEnd())
+$b2Done = Wait-Program $b2Batch
+$b2End = Get-Date
+# Each query alone again, now on the new version: at least one answer must differ, or the check
+# would not tell the versions apart.
+$b2After = @{}
+for ($i = 0; $i -lt $b2Queries.Count; $i++) { if ($b2Queries[$i].Alone) { $b2After[$i] = Invoke-Query -Dataset $BatchSwapDir -Arguments $b2Queries[$i].Query } }
+$b2Parsed = Read-BatchStderr $b2Done.Stderr
+$b2Problems = New-Object System.Collections.Generic.List[string]
+foreach ($problem in @(Test-BatchShape $b2Parsed $b2Queries.Count @(1..$b2Queries.Count) -Completed)) { $b2Problems.Add($problem) }
+# stdout: the first count, the CSV of the second query, the last count. The text is large (slice
+# 2 as CSV): it is copied only once more, for the CSV in the middle.
+$b2Text = $b2Held.ToString()
+$b2Held = $null
+$b2TextEnd = $b2Text.Length
+while ($b2TextEnd -gt 0 -and ($b2Text[$b2TextEnd - 1] -eq "`n" -or $b2Text[$b2TextEnd - 1] -eq "`r")) { $b2TextEnd-- }
+$b2FirstBreak = $b2Text.IndexOf("`n")
+$b2LastBreak = if ($b2TextEnd -gt 0) { $b2Text.LastIndexOf("`n", $b2TextEnd - 1) } else { -1 }
+$b2FirstCount = if ($b2FirstBreak -gt 0) { $b2Text.Substring(0, $b2FirstBreak).Trim() } else { '' }
+$b2LastCount = if ($b2LastBreak -gt $b2FirstBreak) { $b2Text.Substring($b2LastBreak + 1, $b2TextEnd - $b2LastBreak - 1).Trim() } else { '' }
+$b2CsvFile = Join-Path $OutDir 'batch-swap-stdout.csv'
+Write-Utf8 $b2CsvFile $(if ($b2LastBreak -gt $b2FirstBreak) { $b2Text.Substring($b2FirstBreak + 1, $b2LastBreak - $b2FirstBreak) } else { '' })
+$b2Text = $null
+$b2CsvDiff = if ($b2Done.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($b2CsvFile, $Slice2Rows, $ByValue) } else { 'the batch failed' }
+if ($null -ne $b2CsvDiff) { $b2Problems.Add("query 2: its CSV is not slice 2 ($b2CsvDiff)") }
+foreach ($pair in @(@(0, $b2FirstCount), @(4, $b2LastCount))) {
+    $alone = Get-QueryCount $b2Before[$pair[0]]
+    if ($pair[1] -notmatch '^[0-9]+$' -or [long]$pair[1] -ne $alone) { $b2Problems.Add(('query {0}: stdout count "{1}", alone on the opened version {2}' -f ($pair[0] + 1), $pair[1], $alone)) }
+}
+$b2Stats2 = if ($b2Parsed.Sections.Count -ge 2) { Get-Stats ($b2Parsed.Sections[1].Lines -join "`n") } else { $null }
+if ($null -eq $b2Stats2 -or $b2Stats2.Count -ne (Get-SelectCount 'slice-2')) { $b2Problems.Add(('query 2: stats "{0}", select on slice 2 {1}' -f $(if ($b2Stats2) { $b2Stats2.Line } else { '-' }), (Get-SelectCount 'slice-2'))) }
+$b2Versions = New-Object System.Collections.Generic.List[string]
+$b2VersionOk = $true
+$b2Differs = $false
+for ($i = 0; $i -lt $b2Queries.Count; $i++) {
+    if (-not $b2Queries[$i].Alone) { continue }
+    $section = if ($i -lt $b2Parsed.Sections.Count) { $b2Parsed.Sections[$i] } else { $null }
+    foreach ($problem in @(Compare-BatchSection $section $b2Before[$i])) { $b2Problems.Add("query $($i + 1): $problem") }
+    if ($b2Queries[$i].Output) {
+        $batchDocument = if (Test-Path -LiteralPath $b2Queries[$i].Output) { Read-JsonDocument ([System.IO.File]::ReadAllText($b2Queries[$i].Output, $Utf8)) } else { $null }
+        $beforeDocument = Read-JsonDocument $b2Before[$i].Stdout
+        $afterDocument = Read-JsonDocument $b2After[$i].Stdout
+        if ($null -eq $batchDocument -or $null -eq $beforeDocument -or $null -eq $afterDocument) { $b2VersionOk = $false; $b2Problems.Add("query $($i + 1): a JSON document is missing or does not parse"); continue }
+        $b2VersionOk = $b2VersionOk -and $batchDocument.dataset.version -eq $b2Old -and $beforeDocument.dataset.version -eq $b2Old -and $afterDocument.dataset.version -eq $b2New
+        $b2Versions.Add(('{0}: version {1} (alone before {2}, after {3})' -f (Split-Path -Leaf $b2Queries[$i].Output), $batchDocument.dataset.version, $beforeDocument.dataset.version, $afterDocument.dataset.version))
+        $batchIds = (Get-JsonIds $batchDocument) -join ','
+        if ($batchIds -cne ((Get-JsonIds $beforeDocument) -join ',')) { $b2Problems.Add(('query {0}: IDs [{1}], alone on the opened version [{2}]' -f ($i + 1), $batchIds, ((Get-JsonIds $beforeDocument) -join ','))) }
+        if (((Get-JsonIds $beforeDocument) -join ',') -cne ((Get-JsonIds $afterDocument) -join ',')) { $b2Differs = $true }
+    }
+    elseif ((Get-QueryCount $b2Before[$i]) -ne (Get-QueryCount $b2After[$i])) { $b2Differs = $true }
+}
+if (-not $b2Differs) { $b2Problems.Add('no query answers differently on the two versions, so the check cannot tell them apart') }
+$b2Switched = $b2Publish.ExitCode -eq 0 -and $b2New -ne $b2Old
+Add-Result 'AC-B2 (batch held while a new version is published)' ($b2Switched -and $b2OldGone -and $b2RunningAtPublish -and $b2RunningAfterPublish -and $b2Done.ExitCode -eq 0) `
+('`crime-query --dataset batch-swap --batch {0}` on a copy of the swap dataset (version {1}, slice 2), held after the count of its first query and 1,000 rows of its second; generator --overwrite with slice 1 exit {2}, CURRENT {1} -> {3}, old version folder gone: {4}; batch still running at the publication: {5}, and when the generator ended: {6}; then exit {7}; batch lines {8}' -f `
+        (Split-Path -Leaf $b2File), $b2Old, $b2Publish.ExitCode, $b2New, $b2OldGone, $b2RunningAtPublish, $b2RunningAfterPublish, $b2Done.ExitCode, (Format-BatchLines $b2Lines))
+Add-Result 'AC-B2 (every query reads the opened version)' ($b2Done.ExitCode -eq 0 -and $b2Problems.Count -eq 0) ('query 1 (count) {0}; query 2 (stdout) equals select on slice 2 ({1} rows) {2} in any order: {3}; queries 3 and 4 hold the IDs of the same query alone before the publication; query 5 (count) {4}; every query has the warnings and stats of its run alone on the opened version, the headers and the final line; ID {5} (slice 2) and ID {6} (slice 1) tell the versions apart: {7}{8}' -f `
+        $b2FirstCount, (Format-Count (Get-SelectCount 'slice-2')), $RowMatchText, $(if ($null -eq $b2CsvDiff) { 'yes' } else { $b2CsvDiff }), $b2LastCount, $slice2Id, $slice1Id, $b2Differs, (Format-Problems $b2Problems))
+Add-Result 'AC-B2 (JSON version)' ($b2VersionOk -and $b2Versions.Count -eq 2 -and $b2Switched) ('the dataset.version member of each JSON output of the batch names the version it opened ({0}): {1}' -f $b2Old, ($b2Versions -join '; '))
+Add-Section (@(
+        '## AC-B2: timeline'
+        ''
+        '| Instant | Event |'
+        '|---|---|'
+        ('| {0:HH:mm:ss.fff} | batch started on {1} (CURRENT of the copy) |' -f $b2Start, $b2Old)
+        ('| {0:HH:mm:ss.fff} | the count of query 1 and the first 1,000 rows of query 2 read; stdout is not read further, so query 2 cannot finish; still running: {1} |' -f $b2HeldAt, $b2RunningAtPublish)
+        ('| {0:HH:mm:ss.fff} | generator --overwrite with slice 1 ended (exit {1}, {2}); CURRENT names {3}; {4} exists: {5} |' -f $b2PublishedAt, $b2Publish.ExitCode, (Format-Seconds $b2Publish.WallSeconds), $b2New, $b2Old, (-not $b2OldGone))
+        ('| {0:HH:mm:ss.fff} | batch ended (exit {1}) after its output was read to the end; still running before that: {2}; last stderr line "{3}" |' -f $b2End, $b2Done.ExitCode, $b2RunningAfterPublish, $(if ($b2Parsed.Final) { $b2Parsed.Final.Value } else { '-' }))
+    ) -join "`n")
+
+# --- AC-B8: a real Ctrl+C during the second of three queries with output files ---
+
+Write-Step 'AC-B8: Ctrl+C once the second query of a batch holds 1 MiB in its output file'
+$b8Out = Join-Path $OutDir 'batch-ctrl-c'
+New-Item -ItemType Directory -Path $b8Out | Out-Null
+$b8FirstQuery = @('--where', "Case Number=$sharedCase", '--format', 'csv')
+$b8Lines = @(
+    (Format-BatchLine ($b8FirstQuery + @('--output', (Join-Path $b8Out 'first.csv')))),
+    (Format-BatchLine @('--range', $Everything, '--format', 'csv', '--output', (Join-Path $b8Out 'second.csv'))),
+    (Format-BatchLine @('--where', "ID=$firstId", '--format', 'json', '--output', (Join-Path $b8Out 'third.json'))))
+$b8File = New-BatchFile 'batch-ctrl-c.txt' $b8Lines
+$b8Request = Join-Path $InputDir 'batch-ctrl-c-request.json'
+$b8ResultFile = Join-Path $InputDir 'batch-ctrl-c-result.json'
+$b8StderrFile = Join-Path $InputDir 'batch-ctrl-c-stderr.txt'
+$b8StdoutFile = Join-Path $InputDir 'batch-ctrl-c-stdout.txt'
+$b8Arguments = @('--dataset', $DatasetDir, '--batch', $b8File)
+[pscustomobject]@{
+    Exe             = $QueryExe
+    Arguments       = $b8Arguments
+    TriggerDir      = $b8Out
+    TriggerMinBytes = 1MB
+    TimeoutSeconds  = $CtrlCTimeoutSeconds
+    StdoutFile      = $b8StdoutFile
+    StderrFile      = $b8StderrFile
+    ResultFile      = $b8ResultFile
+} | ConvertTo-Json | Set-Content -LiteralPath $b8Request -Encoding UTF8
+Start-Process -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -RequestFile "{1}"' -f $CtrlCHelper, $b8Request) -WindowStyle Hidden -Wait
+$b8 = Get-Content -LiteralPath $b8ResultFile -Raw | ConvertFrom-Json
+$b8ErrLines = @(Get-Lines ([System.IO.File]::ReadAllText($b8StderrFile, $Utf8)))
+$b8Entries = @(Get-EntryNames $b8Out)
+$b8Alone = Invoke-Query -Arguments $b8FirstQuery
+$b8FirstPath = Join-Path $b8Out 'first.csv'
+$b8FirstSame = (Test-Path -LiteralPath $b8FirstPath -PathType Leaf) -and $b8Alone.ExitCode -eq 0 -and [System.IO.File]::ReadAllText($b8FirstPath, $Utf8) -ceq $b8Alone.Stdout
+$b8DuringSecond = $null -ne $b8.Observed -and [string]$b8.Observed -like 'file .second.csv.*'
+$b8Stderr = $b8ErrLines.Count -eq 4 -and $b8ErrLines[0] -ceq (Get-BatchHeader 1 3 1) -and $b8ErrLines[1] -match $StatsPattern `
+    -and $b8ErrLines[2] -ceq (Get-BatchHeader 2 3 2) -and $b8ErrLines[3] -ceq $Messages.Cancelled
+$b8NoFinal = @($b8ErrLines | Where-Object { $_ -match $BatchCompletedPattern }).Count -eq 0
+$b8Ok = $b8.RunningWhenSent -and $b8.Sent -and $b8DuringSecond -and $b8.ExitCode -eq 130 -and $b8Stderr -and $b8NoFinal `
+    -and ($b8Entries -join ',') -ceq 'first.csv' -and $b8FirstSame -and [System.IO.File]::ReadAllText($b8StdoutFile, $Utf8) -eq ''
+Add-Result 'AC-B8' $b8Ok ('`{0}` in a console of its own, batch lines {1}; Ctrl+C sent at {2} s once {3}, while running: {4}; exit {5} after {6} s; stderr "{7}"; no final line: {8}; the output folder holds afterwards: {9} (no second.csv, no temporary file, no third.json); first.csv equals the same query alone on stdout: {10}' -f `
+        (Format-Command 'crime-query' ($b8Arguments | Select-Object -Skip 2)), (Format-BatchLines $b8Lines), $b8.SentAtSeconds, $(if ($b8.Observed) { $b8.Observed } else { 'the timeout passed (FAIL)' }), `
+        $b8.RunningWhenSent, $b8.ExitCode, $b8.SecondsToExit, ($b8ErrLines -join ' / '), $b8NoFinal, $(if ($b8Entries.Count -eq 0) { 'nothing' } else { $b8Entries -join ', ' }), $b8FirstSame)
+
 # --- AC-C18: the independent verifier ---
 
 Write-Step 'AC-C18: waiting for the independent verifier'
@@ -1427,6 +1947,13 @@ $consultorCriteria = @($consultorRows | ForEach-Object { [regex]::Match($_.Crite
 Add-Result 'AC-S12' ($consultorRows.Count -gt 0 -and $consultorFailed.Count -eq 0) ('the consultor criteria repeated on this build: {0} AC-C rows of {1} criteria, not PASS: {2}' -f `
         $consultorRows.Count, $consultorCriteria.Count, $(if ($consultorFailed.Count -eq 0) { 'none' } else { (@($consultorFailed | ForEach-Object { $_.Criterion }) -join ', ') }))
 
+# --- AC-B10 (AC-M9): the existing checks still pass, unchanged, next to the batch ones ---
+
+$existingRows = @($Results | Where-Object { $_.Criterion -notmatch '^AC-B[0-9]+' })
+$existingFailed = @($existingRows | Where-Object { $_.Result -ne 'PASS' })
+Add-Result 'AC-B10 (AC-M9)' ($existingRows.Count -gt 0 -and $existingFailed.Count -eq 0) ('every check of the query app and startswith PRDs, the same as before the batch on this build: {0} rows (AC-C, AC-S and the dataset rows), not PASS: {1}' -f `
+        $existingRows.Count, $(if ($existingFailed.Count -eq 0) { 'none' } else { (@($existingFailed | ForEach-Object { $_.Criterion }) -join ', ') }))
+
 # --- Report ---
 
 $selectRows = foreach ($select in $Selects.Values) {
@@ -1440,17 +1967,17 @@ Add-Section (@(
         $selectRows
     ) -join "`n")
 
-# AC-C rows by criterion, then the rows of no criterion, then AC-S rows by criterion.
+# AC-C rows by criterion, then the rows of no criterion, then AC-S rows, then AC-B rows by criterion.
 $ordered = @($Results | Sort-Object @{ Expression = {
-            $m = [regex]::Match($_.Criterion, '^AC-([CS])([0-9]+)')
-            if (-not $m.Success) { 99 } elseif ($m.Groups[1].Value -eq 'C') { [int]$m.Groups[2].Value } else { 1000 + [int]$m.Groups[2].Value }
+            $m = [regex]::Match($_.Criterion, '^AC-([CSB])([0-9]+)')
+            if (-not $m.Success) { 99 } elseif ($m.Groups[1].Value -eq 'C') { [int]$m.Groups[2].Value } elseif ($m.Groups[1].Value -eq 'S') { 1000 + [int]$m.Groups[2].Value } else { 2000 + [int]$m.Groups[2].Value }
         }
     }, Order)
 $failed = @($Results | Where-Object { $_.Result -ne 'PASS' })
 $resultRows = foreach ($result in $ordered) {
     '| {0} | {1} | {2} |' -f $result.Criterion, $result.Result, $result.Evidence.Replace('|', '\|')
 }
-$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-[CS][0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
+$criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-[CSB][0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
 $overall = if ($failed.Count -eq 0) { "PASS: all $($Results.Count) checks passed ($($criteriaSeen.Count) criteria)" } else { "FAIL: $($failed.Count) of $($Results.Count) checks failed" }
 $duration = ((Get-Date) - $started).TotalSeconds
 $report = @(
