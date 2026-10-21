@@ -44,9 +44,10 @@
 
 .PARAMETER WorkDir
     Folder for the datasets, the logs and the report. It needs about 18 GB of free space on the
-    reference extract: Run A, its copy and Run B (a CanopyDB base of about 3.3 GB each), Run S
-    (SSTables, about 1.1 GB), the new version that the AC-G6 and AC-G8 runs write next to Run A
-    (3.3 GB) and the sort folder of a run (under 3 GB, as for the original generator).
+    reference extract: Run A, its copy and Run B (a CanopyDB base of 2.6 GB each, measured on
+    2026-10-21), Run S (SSTables, 1.1 GB), the new version that the AC-G6 and AC-G8 runs write next
+    to Run A (2.6 GB) and the sort folder of a run (under 3 GB, as for the original generator): a
+    peak of about 14 GB, with a margin. The folder holds 8.7 GB when the run ends.
 
 .PARAMETER Csv
     The CSV: the reference extract or any later download. By default, chicago-crime-data.csv at

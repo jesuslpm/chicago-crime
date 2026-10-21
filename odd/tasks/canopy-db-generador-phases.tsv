@@ -10,3 +10,17 @@
 2026-10-21T08:37:24+01:00	mark	implement	T2
 2026-10-21T08:41:35+01:00	mark	checks	T2
 2026-10-21T08:43:18+01:00	mark	review	T1-T3
+2026-10-21T08:49:16+01:00	mark	implement	T4
+2026-10-21T08:52:15+01:00	mark	fix	T3b
+2026-10-21T08:54:04+01:00	mark	implement	T5
+2026-10-21T08:55:44+01:00	mark	implement	T6
+2026-10-21T08:56:21+01:00	mark	docs	T7
+2026-10-21T08:57:07+01:00	bg-start	acceptance	T8 full CanopyDB run
+2026-10-21T08:58:05+01:00	bg-start	checks	T8 Linux tests and AC-M4
+2026-10-21T09:00:54+01:00	bg-end	acceptance	T8 full CanopyDB run
+2026-10-21T09:01:04+01:00	bg-start	acceptance	T8 verifier on full run
+2026-10-21T09:01:54+01:00	bg-end	checks	T8 Linux tests and AC-M4
+2026-10-21T09:04:04+01:00	bg-end	acceptance	T8 verifier on full run
+2026-10-21T09:06:07+01:00	bg-start	acceptance	T8 run-canopy-acceptance full
+2026-10-21T09:06:30+01:00	mark	docs	T9
+2026-10-21T09:35:11+01:00	bg-end	acceptance	T8 run-canopy-acceptance full

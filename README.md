@@ -323,6 +323,24 @@ smallest and largest IDs, so both readings are checked.
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir C:\query-acceptance
 ```
 
+[`scripts/acceptance/run-canopy-acceptance.ps1`](scripts/acceptance/run-canopy-acceptance.ps1) is
+the CanopyDB generator's: the same checks with the CanopyDB verifier, where AC-M4 replaces AC-G2 (the
+same 512 MiB) and AC-M3 replaces AC-G10 (two generations, with and without compression, and the
+original generator's tables hold the same keys and values; the files are not byte-identical). It also
+checks AC-KG4: reading the base twice changes no file name nor the manifest. Its work entries are named
+`canopy-*`, so it can share a work folder with the original script, and it writes
+`canopy-acceptance-report.md`. It needs about 18 GB of free disk; on the reference machine it took
+29 minutes (2026-10-21, all 17 checks passed, CanopyDB peak 219.5 MiB).
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-canopy-acceptance.ps1 -WorkDir C:\canopy-acceptance
+```
+
+If CanopyDB itself keeps the generator above 512 MiB, `-NotMetByCanopyDb AC-M4=<finding>` names the
+finding of the [register](docs/canopy-db/hallazgos.md) that explains it: the AC-M4 row then reads
+`NOT MET` instead of `FAIL` and does not fail the run, provided the generation ended normally and the
+peak is the only failure.
+
 Both scripts work with the reference extract and with any later download (`-Csv <file>`; by default
 `chicago-crime-data.csv` at the repository root). After generating the dataset, they compare the CSV's
 SHA-256, which the generator records in the manifest, with the reference extract's (see
