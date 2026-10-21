@@ -41,7 +41,9 @@ use foundationdb_tuple::Element;
 use sha2::{Digest, Sha256};
 
 use crate::civil;
-use crate::dataset::{self, MANIFEST_FILE, ManifestFacts, PRIMARY_FILE, PrimaryTable};
+use crate::dataset::{
+    self, MANIFEST_FILE, ManifestFacts, PRIMARY, PRIMARY_FILE, PrimaryTable, SstableTables, Tables,
+};
 use crate::fields::{self, HEADER};
 use crate::indexes::{self, INDEXES, IndexSpec};
 use crate::report::{Check, Report, thousands};
@@ -99,21 +101,84 @@ pub fn verify(
     let Ok(manifest) = manifest else {
         return report;
     };
+    let tables = SstableTables::new(&version);
+    report.checks.extend(verify_content(
+        csv,
+        &tables,
+        &manifest.content_facts(),
+        options,
+        progress,
+        &|counts| tables_check(&version, &manifest, counts),
+    ));
+    report
+}
 
-    progress("loading primary.sst");
-    let primary = match PrimaryTable::load(&version.join(PRIMARY_FILE)) {
+/// What the content checks need from a manifest, whatever its storage engine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentFacts {
+    pub source_file_name: String,
+    pub source_size_bytes: u64,
+    pub source_sha256: String,
+    pub valid: u64,
+    pub rejected: u64,
+}
+
+impl ManifestFacts {
+    /// The source and the record counts of the manifest.
+    pub fn content_facts(&self) -> ContentFacts {
+        ContentFacts {
+            source_file_name: self.source_file_name.clone(),
+            source_size_bytes: self.source_size_bytes,
+            source_sha256: self.source_sha256.clone(),
+            valid: self.valid,
+            rejected: self.rejected,
+        }
+    }
+}
+
+/// The entries read from each table, for the engine's own `MANIFEST-TABLES` check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableCounts {
+    /// Entries of the primary table.
+    pub primary: u64,
+    /// Entries of each index table in [`INDEXES`] order, or `None` when it could not be read.
+    pub indexes: Vec<Option<u64>>,
+}
+
+/// The content checks, in report order: `CSV`, `MANIFEST-SOURCE`, the engine's own
+/// `MANIFEST-TABLES` (built by `manifest_tables` from the entries read), `AC-G1`, `AC-G3`,
+/// `AC-G3-SAMPLE`, `AC-G3-DST`, `AC-G4-<index>`, `AC-G4-THEFT`, `AC-G4-COMMUNITY-NIL`,
+/// `AC-G4-SHARED-CASES` and `AC-C18-LOWERCASE`.
+///
+/// They read the six tables through `tables` alone, so every storage engine shares them. When
+/// the primary table cannot be read, the only check is a failed `AC-G1`; when the CSV cannot be
+/// read, a failed `CSV`.
+pub fn verify_content(
+    csv: &Path,
+    tables: &dyn Tables,
+    facts: &ContentFacts,
+    options: Options,
+    progress: &mut dyn FnMut(&str),
+    manifest_tables: &dyn Fn(&TableCounts) -> Check,
+) -> Vec<Check> {
+    let mut checks = Vec::new();
+    let primary_label = tables.label(PRIMARY);
+    progress(&format!("loading {primary_label}"));
+    let primary = match PrimaryTable::read(tables) {
         Ok(primary) => primary,
         Err(error) => {
-            report.checks.push(Check::new("AC-G1", false, error));
-            return report;
+            checks.push(Check::new("AC-G1", false, error));
+            return checks;
         }
     };
-    progress("reading the CSV and comparing every row with primary.sst");
+    progress(&format!(
+        "reading the CSV and comparing every row with {primary_label}"
+    ));
     let mut scan = match scan_csv(csv, &primary) {
         Ok(scan) => scan,
         Err(error) => {
-            report.checks.push(Check::new("CSV", false, error));
-            return report;
+            checks.push(Check::new("CSV", false, error));
+            return checks;
         }
     };
     let stored = StoredFacts::of(&primary, &scan);
@@ -127,36 +192,47 @@ pub fn verify(
     });
     let mut index_scans = Vec::with_capacity(INDEXES.len());
     for (spec, expected) in INDEXES.iter().zip(&scan.expected_keys) {
-        progress(&format!("checking {}", spec.file));
-        index_scans.push(scan_index(spec, &version.join(spec.file), expected));
+        progress(&format!("checking {}", tables.label(spec.name)));
+        index_scans.push(scan_index(spec, tables, expected));
     }
     let expected_shared = indexes::shared_case_numbers(
         scan.expected_keys[index_position("case_number")]
             .iter()
             .map(Vec::as_slice),
     );
+    let counts = TableCounts {
+        primary: stored.entries,
+        indexes: index_scans
+            .iter()
+            .map(|index_scan| index_scan.error.is_none().then_some(index_scan.entries))
+            .collect(),
+    };
 
-    report.checks.extend([
+    checks.extend([
         csv_check(&scan),
-        source_check(csv, &scan, &manifest),
-        tables_check(&version, &manifest, &stored, &index_scans),
-        ac_g1_check(&manifest, &stored, &scan, options),
-        ac_g3_check(&manifest, &stored, &scan),
+        source_check(csv, &scan, facts),
+        manifest_tables(&counts),
+        ac_g1_check(&primary_label, facts, &stored, &scan, options),
+        ac_g3_check(&primary_label, facts, &stored, &scan),
         sample_check(&stored, &scan, options),
         dst_check(&scan, options),
     ]);
     for ((spec, index_scan), untypable) in INDEXES.iter().zip(&index_scans).zip(&scan.untypable) {
-        report
-            .checks
-            .push(index_check(spec, index_scan, *untypable, &stored));
+        checks.push(index_check(
+            spec,
+            &tables.label(spec.name),
+            index_scan,
+            *untypable,
+            &stored,
+        ));
     }
-    report.checks.extend([
+    checks.extend([
         theft_check(&index_scans, &scan, options),
         community_nil_check(&index_scans, &scan, options),
         shared_cases_check(&index_scans, expected_shared, options),
         lowercase_check(&index_scans),
     ]);
-    report
+    checks
 }
 
 fn index_position(name: &str) -> usize {
@@ -236,7 +312,7 @@ fn schema_check(manifest: &Result<ManifestFacts, String>) -> Check {
     .with_details(details)
 }
 
-fn source_check(csv: &Path, scan: &CsvScan, manifest: &ManifestFacts) -> Check {
+fn source_check(csv: &Path, scan: &CsvScan, manifest: &ContentFacts) -> Check {
     let file_name = csv
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
@@ -276,12 +352,7 @@ fn source_check(csv: &Path, scan: &CsvScan, manifest: &ManifestFacts) -> Check {
     .with_details(details)
 }
 
-fn tables_check(
-    version: &Path,
-    manifest: &ManifestFacts,
-    stored: &StoredFacts,
-    index_scans: &[IndexScan],
-) -> Check {
+fn tables_check(version: &Path, manifest: &ManifestFacts, counts: &TableCounts) -> Check {
     let mut details = Vec::new();
     let mut compare =
         |file: &str, manifest_entries: u64, manifest_size: u64, entries: Option<u64>| {
@@ -306,19 +377,14 @@ fn tables_check(
         PRIMARY_FILE,
         manifest.primary.entries,
         manifest.primary.size_bytes,
-        Some(stored.entries),
+        Some(counts.primary),
     );
-    for ((_, table), index_scan) in manifest.indexes.iter().zip(index_scans) {
-        compare(
-            &table.file,
-            table.entries,
-            table.size_bytes,
-            index_scan.error.is_none().then_some(index_scan.entries),
-        );
+    for ((_, table), entries) in manifest.indexes.iter().zip(&counts.indexes) {
+        compare(&table.file, table.entries, table.size_bytes, *entries);
     }
     Check::new(
         "MANIFEST-TABLES",
-        details.is_empty() && manifest.indexes.len() == index_scans.len(),
+        details.is_empty() && manifest.indexes.len() == counts.indexes.len(),
         format!(
             "entries and file sizes of {PRIMARY_FILE} and {} index tables in the manifest \
              compared with the files on disk",
@@ -602,7 +668,8 @@ fn csv_check(scan: &CsvScan) -> Check {
 // --- AC-G1 and AC-G3 ---
 
 fn ac_g1_check(
-    manifest: &ManifestFacts,
+    primary_label: &str,
+    manifest: &ContentFacts,
     stored: &StoredFacts,
     scan: &CsvScan,
     options: Options,
@@ -643,7 +710,7 @@ fn ac_g1_check(
         "AC-G1",
         details.is_empty(),
         format!(
-            "{PRIMARY_FILE}: {} entries in strictly increasing ID order ({range}) = manifest \
+            "{primary_label}: {} entries in strictly increasing ID order ({range}) = manifest \
              valid {} = {} CSV rows - {} rejected",
             thousands(stored.entries),
             thousands(manifest.valid),
@@ -656,7 +723,12 @@ fn ac_g1_check(
 
 /// Every stored record against its CSV row. The reference count needs no check of its own here:
 /// AC-G1 pins the number of stored records, and every one of them must have been compared.
-fn ac_g3_check(manifest: &ManifestFacts, stored: &StoredFacts, scan: &CsvScan) -> Check {
+fn ac_g3_check(
+    primary_label: &str,
+    manifest: &ContentFacts,
+    stored: &StoredFacts,
+    scan: &CsvScan,
+) -> Check {
     let not_stored = scan.not_stored + scan.repeated;
     let mut details = scan.mismatch_examples.clone();
     if stored.without_row > 0 {
@@ -679,7 +751,7 @@ fn ac_g3_check(manifest: &ManifestFacts, stored: &StoredFacts, scan: &CsvScan) -
         "AC-G3",
         scan.mismatched_rows == 0 && details.is_empty(),
         format!(
-            "{} CSV rows compared field by field with {PRIMARY_FILE}: {} mismatched rows; {} \
+            "{} CSV rows compared field by field with {primary_label}: {} mismatched rows; {} \
              stored records without a CSV row; {} CSV rows not stored = manifest rejected {}",
             thousands(scan.compared),
             thousands(scan.mismatched_rows),
@@ -801,12 +873,12 @@ struct IndexScan {
     shared: Option<Result<BTreeMap<String, Vec<i64>>, String>>,
 }
 
-fn scan_index(spec: &IndexSpec, path: &Path, expected: &[Vec<u8>]) -> IndexScan {
+fn scan_index(spec: &IndexSpec, tables: &dyn Tables, expected: &[Vec<u8>]) -> IndexScan {
     let mut scan = IndexScan {
         expected_entries: expected.len() as u64,
         ..IndexScan::default()
     };
-    let entries = match dataset::read_entries(path) {
+    let entries = match dataset::read_entries(tables, spec.name) {
         Ok(entries) => entries,
         Err(error) => {
             scan.error = Some(error);
@@ -867,14 +939,20 @@ fn scan_index(spec: &IndexSpec, path: &Path, expected: &[Vec<u8>]) -> IndexScan 
 }
 
 /// An index key as `(value, id)`, or its bytes when it does not decode.
-fn describe_key(key: &[u8]) -> String {
+pub fn describe_key(key: &[u8]) -> String {
     match indexes::decode_key(key) {
         Some((value, id)) => format!("({value:?}, {id})"),
         None => format!("{key:02x?}"),
     }
 }
 
-fn index_check(spec: &IndexSpec, scan: &IndexScan, untypable: u64, stored: &StoredFacts) -> Check {
+fn index_check(
+    spec: &IndexSpec,
+    label: &str,
+    scan: &IndexScan,
+    untypable: u64,
+    stored: &StoredFacts,
+) -> Check {
     let criterion = format!("AC-G4-{}", spec.name);
     if let Some(error) = &scan.error {
         return Check::new(criterion, false, error.clone());
@@ -912,9 +990,8 @@ fn index_check(spec: &IndexSpec, scan: &IndexScan, untypable: u64, stored: &Stor
         criterion,
         details.is_empty(),
         format!(
-            "{}: {} entries = {} valid records; keys strictly increasing; equal entry by entry \
+            "{label}: {} entries = {} valid records; keys strictly increasing; equal entry by entry \
              to the {} (value or Nil, id) keys rebuilt from the CSV",
-            spec.file,
             thousands(scan.entries),
             thousands(stored.entries),
             thousands(scan.expected_entries)

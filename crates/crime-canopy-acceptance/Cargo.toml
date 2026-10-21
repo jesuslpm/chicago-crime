@@ -1,0 +1,24 @@
+[package]
+name = "crime-canopy-acceptance"
+description = "Independent acceptance verifier of a CanopyDB Chicago crime dataset against its source CSV and against another dataset of either engine."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+# Independence (canopy-db-generador PRD, "Verificador CanopyDB"): the verifier reads the CanopyDB base
+# with CanopyDB alone and reuses the checks of the original verifier (`crime-acceptance`), which
+# reads the SSTables with the LevelDB table reader. It must never depend on `crime-dataset`,
+# `crime-generator` or `crime-canopy-generator`, whose code it is checking.
+[dependencies]
+canopydb.workspace = true
+crime-acceptance = { path = "../crime-acceptance" }
+foundationdb-tuple.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Only to build small datasets for the tests: an SSTable dataset from the original generator,
+# copied entry by entry into a CanopyDB base. The verifier itself never uses the generator.
+crime-generator = { path = "../crime-generator" }
+sstable.workspace = true
+tempfile.workspace = true

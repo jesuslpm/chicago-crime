@@ -10,8 +10,10 @@
 //! - [`civil`]: the published date text and the spring-forward hour;
 //! - [`fields`]: the CSV columns, the field rules and the primary value layout;
 //! - [`indexes`]: the five index definitions and their keys;
-//! - [`dataset`]: `CURRENT`, the version folder, the manifest and the tables on disk;
-//! - [`verify`]: every check of AC-G1, AC-G3 and AC-G4 plus the manifest;
+//! - [`dataset`]: `CURRENT`, the version folder, the manifest and the tables on disk, read through
+//!   the [`dataset::Tables`] trait that another storage engine can implement;
+//! - [`verify`]: every check of AC-G1, AC-G3 and AC-G4 plus the manifest; the content checks
+//!   ([`verify_content`]) are shared with the CanopyDB verifier (`crime-canopy-acceptance`);
 //! - [`report`]: one PASS, FAIL or SKIP line per check;
 //! - [`select`]: the independent filtering of the CSV that the query app's acceptance compares
 //!   against (counts, ID lists and source rows).
@@ -25,4 +27,4 @@ pub mod select;
 pub mod verify;
 
 pub use report::{Check, Outcome, Report};
-pub use verify::{Options, verify};
+pub use verify::{ContentFacts, Options, TableCounts, verify, verify_content};

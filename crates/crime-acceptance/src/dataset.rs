@@ -10,6 +10,9 @@
 //! ```
 //!
 //! Folders that `CURRENT` does not name are never read: they are not part of the dataset.
+//!
+//! The checks read the six tables through [`Tables`]; [`SstableTables`] reads them from the
+//! `.sst` files, and the CanopyDB verifier implements it over a CanopyDB base.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -143,19 +146,22 @@ pub fn read_manifest(path: &Path) -> Result<ManifestFacts, String> {
     })
 }
 
-fn value_at<'a>(json: &'a Value, path: &[&str]) -> Result<&'a Value, String> {
+/// The JSON value at `path` (object keys from the root), or an error that names the path.
+pub fn value_at<'a>(json: &'a Value, path: &[&str]) -> Result<&'a Value, String> {
     path.iter()
         .try_fold(json, |value, key| value.get(key))
         .ok_or_else(|| format!("the manifest has no \"{}\"", path.join(".")))
 }
 
-fn number_at(json: &Value, path: &[&str]) -> Result<u64, String> {
+/// The whole number at `path`.
+pub fn number_at(json: &Value, path: &[&str]) -> Result<u64, String> {
     value_at(json, path)?
         .as_u64()
         .ok_or_else(|| format!("\"{}\" is not a whole number", path.join(".")))
 }
 
-fn text_at(json: &Value, path: &[&str]) -> Result<String, String> {
+/// The text at `path`.
+pub fn text_at(json: &Value, path: &[&str]) -> Result<String, String> {
     value_at(json, path)?
         .as_str()
         .map(str::to_owned)
@@ -185,15 +191,63 @@ fn status_text(path: &Path, status: &Status) -> String {
 /// One key and its value.
 pub type Entry = (Vec<u8>, Vec<u8>);
 
-/// Every key and value of a table, in file order.
-pub fn read_entries(path: &Path) -> Result<Vec<Entry>, String> {
-    let table = Table::new_from_file(Options::default(), path)
-        .map_err(|status| status_text(path, &status))?;
-    let mut entries = Vec::new();
-    let mut iterator = table.iter();
-    while let Some(entry) = SSIterator::next(&mut iterator) {
-        entries.push(entry);
+/// The name of the primary table; the index tables are named as [`INDEXES`] names them.
+pub const PRIMARY: &str = "primary";
+
+/// The six tables of a dataset, wherever they are stored: the content checks read them through
+/// this trait alone, so the same checks serve every storage engine.
+pub trait Tables: Sync {
+    /// How the report names `table` (the primary table or an index name).
+    fn label(&self, table: &str) -> String;
+
+    /// Calls `visit` with every key and value of `table`, in key order.
+    fn scan(&self, table: &str, visit: &mut dyn FnMut(&[u8], &[u8])) -> Result<(), String>;
+}
+
+/// The tables of an SSTable version folder: `primary.sst` and one `index-<name>.sst` per index.
+#[derive(Debug, Clone)]
+pub struct SstableTables {
+    version: PathBuf,
+}
+
+impl SstableTables {
+    pub fn new(version: &Path) -> Self {
+        Self {
+            version: version.to_path_buf(),
+        }
     }
+}
+
+impl Tables for SstableTables {
+    /// The file name of the table.
+    fn label(&self, table: &str) -> String {
+        if table == PRIMARY {
+            return PRIMARY_FILE.to_owned();
+        }
+        INDEXES
+            .iter()
+            .find(|spec| spec.name == table)
+            .map_or_else(|| format!("{table}.sst"), |spec| spec.file.to_owned())
+    }
+
+    fn scan(&self, table: &str, visit: &mut dyn FnMut(&[u8], &[u8])) -> Result<(), String> {
+        let path = self.version.join(self.label(table));
+        let table = Table::new_from_file(Options::default(), &path)
+            .map_err(|status| status_text(&path, &status))?;
+        let mut iterator = table.iter();
+        while let Some((key, value)) = SSIterator::next(&mut iterator) {
+            visit(&key, &value);
+        }
+        Ok(())
+    }
+}
+
+/// Every key and value of `table`, in key order.
+pub fn read_entries(tables: &dyn Tables, table: &str) -> Result<Vec<Entry>, String> {
+    let mut entries = Vec::new();
+    tables.scan(table, &mut |key, value| {
+        entries.push((key.to_vec(), value.to_vec()));
+    })?;
     Ok(entries)
 }
 
@@ -209,17 +263,14 @@ pub struct PrimaryTable {
 }
 
 impl PrimaryTable {
-    /// Reads every entry of the primary table at `path`, checking that each key is exactly
+    /// Reads every entry of the primary table of `tables`, checking that each key is exactly
     /// `pack((id,))` and that keys and IDs are strictly increasing.
-    pub fn load(path: &Path) -> Result<Self, String> {
-        let table = Table::new_from_file(Options::default(), path)
-            .map_err(|status| status_text(path, &status))?;
+    pub fn read(tables: &dyn Tables) -> Result<Self, String> {
         let mut primary = Self::default();
         let mut previous_key: Option<Vec<u8>> = None;
-        let mut iterator = table.iter();
-        while let Some((key, value)) = SSIterator::next(&mut iterator) {
+        tables.scan(PRIMARY, &mut |key, value| {
             let position = primary.ids.len();
-            let id = unpack::<(i64,)>(&key)
+            let id = unpack::<(i64,)>(key)
                 .ok()
                 .map(|(id,)| id)
                 .filter(|&id| pack(&(id,)) == key);
@@ -227,11 +278,11 @@ impl PrimaryTable {
                 primary.violation(format!(
                     "entry {position}: the key {key:02x?} is not a packed (id,)"
                 ));
-                continue;
+                return;
             };
             if previous_key
-                .as_ref()
-                .is_some_and(|previous| key <= *previous)
+                .as_deref()
+                .is_some_and(|previous| key <= previous)
                 || primary.ids.last().is_some_and(|&previous| id <= previous)
             {
                 primary.violation(format!(
@@ -240,10 +291,10 @@ impl PrimaryTable {
                 ));
             }
             primary.ids.push(id);
-            primary.values.extend_from_slice(&value);
+            primary.values.extend_from_slice(value);
             primary.ends.push(primary.values.len());
-            previous_key = Some(key);
-        }
+            previous_key = Some(key.to_vec());
+        })?;
         Ok(primary)
     }
 
