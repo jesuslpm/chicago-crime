@@ -8,6 +8,7 @@ sorting under a fixed memory budget, and product-driven development.
 | Application | Status | What it does |
 |---|---|---|
 | Generator (`crime-generator`) | Done and verified | Reads the CSV once and publishes a primary table keyed by ID, five secondary indexes and a manifest, with a peak memory of about 93 MiB (limit 512 MiB). |
+| CanopyDB generator (`crime-canopy-generator`) | Done | The same generator, options and messages, publishing the dataset in a [CanopyDB](https://github.com/arthurprs/canopydb) base instead of LevelDB tables, to compare the two engines ([module PRD](docs/prd/chicago-crime/canopy-db.prd.md)). See [CanopyDB generator](#canopydb-generator). |
 | Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory. |
 
 ## Get the dataset
@@ -166,6 +167,48 @@ byte-identical tables.
 The current format is **schema 2**. A dataset published by an older generator (schema 1, whose text
 indexes are not in lowercase) is refused by the query app: regenerate it.
 
+## CanopyDB generator
+
+`crime-canopy-generator` is the CanopyDB counterpart of the generator ([PRD](docs/prd/chicago-crime/canopy-db-generador.prd.md)).
+It shares the generator's whole pipeline, so its options, console and log messages, exit codes, memory
+limit, Ctrl+C handling and cleanup of interrupted runs are the ones above. Only the storage differs:
+
+```powershell
+target\release\crime-canopy-generator.exe --input chicago-crime-data.csv --output C:\datasets\chicago-canopy
+```
+
+```text
+<output folder>/
+    CURRENT                               name of the active version folder, as above
+    dataset-<YYYYMMDD>-<HHMMSS>-<pid>/    the active version
+        manifest.json                     the CanopyDB manifest
+        canopydb/                         one CanopyDB 0.2.5 base: LOCK and a crime_<id>_l/ folder
+                                          with DATA and OPTIONS; database "crime", six trees
+```
+
+- **Same content.** The six trees (`primary`, `date`, `primary_type`, `district`, `community_area`,
+  `case_number`) hold exactly the keys and values of the LevelDB tables. The files themselves differ
+  between two runs of the same CSV (the database folder name carries a random ID), so the guarantee is
+  the same logical content, not identical bytes.
+- **Manifest.** `schema_version` is the text `"canopydb-2"`, and the manifest lists the `engine`
+  (name, CanopyDB version, fork commit or `null`), the source CSV, the counts, the `compression`, the
+  entries of each table and every file of the base with its size. The original query app refuses such a
+  dataset with `No se encontró un conjunto de datos válido en <carpeta>.`
+- **`--no-compression`** turns off CanopyDB's LZ4 compression of large values (`compression: "none"`
+  in the manifest). CanopyDB only compresses values above 12 KiB, and the records of this dataset take
+  about 138 bytes, so the base has the same size either way.
+- **Ready to read.** The base is written without a write-ahead log, with a 64 MiB page cache, and is
+  checkpointed and closed before it is published, so opening it later adds no file to it.
+- **Datasets of the other engine.** A folder with a LevelDB dataset counts as an existing dataset: it is
+  refused without `--overwrite` and replaced with it. The original generator treats a CanopyDB dataset
+  the same way, and the two generators share the lock of the output folder.
+- **Engine failures** use the generator's messages for the output folder, with one extra log line
+  `Detalle del error de CanopyDB: <error>` right before them.
+
+What CanopyDB does differently from its documentation or from this project's needs is recorded in the
+[findings register](docs/canopy-db/hallazgos.md) (in Spanish), with minimal reproductions in
+[`docs/canopy-db/repro`](docs/canopy-db/repro).
+
 ## Run the query app
 
 Each run answers one query and ends. Point `--dataset` at the generator's output folder, the one that
@@ -317,7 +360,20 @@ target\release\crime-acceptance.exe --csv chicago-crime-data.csv --dataset C:\da
 
 Add `--reference` to also require the exact figures of the reference extract.
 
-Its `select` mode filters the CSV directly, without any query app code, and is the independent side
+The CanopyDB verifier, `crime-canopy-acceptance`, does the same on a CanopyDB dataset, with the
+same options and report, and checks the CanopyDB layout and manifest instead of the LevelDB files. Its
+`--compare` mode compares two datasets of either engine table by table and entry by entry, and gives
+the first difference of each table that differs:
+
+```powershell
+target\release\crime-canopy-acceptance.exe --csv chicago-crime-data.csv --dataset C:\datasets\chicago-canopy
+target\release\crime-canopy-acceptance.exe --compare C:\datasets\chicago-canopy C:\datasets\chicago
+```
+
+It opens the base with the options stored in it, so reading changes nothing. A CanopyDB base admits one
+process at a time: while a process holds it, another one waits 5 seconds and fails.
+
+The original verifier's `select` mode filters the CSV directly, without any query app code, and is the independent side
 of the query app's acceptance: it prints the number of matching rows and can write their IDs or the
 rows themselves, in the same CSV form as `crime-query --format csv`:
 
@@ -373,6 +429,9 @@ through `edge-tts`, so generating needs an internet connection.
 | `crates/crime-generator` | The generator. |
 | `crates/crime-query` | The query app. |
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
+| `crates/crime-canopy-generator` | The CanopyDB generator: the generator's pipeline with a CanopyDB storage. |
+| `crates/crime-canopy-acceptance` | Independent verifier of a CanopyDB dataset, with a mode that compares two datasets of either engine. |
+| `docs/canopy-db` | The CanopyDB findings register and its reproductions. |
 | `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
 | `scripts/slides` | Generates one MP3 per slide from the talk's speaker notes into `docs/methodology/audio`, played with the ▶ Nota button of the presenter view; see [Speaker-note audio](#speaker-note-audio). |
