@@ -6,6 +6,9 @@
 //! - `cargo run -- h3`: there is no read-only opening. A base in a read-only folder cannot be
 //!   opened to read it, and opening a base that was closed without a checkpoint, only to read it,
 //!   changes its files.
+//! - `cargo run --release -- h5`: there is no bulk load. Already sorted entries, as many as the
+//!   Chicago crime dataset holds (8,656,904 records and five indexes), can only be written one by
+//!   one with `Tree::insert` inside transactions; it prints the time and the size of the base.
 //!
 //! Every run works in a new folder under the system temporary folder and prints what it observes;
 //! it exits with 0 when the behavior of the finding is reproduced and with 1 when it is not.
@@ -24,8 +27,9 @@ fn main() -> ExitCode {
         Some("h2") => h2(),
         Some("h2-second-process") => return h2_second_process(Path::new(&args[2])),
         Some("h3") => h3(),
+        Some("h5") => h5(),
         _ => {
-            eprintln!("usage: canopydb-repro h2 | h3");
+            eprintln!("usage: canopydb-repro h2 | h3 | h5");
             return ExitCode::from(2);
         }
     };
@@ -106,6 +110,74 @@ fn h2_second_process(path: &Path) -> ExitCode {
     }
 }
 
+/// H5: the only way to write is `Tree::insert`, even for entries that arrive already sorted.
+/// Writes the volume of the Chicago crime dataset: a primary tree of 8,656,904 entries of 138
+/// bytes and five index trees of as many entries with empty values, 100,000 entries per
+/// transaction, without write-ahead log and with a 64 MiB cache (the generator's settings), then
+/// prints the time and the size of the base. It reproduces as long as the load completes: the
+/// finding is the missing API, the figures are its cost.
+fn h5() -> bool {
+    const RECORDS: u64 = 8_656_904;
+    let path = new_folder("h5");
+    let mut options = EnvOptions::new(&path);
+    options.page_cache_size = 64 << 20;
+    let environment = Environment::with_options(options).expect("the base can be created");
+    let mut db_options = DbOptions::default();
+    db_options.use_wal = false;
+    let database = environment
+        .get_or_create_database_with("db", db_options)
+        .expect("the database can be created");
+    let value = vec![0x42u8; 138];
+    let started = Instant::now();
+    for (tree_index, name) in [
+        "primary",
+        "date",
+        "primary_type",
+        "district",
+        "community_area",
+        "case_number",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let mut next = 0u64;
+        while next < RECORDS {
+            let transaction = database.begin_write().expect("a write transaction");
+            {
+                let mut tree = transaction
+                    .get_or_create_tree(name.as_bytes())
+                    .expect("the tree");
+                let end = (next + 100_000).min(RECORDS);
+                while next < end {
+                    if tree_index == 0 {
+                        tree.insert(&next.to_be_bytes(), &value).expect("an insert");
+                    } else {
+                        let mut key = (next / 1_000).to_be_bytes().to_vec();
+                        key.extend_from_slice(b"value-x");
+                        key.extend_from_slice(&next.to_be_bytes());
+                        tree.insert(&key, &[]).expect("an insert");
+                    }
+                    next += 1;
+                }
+            }
+            transaction.commit().expect("the commit");
+        }
+    }
+    database.checkpoint().expect("the checkpoint");
+    let elapsed = started.elapsed();
+    drop(database);
+    drop(environment);
+    let size: usize = files(&path).values().map(Vec::len).sum();
+    println!(
+        "h5) {} sorted entries in 6 trees written with Tree::insert in {:.1} s; base size {} bytes",
+        RECORDS * 6,
+        elapsed.as_secs_f64(),
+        size
+    );
+    let _ = fs::remove_dir_all(&path);
+    true
+}
+
 /// Name, size and content of every file under `dir`.
 fn files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut all = BTreeMap::new();
@@ -148,7 +220,10 @@ fn h3() -> bool {
     let opened = Environment::with_options(EnvOptions::new(&read_only)).and_then(|environment| {
         let database = environment.get_database("db")?;
         let entries = match database {
-            Some(database) => database.begin_read()?.get_tree(b"t")?.map_or(0, |tree| tree.len()),
+            Some(database) => database
+                .begin_read()?
+                .get_tree(b"t")?
+                .map_or(0, |tree| tree.len()),
             None => 0,
         };
         Ok(entries)
@@ -176,7 +251,10 @@ fn h3() -> bool {
             .expect("the database opens")
             .expect("the database exists");
         let transaction = database.begin_read().expect("a read transaction");
-        let tree = transaction.get_tree(b"t").expect("the tree").expect("exists");
+        let tree = transaction
+            .get_tree(b"t")
+            .expect("the tree")
+            .expect("exists");
         println!("b) read {} entries without writing", tree.len());
     }
     let after = files(&unflushed);
@@ -187,8 +265,14 @@ fn h3() -> bool {
             changed.push(name.clone());
             println!(
                 "b) {name}: {} -> {}",
-                old.map_or("missing".to_owned(), |bytes| format!("{} bytes", bytes.len())),
-                new.map_or("missing".to_owned(), |bytes| format!("{} bytes", bytes.len()))
+                old.map_or("missing".to_owned(), |bytes| format!(
+                    "{} bytes",
+                    bytes.len()
+                )),
+                new.map_or("missing".to_owned(), |bytes| format!(
+                    "{} bytes",
+                    bytes.len()
+                ))
             );
         }
     }

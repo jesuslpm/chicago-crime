@@ -25,6 +25,7 @@ cargo run -- h3
 
 Cada una trabaja en una carpeta nueva de la carpeta temporal del sistema, muestra lo que observa y termina con
 `REPRODUCED` y el código 0 si reproduce el comportamiento del hallazgo, o con `NOT REPRODUCED` y el código 1 si no.
+La de H5 mide un coste, así que se ejecuta en modo optimizado: `cargo run --release -- h5`.
 
 ## Resumen
 
@@ -34,6 +35,7 @@ Cada una trabaja en una carpeta nueva de la carpeta temporal del sistema, muestr
 | H2 | Limitación | Detectado | Dos procesos no pueden abrir a la vez la misma base |
 | H3 | Limitación | Detectado | No hay apertura de solo lectura |
 | H4 | Documentación | Detectado | El tamaño por defecto de la caché no aparece en la portada de la documentación |
+| H5 | Rendimiento | Detectado | No hay carga masiva: datos ya ordenados solo se escriben con inserciones una a una |
 
 ## H1 — El tercer ejemplo del README configura la caché, pero no usa esas opciones
 
@@ -142,6 +144,46 @@ Cada una trabaja en una carpeta nueva de la carpeta temporal del sistema, muestr
   ```
 
   El README no menciona ningún valor por defecto de la caché.
+- **Estado**: Detectado
+- **Aprobaciones**: —
+- **Enlaces**: —
+- **Fork**: —
+
+## H5 — No hay carga masiva: datos ya ordenados solo se escriben con inserciones una a una
+
+- **Identificador**: H5
+- **Fecha**: 2026-10-21
+- **Versión de CanopyDB**: 0.2.5
+- **Tipo**: Rendimiento
+- **Descripción y efecto**: la única forma de escribir en un árbol es `Tree::insert`, una entrada cada vez dentro
+  de una transacción. No hay una carga masiva que construya el árbol de abajo arriba a partir de entradas ya
+  ordenadas, como `MDB_APPEND` en LMDB, ni un modo de añadir al final. Cada entrada baja por el árbol, las páginas
+  se dividen y los volcados reescriben páginas, aunque la entrada llegue en orden. Para el módulo, el generador
+  CanopyDB ordena los registros y los índices igual que el original, pero no puede aprovecharlo:
+  - el generador completo tarda 1 min 41 s en su mejor medida, frente a 65–75 s del original, que escribe sus
+    SSTables de forma secuencial (aceptación del 2026-10-21, Run A);
+  - la base ocupa 2.718.945.280 bytes, frente a 1,1 GB de las SSTables con Snappy;
+  - solo la escritura de los seis árboles con el volumen del conjunto tardó 66,6 s en la prueba previa
+    (registro de la ejecución [`canopy-db-generador`](../../odd/tasks/canopy-db-generador.md), L3, L11 y L15).
+
+  Las cifras no son de un banco controlado; las mide `canopy-db-comparacion`.
+- **Reproducción mínima**: `cargo run --release -- h5` en [`repro/`](repro/). Escribe con `Tree::insert`, en
+  orden, el volumen del conjunto (8.656.904 entradas de 138 bytes y cinco árboles de índices con otras tantas),
+  con la configuración del generador, y muestra el tiempo y el tamaño de la base. Resultado en el equipo de
+  referencia (Windows 11) el 2026-10-21:
+
+  ```text
+  h5) 51941424 sorted entries in 6 trees written with Tree::insert in 31.7 s; base size 3284664620 bytes
+  REPRODUCED
+  ```
+
+  La misma carga tardó 66,6 s en la prueba previa: la variación entre ejecuciones no está controlada, y es otra
+  razón para medirla en el banco. La ausencia de la API se ve en
+  la documentación de `Tree` de CanopyDB 0.2.5: su único método de escritura de una entrada es `insert`.
+- **Posible contribución**: una API de carga masiva para un árbol vacío (o de añadido al final con claves
+  crecientes) que escriba las hojas llenas de forma secuencial y construya los niveles superiores después. El
+  generador CanopyDB la usaría sin cambiar su contrato, y el banco de comparación mediría la diferencia. Antes de
+  publicar un issue o un PR hace falta la aprobación del responsable del proyecto (decisión K4).
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
