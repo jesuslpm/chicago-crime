@@ -389,6 +389,33 @@ Test-Case 'KM10: -Baseline compares every median, in report order, inside and ou
     Assert-Equal 1 @($rows | Where-Object { $_.EndsWith('| outside tolerance |') }).Count 'only one outside'
 }
 
+Test-Case 'Relative -Csv and -Baseline follow the PowerShell location, not the process folder' {
+    $repo = New-FakeRepo
+    $first = Invoke-FakeBench $repo -Repetitions 1
+    $relativeBaseline = Join-Path 'docs\canopy-db\comparisons' ([System.IO.Path]::GetFileName($first.Data))
+    $script:Fake.Behavior = @{}
+    $savedLocation = Get-Location
+    $savedFolder = [Environment]::CurrentDirectory
+    try {
+        Set-Location -LiteralPath $repo.Root
+        [Environment]::CurrentDirectory = [System.IO.Path]::GetTempPath()
+        $script:SeenCsv = $null
+        $environment = New-FakeEnvironment @{ Clock = '2026-10-22T13:00:00' }
+        $environment.SharedCase = { param($Path) $script:SeenCsv = $Path; 'JA100' }
+        $code = Invoke-CanopyComparison -RepoRoot $repo.Root -WorkDir $repo.WorkDir -Csv 'small.csv' -Repetitions 1 -Baseline $relativeBaseline -Environment $environment 6>$null
+    }
+    finally {
+        Set-Location -LiteralPath $savedLocation
+        [Environment]::CurrentDirectory = $savedFolder
+    }
+    Assert-Equal 0 $code 'exit code'
+    Assert-Equal $repo.Csv $script:SeenCsv 'the CSV reaches the probes resolved'
+    $report = Join-Path $repo.Reports '2026-10-22-130001-abc1234.md'
+    $lines = @([System.IO.File]::ReadAllText($report) -split "`n")
+    Assert-Contains $lines ('- **Baseline**: `{0}`' -f $relativeBaseline) 'baseline as passed'
+    Assert-True ($lines -ccontains '## Baseline') 'baseline section'
+}
+
 Test-Case 'KM5: tolerance of each kind of measure, one condition is enough' {
     Assert-True (Test-WithinTolerance 'process_s' 1.2 1.0) 'time 20 %'
     Assert-True (-not (Test-WithinTolerance 'process_s' 1.3 1.0)) 'time over 20 % and 0.050 s'

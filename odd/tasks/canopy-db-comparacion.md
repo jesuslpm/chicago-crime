@@ -51,7 +51,7 @@ criteria, verbatim:
 | T2 | S1–S6 | inline | done (feat commit after `4826d1a`) | The bench: `canopy-comparison.ps1` (library), `run-canopy-comparison.ps1` (script and help), `tests/canopy-comparison.tests.ps1` (17 tests, fake applications): all pass. Smoke on 200,000 rows of the reference CSV, R=1: `PASS: 50 runs, same results in all 11 queries`. |
 | T3 | S7 | inline | done with T2 (H5 link in T4) | Script help, README section "Compare the two pairs" and layout, Linux guides. |
 | T4 | S1, S2 (part), S7 | inline | done; AC-M10 repeat half NOT MET (external load) | Run 1 `2026-10-22-120128-fea8c09`: PASS, 154 runs, 11 SAME, 3,966.6 s. Run 2 `2026-10-22-130851-82ffd76` with `-Baseline` run 1: PASS, 154 runs, 11 SAME, 3,210.0 s; 37 time rows `outside tolerance`, every memory, size and count row inside. Both reports committed; H5 links them. |
-| T5 | S8 | inline | pending | fmt, clippy, tests on Windows and WSL; the four acceptance checks on Windows. |
+| T5 | S8 | inline | done | fmt and clippy clean; Windows 560 passed, 0 failed (61 binaries); Linux (WSL Ubuntu, fresh clone of `b037f18`) 562 passed, 0 failed (61 binaries); bench tests 17 passed; acceptance: query 106/106, CanopyDB query 151/151, generator 15/15, CanopyDB generator 17/17. |
 
 Route evidence: one understood change per task, no parallel units, so every task stays inline (no writer
 trigger). T1 touches shared acceptance code (risk item 6: only the acceptance runs of T5 catch a regression).
@@ -111,3 +111,12 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   rule covers the variation of the reference machine without other load and the needed widening (about
   80 %) would make the bench useless; AC-M10's repeat stays pending a run on a quiet machine, in the closing
   report. README and script help: measured duration 54 and 66 minutes instead of the 40 estimated.
+- **L9** T5 (2026-10-22): the four acceptance checks ran one after another on `b037f18` (14:03–16:10, slower
+  than their README figures, the machine busy again): `run-query-acceptance.ps1` PASS 106 checks,
+  `run-canopy-query-acceptance.ps1` PASS 151, `run-acceptance.ps1` PASS 15, `run-canopy-acceptance.ps1` PASS 17
+  (reports in `work/acceptance-*`). The two query checks run the helpers moved by T1 and T2, so S8's "siguen
+  pasando" holds and T1's risk (item 6) is closed. `cargo fmt --all --check` and `cargo clippy --workspace
+  --all-targets -- -D warnings` clean; `cargo test --workspace` Windows 560 passed, Linux 562 passed (WSL
+  Ubuntu, fresh clone of the branch bundle in `~/canopy-db-comparacion-<hhmmss>`), 0 failed; bench tests 17
+  passed. A first WSL attempt failed on shell quoting, not on tests; `rm -rf` of the old WSL clone was
+  refused by the safety check, so the old clone `~/canopy-db-consultor` and the new one stay.

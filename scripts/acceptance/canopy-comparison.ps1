@@ -689,14 +689,16 @@ function Invoke-CanopyComparison {
     # Preliminary checks, in the PRD's order.
     if ($Repetitions -lt 1) { throw '-Repetitions must be at least 1.' }
     if (-not (Test-Path -LiteralPath $Csv -PathType Leaf)) { throw "Missing file: $Csv" }
+    # .NET reads relative paths from the process folder, which need not be the PowerShell location.
+    $csvPath = (Resolve-Path -LiteralPath $Csv).Path
     $baselineIndex = $null
     if ($Baseline) {
         if (-not (Test-Path -LiteralPath $Baseline -PathType Leaf)) { throw "Baseline file not found: $Baseline" }
-        $baselineRows = Read-ComparisonData $Baseline
+        $baselineRows = Read-ComparisonData (Resolve-Path -LiteralPath $Baseline).Path
         if ($null -eq $baselineRows) { throw "Baseline file is not a comparison bench data file: $Baseline" }
         $baselineIndex = New-RowIndex $baselineRows
     }
-    $sharedCase = & $machine.SharedCase $Csv
+    $sharedCase = & $machine.SharedCase $csvPath
     if (-not $sharedCase) { throw 'The CSV has no shared case number, so F2 cannot be built.' }
     $git = & $machine.Git $RepoRoot
     $commit = if ($git.Commit) { $git.Commit } else { 'unknown' }
@@ -719,7 +721,6 @@ function Invoke-CanopyComparison {
     foreach ($path in $executables.Values) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing binary: $path" } }
 
     $work = (Resolve-Path -LiteralPath $WorkDir).Path
-    $csvPath = (Resolve-Path -LiteralPath $Csv).Path
     Get-ChildItem -LiteralPath $work -Filter 'comparison-*' -Force | Remove-Item -Recurse -Force
     $tempDir = Join-Path $work 'comparison-temp'
     $logDir = Join-Path $work 'comparison-logs'
