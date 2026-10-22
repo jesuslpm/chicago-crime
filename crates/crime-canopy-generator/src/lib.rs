@@ -7,7 +7,6 @@
 //! the version folder (decision KG2), with the same keys and values as the LevelDB tables
 //! (decision K2), and describes them with the CanopyDB manifest (decision KG3).
 
-use std::any::Any;
 use std::fs;
 use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -35,7 +34,7 @@ pub const APP: App = App {
 // CanopyDB query app.
 pub use crime_dataset::canopy::{
     BASE_DIR_NAME, CANOPYDB_VERSION, DATABASE_NAME, PRIMARY_TABLE_NAME, SCHEMA_VERSION,
-    engine_detail,
+    engine_detail, panic_detail,
 };
 
 /// Page cache of the base: CanopyDB's default of 1 GiB is twice the memory limit of the run.
@@ -126,7 +125,7 @@ impl CanopyStorage {
         match catch_unwind(AssertUnwindSafe(operation)) {
             Ok(result) => result.map_err(|error| self.engine(error)),
             Err(payload) => Err(Abort::WithDetail {
-                detail: engine_detail(&panic_text(payload.as_ref())),
+                detail: panic_detail(payload.as_ref()),
                 cause: Box::new(Abort::OutputUnwritable {
                     dir: self.output.clone(),
                 }),
@@ -256,16 +255,6 @@ impl Storage for CanopyStorage {
 }
 
 /// The message of a panic, as `panic!` received it.
-fn panic_text(payload: &(dyn Any + Send)) -> String {
-    if let Some(text) = payload.downcast_ref::<&str>() {
-        (*text).to_owned()
-    } else if let Some(text) = payload.downcast_ref::<String>() {
-        text.clone()
-    } else {
-        "panic".to_owned()
-    }
-}
-
 /// Failures of the engine injected by the tests (feature `fail-points`); without the feature
 /// nothing is ever injected.
 pub mod fault {

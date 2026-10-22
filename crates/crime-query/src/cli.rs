@@ -36,7 +36,7 @@ que el analista ha cancelado el lote. Si se cierra la salida estándar, el lote 
 /// that their errors get the PRD messages instead of clap's.
 #[derive(Debug, Parser)]
 // The name, the description, the usage and the end of the help come from the [`App`] (see
-// [`command`]).
+// [`command`]); `name` here is only clap's placeholder until `command` sets the app's.
 #[command(
     name = "crime-query",
     // `{options}` and `{after-help}` already bring the line breaks that separate them.
@@ -255,6 +255,10 @@ where
 /// Parses the words of one batch line into the options of its query on `dataset`, with the
 /// rules and messages of the same query typed alone. `Err` is the message, without the line
 /// number; every error here is one of form (exit code 2).
+///
+/// It parses with the original app's command line whatever app runs the batch: every app has
+/// the same options (decision K1 of the canopy-db PRD), and a line never shows a help or a usage
+/// (`--help` and `-h` are refused first), so the app's name and texts never reach the message.
 pub fn parse_line(words: &[String], dataset: &Path) -> Result<Options, String> {
     if let Some(option) = words.iter().find_map(|word| not_in_batch(word)) {
         return Err(messages::option_not_in_batch(option));

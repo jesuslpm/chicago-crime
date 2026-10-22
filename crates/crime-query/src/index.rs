@@ -108,7 +108,8 @@ pub trait KeyCursor {
     fn seek(&mut self, start: &[u8]) -> Result<bool, ReadError>;
     /// Moves to the next key; `Ok(false)` after the last one.
     fn advance(&mut self) -> Result<bool, ReadError>;
-    /// The current key, after a `seek` or `advance` that answered `Ok(true)`.
+    /// The current key, after a `seek` or `advance` that answered `Ok(true)`. [`IdStream`] never
+    /// calls it at any other time; an implementation may panic then.
     fn key(&self) -> &[u8];
 }
 

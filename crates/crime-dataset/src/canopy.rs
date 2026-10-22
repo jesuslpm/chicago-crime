@@ -45,6 +45,18 @@ pub fn engine_detail(error: &str) -> String {
     format!("Detalle del error de CanopyDB: {}", one_line.join(" "))
 }
 
+/// The detail line of a panic of the engine, from its payload.
+pub fn panic_detail(payload: &(dyn std::any::Any + Send)) -> String {
+    let text = if let Some(text) = payload.downcast_ref::<&str>() {
+        (*text).to_owned()
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text.clone()
+    } else {
+        "panic".to_owned()
+    };
+    engine_detail(&text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

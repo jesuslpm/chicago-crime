@@ -21,8 +21,9 @@ pub fn dataset_not_found(folder: &Path) -> String {
     )
 }
 
-/// `found` is the schema version the manifest declares; the query app reads [`SCHEMA_VERSION`].
-pub fn incompatible_schema(found: u32) -> String {
+/// `found` is the schema version the manifest declares, as written; the query apps read
+/// [`SCHEMA_VERSION`] (the CanopyDB one as `canopydb-2`, decision KC3 of its PRD).
+pub fn incompatible_schema(found: impl std::fmt::Display) -> String {
     format!(
         "El conjunto usa el esquema v{found} y este consultor admite v{SCHEMA_VERSION}. Regenera \
          el conjunto."

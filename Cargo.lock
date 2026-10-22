@@ -301,6 +301,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "crime-canopy-query"
+version = "0.1.0"
+dependencies = [
+ "canopydb",
+ "crime-canopy-generator",
+ "crime-dataset",
+ "crime-generator",
+ "crime-query",
+ "csv",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "crime-dataset"
 version = "0.1.0"
 dependencies = [
