@@ -31,22 +31,12 @@ pub const APP: App = App {
     sort_dir_prefix: "crime-canopy-generator-sort-",
 };
 
-/// Folder of the CanopyDB base inside the version folder (decision KG2).
-pub const BASE_DIR_NAME: &str = "canopydb";
-
-/// The one database of the base. Its trees are named as the tables of the manifest.
-pub const DATABASE_NAME: &str = "crime";
-
-/// Name of the primary table, as a tree and in the manifest.
-pub const PRIMARY_TABLE_NAME: &str = "primary";
-
-/// `schema_version` of the CanopyDB manifest (decision KG3): the engine and the version of the
-/// logical schema, which is the one of the LevelDB tables (decision K2).
-pub const SCHEMA_VERSION: &str = "canopydb-2";
-
-/// The version of CanopyDB this application is built with, as `Cargo.lock` names it (a test
-/// checks they agree).
-pub const CANOPYDB_VERSION: &str = "0.2.5";
+// The names of the CanopyDB dataset contract and the engine detail line, shared with the
+// CanopyDB query app.
+pub use crime_dataset::canopy::{
+    BASE_DIR_NAME, CANOPYDB_VERSION, DATABASE_NAME, PRIMARY_TABLE_NAME, SCHEMA_VERSION,
+    engine_detail,
+};
 
 /// Page cache of the base: CanopyDB's default of 1 GiB is twice the memory limit of the run.
 pub const PAGE_CACHE_BYTES: usize = 64 << 20;
@@ -60,16 +50,6 @@ const STALL_MEMORY_BYTES: usize = 128 << 20;
 
 /// Entries written per transaction.
 const ENTRIES_PER_COMMIT: usize = 100_000;
-
-/// The line of the log that explains a failure of the engine (decision KG7): the error as
-/// CanopyDB gives it, on one line.
-pub fn engine_detail(error: &str) -> String {
-    let one_line: Vec<&str> = error
-        .split(['\r', '\n'])
-        .filter(|part| !part.is_empty())
-        .collect();
-    format!("Detalle del error de CanopyDB: {}", one_line.join(" "))
-}
 
 /// The options a CanopyDB base of this application is opened with: the page cache of
 /// [`PAGE_CACHE_BYTES`] and no write-ahead log, so the base holds no log to replay and a reader
@@ -415,7 +395,7 @@ impl Written for CanopyWritten {
             schema_version: SCHEMA_VERSION,
             generated_at: &info.generated_at,
             engine: Engine {
-                name: "canopydb",
+                name: crime_dataset::canopy::ENGINE_NAME,
                 version: CANOPYDB_VERSION,
                 fork_commit: None,
             },
