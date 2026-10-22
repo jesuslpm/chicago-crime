@@ -94,3 +94,8 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   `compress_overflow_values` (the Options line shows compression); a failed run's note keeps the stderr
   line's own final dot (`...existente..`), as the PRD's literal `<motivo>.` gives. Smoke on a 200,000-row
   CSV (R=1, real build): PASS, 50 runs, 119.6 s; its report was deleted, not kept.
+- **L7** RDD assessment of `4826d1a..44ef53a` (T2+T3): `medium`, `review_due` false, `under_budget`; the
+  slice stays pending until the closing review. Risk of T2: item 3 (it changes `query-output.ps1` and
+  `Initialize-FixedQueries`, which the query app acceptance also uses): independent verifier at the
+  feature's end, after T5. T4 starts: bench run 1 on the reference CSV, 5 repetitions, `-WorkDir
+  work\comparison`, machine without other load.

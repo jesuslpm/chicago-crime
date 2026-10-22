@@ -9,3 +9,6 @@
 2026-10-22T11:51:56+01:00	mark	checks	T2
 2026-10-22T11:57:52+01:00	bg-start	checks	smoke bench small CSV
 2026-10-22T11:59:58+01:00	bg-end	checks	smoke bench small CSV
+2026-10-22T12:01:00+01:00	mark	review	T2
+2026-10-22T12:01:22+01:00	mark	acceptance	T4
+2026-10-22T12:01:22+01:00	bg-start	acceptance	bench run 1 reference CSV
