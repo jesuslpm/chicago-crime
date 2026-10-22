@@ -151,7 +151,9 @@ before its execution.
 Each child is a change with its own PRD, its execution and its closing report, and names this document as its
 parent. Each one updates the help, the README and the guides of what it delivers. They are written and run in
 this order. 1 and 2 do not depend on each other; 3 depends on 1 and 2; 4, on the previous three; 5, on 1 and
-3. The module closes with the closing of 5.
+3. The module closes with the closing of 5. *Annotation of 2026-10-22: replaced by decision KR5 of the
+[robustness PRD](canopy-db-robustez.prd.en.md): 5 does not wait for 4, and the module is closed by the last child to
+close, `canopy-db-robustez` or `canopy-db-comparacion`, which checks AC-M12 and AC-M13 again.*
 
 | Order | Child PRD | Delivers | Sets, among other things |
 |---|---|---|---|
@@ -171,7 +173,7 @@ Findings can come from any of the five and always follow flow E.
 | `canopy-db-lote` | AC-M7 with the original query app, AC-M9 | Parent decision D6 and query app PRD (flow and D6): the batch exists (K7). |
 | `canopy-db-consultor` | AC-M1 (query app part), AC-M2, AC-M5, AC-M6, AC-M7 with the CanopyDB query app, AC-M8 with both query apps | Query app PRD, in the rule "el consultor nunca escribe en la carpeta del conjunto" (the query app never writes in the dataset folder) and in C7: the CanopyDB query app follows K6 and K8. |
 | `canopy-db-comparacion` | AC-M2 (with the benchmark), AC-M10 | — |
-| `canopy-db-robustez` | AC-M11, AC-M12, AC-M13 and the final check of the module | Parent: the CanopyDB module exists, with a link to this document. |
+| `canopy-db-robustez` | AC-M11, AC-M12, AC-M13 and the final check of the module | Parent: the CanopyDB module exists, with a link to this document. *Annotation of 2026-10-22: this annotation is made by the child that closes the module (KR5 of the [robustness PRD](canopy-db-robustez.prd.en.md)).* |
 
 ## Validations and messages
 
@@ -220,6 +222,9 @@ and PRs that get published are written in English, the language of the CanopyDB 
 | Approvals | Each approved public action, with its date and its link. |
 | Links | Issue, PR and version that fixes it, if they exist. |
 | Fork | The commit of the fork the applications depend on, if the fix is not yet published. |
+
+*Annotation of 2026-10-22: `canopy-db-robustez` adds the field `Borrador del issue`, the link to the English
+draft of each finding's issue (decision KR8 of the [robustness PRD](canopy-db-robustez.prd.en.md)).*
 
 The log starts with what was checked when writing this document:
 

@@ -76,7 +76,11 @@ concreta:
    en el mismo orden, sin abrir el conjunto.
 3. Localiza la versión activa por el puntero, como el original, y comprueba, en este orden y sin abrir la base:
    el `schema_version` del manifiesto (KC3), la forma del manifiesto (KC3), la versión de CanopyDB (KC4) y que
-   existan todos los archivos que lista `files`. El primer fallo rechaza con su mensaje.
+   existan todos los archivos que lista `files`. El primer fallo rechaza con su mensaje. *Anotación del
+   2026-10-22: si la versión que iba a abrir deja de ser la activa (el generador publicó otra y la está
+   borrando), vuelve a leer el puntero y abre la nueva, sin un segundo aviso ni más espera que la de KC2; una
+   versión que ya abrió responde hasta el final aunque se borre (decisión KR7 del
+   [PRD de robustez](canopy-db-robustez.prd.md)).*
 4. Abre la base. Si otro proceso cualquiera la tiene abierta (otro consultor CanopyDB, el verificador CanopyDB u
    otro programa), avisa en cuanto lo detecta y espera hasta 30 s (KC2): si se libera, sigue con normalidad; si
    no, rechaza sin resultados con el código 1.
@@ -250,7 +254,8 @@ filas `NOT MET` en el orden de las filas, separados por `, ` y sin repetir; con 
 - El banco de comparación y su informe (`canopy-db-comparacion`) y la búsqueda dirigida de bugs
   (`canopy-db-robustez`): entre otros, matar un consultor o un lote a mitad, varios consultores esperando a la
   vez y el orden en que entran, consultas durante la publicación más allá de AC-M7, y borrar una versión que un
-  consultor CanopyDB tiene abierta.
+  consultor CanopyDB tiene abierta. *Anotación del 2026-10-22: los fija y los ejecuta el
+  [PRD de robustez](canopy-db-robustez.prd.md), escenarios R3 a R12.*
 - Una opción para cambiar el tiempo de espera: el contrato no tiene opciones nuevas (K1).
 - Leer un conjunto escrito con otra versión de CanopyDB o convertirlo: se regenera (KC4).
 - Un conjunto llevado a un equipo con otro orden de bytes, y conjuntos en carpetas de red o en discos de Windows

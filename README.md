@@ -11,6 +11,7 @@ sorting under a fixed memory budget, and product-driven development.
 | CanopyDB generator (`crime-canopy-generator`) | Done | The same generator, options and messages, publishing the dataset in a [CanopyDB](https://github.com/arthurprs/canopydb) base instead of LevelDB tables, to compare the two engines ([module PRD](docs/prd/chicago-crime/canopy-db.prd.md)). See [CanopyDB generator](#canopydb-generator). |
 | Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory; one query per run, or a batch of queries from a file. |
 | CanopyDB query app (`crime-canopy-query`) | Done | The same query app over the CanopyDB generator's dataset, with the same answers. See [CanopyDB query app](#canopydb-query-app). |
+| Robustness scenarios (`crime-canopy-scenarios`) | Done | Kills, Ctrl+C, concurrent processes and large data against the CanopyDB apps, with a log of each result. See [Robustness scenarios](#robustness-scenarios). |
 
 ## Get the dataset
 
@@ -390,6 +391,67 @@ alone and in a batch, and that the comparison benchmark reuses: by ID, by a shar
 of `THEFT` and of the rare type `RITUALISM`, a month, eleven years of thefts, two indexes, two indexes
 and a filter, a prefix, a listing with a limit and the listing of every theft. Replace `<número>` with
 the first case number the CSV repeats before running it with `--batch`.
+
+## Robustness scenarios
+
+`crime-canopy-scenarios` hunts for bugs of CanopyDB and of the CanopyDB apps where a normal run never goes
+([PRD](docs/prd/chicago-crime/canopy-db-robustez.prd.md)). It runs the real release binaries and checks what
+the contract says must happen in thirteen scenarios, R1 to R13:
+
+| Scenarios | What they do |
+|---|---|
+| R1, R2 | Kill the CanopyDB generator, or press Ctrl+C, in each phase of its run. |
+| R3–R7 | Kill or cancel the CanopyDB query app midway, a batch, a query app waiting for the dataset, and the one holding it. |
+| R8, R9 | Four query apps waiting at once; query apps in a loop while the generator publishes ten versions. |
+| R10 | Kill the generator while a batch reads the previous version. |
+| R11, R12 | Linux only: the generator deletes a version a query app has open, or is waiting for. |
+| R13 | Windows only: generate and query the triple of the reference CSV. |
+
+Build everything in release, then run the scenarios from the repository root with the reference CSV and a
+work folder (it takes a few hours: R1 and R9 generate the dataset dozens of times):
+
+```powershell
+cargo build --release --workspace
+target\release\crime-canopy-scenarios.exe --csv chicago-crime-data.csv --work work\scenarios
+```
+
+| Option | Meaning |
+|---|---|
+| `--csv <ARCHIVO>` | The reference CSV. Required. |
+| `--work <CARPETA>` | Work folder: the reference dataset (generated once and copied for each variant), each run's phases, output and log, and the rows of the scenario log. Required. In a worktree copy, use its `work` folder. |
+| `--only <LISTA>` | Only these scenarios, for example `R1,R5`. |
+| `--repeat <N>` | Repetitions of each racy scenario (R8, R9, R11, R12); at least 5, the default. |
+| `--not-met <ASOCIACIONES>` | Checks that fail because of a known finding of CanopyDB, `<escenario>/<variante>/<comprobación>=<hallazgo>`, comma-separated: they come out as `NOT MET` and do not fail the run. Any other failed check of the same variant still fails it. An association that names an unknown variant, check or finding stops the run before it starts. |
+| `--list` | Print every variant and its checks, without running anything. |
+| `--findings`, `--fixed-queries`, `--bin-dir` | The findings log, the fixed query set and the binaries folder, when they are not in their default place. |
+
+Each variant prints one line: `CUMPLIDO`, `NO CUMPLIDO` (with the failed checks), `NOT MET (Hn)`, `NO
+EJECUTADO` (the signal never landed in its phase after five attempts, or there is no disk space) or `NO
+APLICA` (R11 and R12 on Windows, R13 on Linux), followed by what it observed. The last line starts with
+`PASS:` or `FAIL:`; the exit code is 1 when a variant is not met or did not run, 0 otherwise. The run also
+writes the rows of the scenario log to `<work>/registro-<Sistema>-<fecha>.md`: add them to
+[`docs/canopy-db/escenarios.md`](docs/canopy-db/escenarios.md), the scenario log, after classifying any
+failure as a project bug or a finding.
+
+To know the phase an app is in, the scenarios read two hidden environment variables of the apps,
+`CRIME_PHASE_FILE` (a file where the app appends each phase it enters) and `CRIME_PHASE_PAUSE`
+(`<phase>:<milliseconds>`, a pause right after that phase). They are not part of any app's options and do
+nothing when unset.
+
+### Big CSV
+
+R13 needs the triple of the reference CSV, which it builds once in the work folder with `crime-big-csv`;
+the tool can also be run alone:
+
+```powershell
+target\release\crime-big-csv.exe --input chicago-crime-data.csv --output work\big\crimes-x3.csv
+```
+
+It writes the header once, the reference rows unchanged and two copies of every row with new IDs, above any
+ID of the reference, and new case numbers with the same two initial characters. When the six-digit numbers
+of a prefix run out (HH, HJ, HK, HL and HM do in the reference CSV), the new ones get seven, eight or nine
+digits. It never overwrites an existing file and leaves no partial file when it fails. R13 checks first that
+the disk has about 50 GB free.
 
 ## Verify
 

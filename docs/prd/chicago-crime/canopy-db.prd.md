@@ -152,7 +152,9 @@ usuario antes de su ejecución.
 Cada hijo es un cambio con su propio PRD, su ejecución y su informe de cierre, y nombra este documento como
 padre. Cada uno actualiza la ayuda, el README y las guías de lo que entrega. Se escriben y ejecutan en este
 orden. El 1 y el 2 no dependen entre sí; el 3 depende del 1 y del 2; el 4, de los tres anteriores; el 5, del 1
-y del 3. El módulo se cierra con el cierre del 5.
+y del 3. El módulo se cierra con el cierre del 5. *Anotación del 2026-10-22: sustituido por la decisión KR5 del
+[PRD de robustez](canopy-db-robustez.prd.md): el 5 no espera al 4, y el módulo lo cierra el último hijo en
+cerrar, `canopy-db-robustez` o `canopy-db-comparacion`, que vuelve a verificar AC-M12 y AC-M13.*
 
 | Orden | PRD hijo | Entrega | Fija, entre otras cosas |
 |---|---|---|---|
@@ -172,7 +174,7 @@ Los hallazgos pueden salir de cualquiera de los cinco y siguen siempre el flujo 
 | `canopy-db-lote` | AC-M7 con el consultor original, AC-M9 | Decisión D6 del padre y PRD del consultor (flujo y D6): existe el lote (K7). |
 | `canopy-db-consultor` | AC-M1 (parte del consultor), AC-M2, AC-M5, AC-M6, AC-M7 con el consultor CanopyDB, AC-M8 con los dos consultores | PRD del consultor, en la regla "el consultor nunca escribe en la carpeta del conjunto" y en C7: el consultor CanopyDB sigue K6 y K8. |
 | `canopy-db-comparacion` | AC-M2 (con el banco), AC-M10 | — |
-| `canopy-db-robustez` | AC-M11, AC-M12, AC-M13 y la comprobación final del módulo | Padre: existe el módulo CanopyDB, con enlace a este documento. |
+| `canopy-db-robustez` | AC-M11, AC-M12, AC-M13 y la comprobación final del módulo | Padre: existe el módulo CanopyDB, con enlace a este documento. *Anotación del 2026-10-22: esta anotación la hace el hijo que cierre el módulo (KR5 del [PRD de robustez](canopy-db-robustez.prd.md)).* |
 
 ## Validaciones y mensajes
 
@@ -222,6 +224,9 @@ que se publiquen se redactan en inglés, el idioma del repositorio de CanopyDB.
 | Aprobaciones | Cada acción pública aprobada, con su fecha y su enlace. |
 | Enlaces | Issue, PR y versión que lo corrige, si existen. |
 | Fork | El commit del fork del que dependen las aplicaciones, si la corrección aún no está publicada. |
+
+*Anotación del 2026-10-22: `canopy-db-robustez` añade el campo `Borrador del issue`, el enlace al borrador en
+inglés del issue de cada hallazgo (decisión KR8 del [PRD de robustez](canopy-db-robustez.prd.md)).*
 
 El registro empieza con lo comprobado al escribir este documento:
 

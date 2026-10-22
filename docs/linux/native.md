@@ -69,6 +69,18 @@ Linux the generator's memory criterion (AC-M4) is checked by hand: run the gener
 CSV and read the line `Pico de memoria privada comprometida` of its summary, which must stay within
 512 MiB. The query app's memory criterion (AC-M8) is checked on Windows only.
 
+The robustness scenarios do run on Linux, with the same binary and options as on Windows (see
+[Robustness scenarios](../../README.md#robustness-scenarios)). R11 and R12, a version deleted while a query
+app has it open or waits for it, can only be provoked here; R13, the big CSV, comes out as not applicable:
+
+```bash
+cargo build --release --workspace
+./target/release/crime-canopy-scenarios --csv chicago-crime-data.csv --work work/scenarios
+```
+
+Add the rows it writes to `work/scenarios/registro-Linux-<fecha>.md` to the scenario log,
+[`docs/canopy-db/escenarios.md`](../canopy-db/escenarios.md).
+
 Every option and message is the same as on Windows (see the [README](../../README.md)).
 
 ## What differs from Windows

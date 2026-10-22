@@ -78,7 +78,10 @@ delivery specifies:
 3. It locates the active version through the pointer, like the original, and checks, in this order and without
    opening the database: the `schema_version` of the manifest (KC3), the shape of the manifest (KC3), the
    CanopyDB version (KC4) and that all the files listed by `files` exist. The first failure rejects with its
-   message.
+   message. *Annotation of 2026-10-22: if the version it was about to open stops being the active one (the
+   generator published another one and is deleting it), it reads the pointer again and opens the new one,
+   with no second warning and no longer wait than KC2's; a version it already opened answers to the end even
+   if it is deleted (decision KR7 of the [robustness PRD](canopy-db-robustez.prd.en.md)).*
 4. It opens the database. If any other process has it open (another CanopyDB query app, the CanopyDB verifier or
    another program), it warns as soon as it detects it and waits up to 30 s (KC2): if it is released, it
    continues normally; if not, it rejects without results with code 1.
@@ -250,7 +253,8 @@ with no `FAIL`, `PASS: all <n> checks passed` if there is no `NOT MET`, and
 - The comparison benchmark and its report (`canopy-db-comparacion`) and the targeted bug hunt
   (`canopy-db-robustez`): among others, killing a query app or a batch halfway, several query apps waiting at
   the same time and the order in which they get in, queries during publication beyond AC-M7, and deleting a
-  version that a CanopyDB query app has open.
+  version that a CanopyDB query app has open. *Annotation of 2026-10-22: the
+  [robustness PRD](canopy-db-robustez.prd.en.md) sets and runs them, scenarios R3 to R12.*
 - An option to change the wait time: the contract has no new options (K1).
 - Reading a dataset written with another CanopyDB version or converting it: it is regenerated (KC4).
 - A dataset taken to a machine with another byte order, and datasets in network folders or on Windows disks
