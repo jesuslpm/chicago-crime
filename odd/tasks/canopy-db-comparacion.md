@@ -120,3 +120,17 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   Ubuntu, fresh clone of the branch bundle in `~/canopy-db-comparacion-<hhmmss>`), 0 failed; bench tests 17
   passed. A first WSL attempt failed on shell quoting, not on tests; `rm -rf` of the old WSL clone was
   refused by the safety check, so the old clone `~/canopy-db-consultor` and the new one stay.
+- **L10** Independent verifier (sonnet, high) on `8786248..b037f18`: S1, S3–S7 met; S2 report half met, repeat
+  half not met (known, L8; it recomputed the 104 Baseline rows: 0 mismatches, 37 outside); S8 partly met in
+  its view only because T5 was not yet logged (it is, L9). It recomputed 224 figures per report from the
+  data tables with its own decimal code: 0 mismatches; it confirmed both `.cs` files are byte-identical to
+  the old inline blocks and the moved readers unchanged. Blocker B1: a relative `-Csv` or `-Baseline`
+  reached .NET unresolved, so with the process folder different from the PowerShell location the bench read
+  another file or failed with a raw .NET error (the query acceptance resolves `$Csv` up front). Fix in
+  `dedc982`: both resolved with `Resolve-Path` right after their existence checks; the `Baseline` header keeps
+  the text as passed. Regression test "Relative -Csv and -Baseline follow the PowerShell location, not the
+  process folder": RED (`ReadAllText` looked for the baseline under the temp folder), then GREEN, 18 of 18
+  tests pass. Advisories kept as they are: a failed single run 0 shows `—` while a failed batch run 0 keeps
+  the counts it gave (KM6 asks for that in the batch); the Baseline header check tolerates a BOM; Ctrl+C has
+  no test (no AC); report 1 records the mistyped work folder (L8); the 14 GB need is an estimate (the kept
+  folders took 8.4 GB). The verifier's scratch folders were removed.
