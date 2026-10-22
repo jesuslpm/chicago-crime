@@ -182,7 +182,13 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
     tiene cuatro niveles; en cada inserción, la hoja se lleva el 27–29 % del tiempo y el descenso por los tres
     niveles de nodos rama, el resto.
 
-  Las cifras no son de un banco controlado; las mide `canopy-db-comparacion`.
+  Las cifras no son de un banco controlado; las mide `canopy-db-comparacion`. Medición del banco del
+  2026-10-22 con el extracto de referencia y 5 repeticiones
+  ([informe](comparisons/2026-10-22-130851-82ffd76.md)): la base ocupa 2.718.946.733 bytes frente a
+  1.101.808.809 de las SSTables, y la generación tarda 204,8 s de mediana frente a 156,4 s; en la ejecución
+  anterior ([informe](comparisons/2026-10-22-120128-fea8c09.md)), 180,0 s frente a 111,6 s. Los tiempos de las
+  dos ejecuciones difieren más que la tolerancia del banco por carga externa en el equipo, así que la
+  proporción entre los dos motores es más fiable que las cifras absolutas.
 - **Reproducción mínima**: `cargo run --release -- h5` en [`repro/`](repro/). Escribe con `Tree::insert`, en
   orden, el volumen del conjunto (8.656.904 entradas de 138 bytes y cinco árboles de índices con otras tantas),
   con la configuración del generador, y muestra el tiempo y el tamaño de la base. Resultado en el equipo de

@@ -9,7 +9,9 @@
     the SSTable datasets that must be rejected), the fixed query set (canopy-fixed-queries.txt, KC7),
     the memory runs of AC-M8 and the rows of the PRD's own criteria: AC-M2-F1..F11, AC-M5, AC-M6,
     AC-M7, AC-M8, AC-M8 (SSTables) and AC-KC2..AC-KC7. It uses the original script's variables and
-    functions ($DatasetDir, Invoke-Program, Test-BatchShape, ...) as they are when it runs.
+    functions ($DatasetDir, Invoke-Program, Test-BatchShape, ...) as they are when it runs, and the
+    readers of query-output.ps1 (Split-BatchWords, Read-JsonFile, Compare-JsonDocuments, ...), which
+    run-query-acceptance.ps1 dot-sources before it.
 #>
 
 $SstGeneratorExe = Join-Path $RepoRoot 'target\release\crime-generator.exe'
@@ -18,7 +20,6 @@ $CanopyPackages = @('crime-canopy-generator', 'crime-canopy-query', 'crime-canop
 # Free space the CanopyDB run needs (see the help of run-canopy-query-acceptance.ps1).
 $CanopyRequiredGb = 16
 $FixedQueriesTemplate = Join-Path $PSScriptRoot 'canopy-fixed-queries.txt'
-$FixedPlaceholder = '<número>'
 # The select on the CSV that counts the expected results of F1 to F11 (F10: at most its limit).
 $FixedSelects = @('fixed-f1', 'case', 'theft', 'rare', 'month', 'theft-2005-2015', 'theft-008', 'theft-month-arrest', 'prefix-ja', 'theft', 'theft')
 # AC-M5: the batch that holds the base lasts about this long (more than 45 s), the short one about
@@ -64,255 +65,8 @@ $FixedMemoryRuns = @{}
 $FixedBatchRuns = @{}
 $FixedAlone = @{}
 
-Add-Type -TypeDefinition @"
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Text;
-using System.Threading;
-
-public static class CanopyQueryAcceptance {
-    static readonly Encoding Utf8 = new UTF8Encoding(false);
-
-    // 64-bit FNV-1a of a line.
-    static ulong Hash(string line) {
-        ulong hash = 14695981039346656037UL;
-        for (int i = 0; i < line.Length; i++) { hash ^= line[i]; hash *= 1099511628211UL; }
-        return hash;
-    }
-
-    static List<ulong> HashRows(string path, out string header) {
-        var hashes = new List<ulong>();
-        using (var reader = new StreamReader(path, Utf8, true, 1 << 20)) {
-            header = reader.ReadLine();
-            string line;
-            while ((line = reader.ReadLine()) != null) hashes.Add(Hash(line));
-        }
-        return hashes;
-    }
-
-    // Compares two CSV files as sets of rows without holding them: the same first line, the same
-    // number of other lines and the same sorted hashes of them. Returns null when equal, otherwise
-    // the difference in words.
-    public static string CompareRowSetsHashed(string left, string right) {
-        if (!File.Exists(left) || !File.Exists(right)) return "a file is missing";
-        string leftHeader, rightHeader;
-        List<ulong> a = HashRows(left, out leftHeader);
-        List<ulong> b = HashRows(right, out rightHeader);
-        if (leftHeader == null || rightHeader == null) return "a file is empty";
-        if (leftHeader != rightHeader) return "the header lines differ";
-        if (a.Count != b.Count) return String.Format("{0} rows against {1}", a.Count, b.Count);
-        a.Sort();
-        b.Sort();
-        for (int i = 0; i < a.Count; i++) { if (a[i] != b[i]) return "the rows differ"; }
-        return null;
-    }
-
-    // The IDs of a CSV listing of the query app: the first field of every row after the header.
-    public static List<long> ReadCsvIds(string path) {
-        var ids = new List<long>();
-        using (var reader = new StreamReader(path, Utf8, true, 1 << 20)) {
-            reader.ReadLine();
-            string line;
-            while ((line = reader.ReadLine()) != null) {
-                if (line.Length == 0) continue;
-                int start = line[0] == '"' ? 1 : 0;
-                int end = line.IndexOf(start == 1 ? '"' : ',', start);
-                if (end < 0) end = line.Length;
-                ids.Add(Int64.Parse(line.Substring(start, end - start)));
-            }
-        }
-        return ids;
-    }
-
-    // The problem of a limited listing against the unlimited one, or null: exactly limit distinct
-    // IDs, all in the unlimited listing.
-    public static string CheckLimited(string limitedPath, string fullPath, int limit) {
-        if (!File.Exists(limitedPath) || !File.Exists(fullPath)) return "a listing is missing";
-        List<long> limited = ReadCsvIds(limitedPath);
-        var full = new HashSet<long>(ReadCsvIds(fullPath));
-        var distinct = new HashSet<long>(limited);
-        int outside = 0;
-        foreach (long id in distinct) { if (!full.Contains(id)) outside++; }
-        if (limited.Count != limit || distinct.Count != limit || outside > 0) {
-            return String.Format("{0} records ({1} distinct, {2} outside the {3} of the unlimited listing), expected {4}", limited.Count, distinct.Count, outside, full.Count, limit);
-        }
-        return null;
-    }
-
-    static bool IsDigits(string line) {
-        if (line.Length == 0) return false;
-        foreach (char c in line) { if (c < '0' || c > '9') return false; }
-        return true;
-    }
-
-    static bool StartsQuery(string line, string kind, string csvHeader) {
-        if (line == null) return false;
-        if (kind == "json") return line.StartsWith("{\"query\":", StringComparison.Ordinal);
-        if (kind == "count") return IsDigits(line);
-        if (kind == "csv") return line == csvHeader;
-        return false;
-    }
-
-    static string Shorten(string line) { return line.Length > 80 ? line.Substring(0, 80) + "..." : line; }
-
-    // Splits the standard output of a batch into one file per query, by the kind of each query: a
-    // JSON document (its first line up to a line "]}", or one line ending with "[]}"), a count (one
-    // line of digits) or a CSV listing (the header, then every line up to where the next query
-    // starts). Returns null, or the first problem in words.
-    public static string SplitBatchOutput(string path, string[] kinds, string[] targets, string csvHeader) {
-        using (var reader = new StreamReader(path, Utf8, true, 1 << 20)) {
-            string line = reader.ReadLine();
-            for (int q = 0; q < kinds.Length; q++) {
-                string kind = kinds[q];
-                if (!StartsQuery(line, kind, csvHeader)) {
-                    return String.Format("query {0} ({1}) does not start where expected: {2}", q + 1, kind, line == null ? "the output ends" : Shorten(line));
-                }
-                using (var writer = new StreamWriter(targets[q], false, Utf8, 1 << 16)) {
-                    writer.NewLine = "\n";
-                    writer.WriteLine(line);
-                    if (kind == "json") {
-                        if (!line.EndsWith("[]}", StringComparison.Ordinal)) {
-                            while (true) {
-                                line = reader.ReadLine();
-                                if (line == null) return String.Format("query {0}: its JSON document does not end", q + 1);
-                                writer.WriteLine(line);
-                                if (line == "]}") break;
-                            }
-                        }
-                        line = reader.ReadLine();
-                    }
-                    else if (kind == "count") {
-                        line = reader.ReadLine();
-                    }
-                    else {
-                        string next = q + 1 < kinds.Length ? kinds[q + 1] : null;
-                        line = reader.ReadLine();
-                        while (line != null && !(next != null && StartsQuery(line, next, csvHeader))) {
-                            writer.WriteLine(line);
-                            line = reader.ReadLine();
-                        }
-                    }
-                }
-            }
-            if (line != null) return "output after the last query: " + Shorten(line);
-        }
-        return null;
-    }
-
-    // Writes head, then everything reader still gives, to path (UTF-8 without BOM).
-    public static void DrainToFile(TextReader reader, string path, string head) {
-        using (var writer = new StreamWriter(path, false, Utf8, 1 << 20)) {
-            writer.Write(head);
-            var buffer = new char[1 << 16];
-            int read;
-            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0) writer.Write(buffer, 0, read);
-        }
-    }
-}
-
-// A program started with its standard input closed, its standard output copied to a file (or
-// discarded) and each line of its standard error kept with the instant it arrived, on a clock
-// shared by every run: what AC-M5 needs to time a wait from outside.
-public sealed class LiveRun {
-    static readonly Stopwatch Clock = Stopwatch.StartNew();
-    public static double Now { get { return Clock.Elapsed.TotalSeconds; } }
-
-    readonly Process process;
-    readonly List<string> errorLines = new List<string>();
-    readonly List<double> errorTimes = new List<double>();
-    readonly object gate = new object();
-    readonly Thread outputThread, errorThread, exitThread;
-    readonly double startedAt;
-    double exitedAt = -1;
-
-    LiveRun(string fileName, string arguments, string workingDirectory, string stdoutPath) {
-        var psi = new ProcessStartInfo(fileName, arguments);
-        psi.WorkingDirectory = workingDirectory;
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.RedirectStandardInput = true;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        psi.StandardOutputEncoding = new UTF8Encoding(false);
-        psi.StandardErrorEncoding = new UTF8Encoding(false);
-        startedAt = Now;
-        process = Process.Start(psi);
-        IntPtr handle = process.Handle;  // keeps the exit code and the memory counters readable
-        process.StandardInput.Close();
-        outputThread = new Thread(() => CopyOutput(stdoutPath));
-        outputThread.IsBackground = true;
-        outputThread.Start();
-        errorThread = new Thread(ReadErrors);
-        errorThread.IsBackground = true;
-        errorThread.Start();
-        exitThread = new Thread(WaitExit);
-        exitThread.IsBackground = true;
-        exitThread.Start();
-    }
-
-    public static LiveRun Start(string fileName, string arguments, string workingDirectory, string stdoutPath) {
-        return new LiveRun(fileName, arguments, workingDirectory, stdoutPath);
-    }
-
-    void CopyOutput(string path) {
-        Stream source = process.StandardOutput.BaseStream;
-        if (String.IsNullOrEmpty(path)) { source.CopyTo(Stream.Null); return; }
-        using (var target = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read, 1 << 20)) {
-            source.CopyTo(target, 1 << 20);
-        }
-    }
-
-    void ReadErrors() {
-        string line;
-        while ((line = process.StandardError.ReadLine()) != null) {
-            double now = Now;
-            lock (gate) { errorLines.Add(line); errorTimes.Add(now); }
-        }
-    }
-
-    void WaitExit() {
-        process.WaitForExit();
-        double now = Now;
-        lock (gate) { exitedAt = now; }
-    }
-
-    public Process Process { get { return process; } }
-    public double StartedAt { get { return startedAt; } }
-    // When the process ended, or -1 while it runs.
-    public double ExitedAt { get { lock (gate) { return exitedAt; } } }
-    public string[] Lines() { lock (gate) { return errorLines.ToArray(); } }
-    public double[] Times() { lock (gate) { return errorTimes.ToArray(); } }
-
-    // Waits until a line of standard error starts with prefix (true), or until the process ends or
-    // the timeout passes without one (false).
-    public bool WaitForLine(string prefix, double timeoutSeconds) {
-        double deadline = Now + timeoutSeconds;
-        while (true) {
-            bool ended;
-            lock (gate) {
-                foreach (string line in errorLines) { if (line.StartsWith(prefix, StringComparison.Ordinal)) return true; }
-                ended = exitedAt >= 0;
-            }
-            if (ended) { errorThread.Join(); }
-            if (ended || Now > deadline) {
-                lock (gate) { foreach (string line in errorLines) { if (line.StartsWith(prefix, StringComparison.Ordinal)) return true; } }
-                return false;
-            }
-            Thread.Sleep(10);
-        }
-    }
-
-    // Waits for the end of the process and of its output, and gives its exit code.
-    public int Wait() {
-        exitThread.Join();
-        outputThread.Join();
-        errorThread.Join();
-        return process.ExitCode;
-    }
-}
-"@
+# Compiled once per session: after editing the .cs file, run the script in a new session.
+if (-not ('CanopyQueryAcceptance' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'CanopyQueryAcceptance.cs') }
 
 # --- Rows ---
 
@@ -389,58 +143,18 @@ function Initialize-CanopySmallDatasets {
 
 # --- The fixed query set (KC7) ---
 
-# The words of a batch line as the query app splits them (decision B2): spaces and tabs separate
-# them, double or single quotes group a text, without escapes.
-function Split-BatchWords([string]$Line) {
-    $words = New-Object System.Collections.Generic.List[string]
-    $word = New-Object System.Text.StringBuilder
-    $inWord = $false
-    $quote = [char]0
-    foreach ($c in $Line.ToCharArray()) {
-        if ($quote -ne [char]0) { if ($c -ceq $quote) { $quote = [char]0 } else { [void]$word.Append($c) } }
-        elseif ($c -ceq ' ' -or $c -ceq "`t") { if ($inWord) { $words.Add($word.ToString()); [void]$word.Clear(); $inWord = $false } }
-        elseif ($c -ceq '"' -or $c -ceq "'") { $quote = $c; $inWord = $true }
-        else { [void]$word.Append($c); $inWord = $true }
-    }
-    if ($quote -ne [char]0) { throw "A quote is left open in the batch line: $Line" }
-    if ($inWord) { $words.Add($word.ToString()) }
-    , $words.ToArray()
-}
-
 # Reads canopy-fixed-queries.txt, puts the first shared case number of the CSV in place of
 # <número>, writes it as a batch file of the inputs folder and keeps each query: its id, its line
 # and line number, its words, its kind (count, json or csv), its limit and its select.
 function Initialize-FixedQueries {
     $script:FixedOutDir = Join-Path $OutDir 'fixed'
     New-Item -ItemType Directory -Force -Path $FixedOutDir | Out-Null
-    $lines = @([System.IO.File]::ReadAllText($FixedQueriesTemplate, $Utf8) -split "`r?`n")
-    if ($lines.Count -gt 0 -and $lines[-1] -eq '') { $lines = @($lines | Select-Object -First ($lines.Count - 1)) }
-    $batchLines = New-Object System.Collections.Generic.List[string]
-    $queries = New-Object System.Collections.Generic.List[object]
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        $rest = $line.TrimStart(' ', "`t")
-        if ($rest -eq '' -or $rest.StartsWith('#')) { $batchLines.Add($line); continue }
-        $line = $line.Replace($FixedPlaceholder, $sharedCase)
-        $words = Split-BatchWords $line
-        $formatAt = [array]::IndexOf($words, '--format')
-        $limitAt = [array]::IndexOf($words, '--limit')
-        $kind = if ($words -ccontains '--count') { 'count' } elseif ($formatAt -ge 0) { $words[$formatAt + 1] } else { 'table' }
-        $queries.Add([pscustomobject]@{
-                Id         = 'F{0}' -f ($queries.Count + 1)
-                Line       = $line
-                LineNumber = $i + 1
-                Arguments  = $words
-                Kind       = $kind
-                Extension  = if ($kind -eq 'json' -or $kind -eq 'csv') { $kind } else { 'txt' }
-                Limit      = if ($limitAt -ge 0) { [long]$words[$limitAt + 1] } else { [long]-1 }
-                Select     = if ($queries.Count -lt $FixedSelects.Count) { $FixedSelects[$queries.Count] } else { $null }
-            })
-        $batchLines.Add($line)
-    }
+    $fixed = Read-FixedQueries $FixedQueriesTemplate $sharedCase
+    $queries = @($fixed.Queries)
     if ($queries.Count -ne $FixedSelects.Count) { throw "$FixedQueriesTemplate holds $($queries.Count) queries, not F1 to F11." }
-    $script:FixedQueries = $queries.ToArray()
-    $script:FixedBatchFile = New-BatchFile 'canopy-fixed-queries.txt' $batchLines.ToArray()
+    for ($i = 0; $i -lt $queries.Count; $i++) { $queries[$i] | Add-Member -NotePropertyName Select -NotePropertyValue $FixedSelects[$i] }
+    $script:FixedQueries = $queries
+    $script:FixedBatchFile = New-BatchFile 'canopy-fixed-queries.txt' $fixed.BatchLines
 }
 
 function Get-FixedQuery([string]$Id) { @($FixedQueries | Where-Object { $_.Id -eq $Id })[0] }
@@ -620,23 +334,6 @@ function Add-FixedMemoryRows {
 }
 
 # --- AC-M2 and AC-KC6: the fixed set with both query apps ---
-
-function Read-JsonFile([string]$Path) {
-    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    Read-JsonDocument ([System.IO.File]::ReadAllText($Path, $Utf8))
-}
-
-# The problem of two JSON outputs of the same query, or $null: the same interpreted query and the same
-# records in any order.
-function Compare-JsonDocuments($Left, $Right) {
-    if ($null -eq $Left -or $null -eq $Right) { return 'a JSON document is missing or does not parse' }
-    if (($Left.query | ConvertTo-Json -Depth 6 -Compress) -cne ($Right.query | ConvertTo-Json -Depth 6 -Compress)) { return 'the interpreted queries differ' }
-    $leftRecords = @(@($Left.results) | ForEach-Object { $_ | ConvertTo-Json -Depth 4 -Compress } | Sort-Object)
-    $rightRecords = @(@($Right.results) | ForEach-Object { $_ | ConvertTo-Json -Depth 4 -Compress } | Sort-Object)
-    if ($leftRecords.Count -ne $rightRecords.Count) { return ('{0} records against {1}' -f $leftRecords.Count, $rightRecords.Count) }
-    if (($leftRecords -join "`n") -cne ($rightRecords -join "`n")) { return 'the records differ' }
-    $null
-}
 
 function Get-FixedOutput([string]$Prefix, $Query) { Join-Path $FixedOutDir ('{0}-{1}.{2}' -f $Prefix, $Query.Id, $Query.Extension) }
 

@@ -1,0 +1,27 @@
+2026-10-22T11:33:35+01:00	start	explore	
+2026-10-22T11:35:00+01:00	mark	plan	
+2026-10-22T11:35:49+01:00	mark	implement	T1
+2026-10-22T11:36:55+01:00	mark	review	T1
+2026-10-22T11:37:52+01:00	bg-start	review	RDD T1 reviewers
+2026-10-22T11:38:03+01:00	mark	implement	T2
+2026-10-22T11:38:29+01:00	bg-end	review	RDD T1 reviewers
+2026-10-22T11:40:46+01:00	mark	implement	T2
+2026-10-22T11:51:56+01:00	mark	checks	T2
+2026-10-22T11:57:52+01:00	bg-start	checks	smoke bench small CSV
+2026-10-22T11:59:58+01:00	bg-end	checks	smoke bench small CSV
+2026-10-22T12:01:00+01:00	mark	review	T2
+2026-10-22T12:01:22+01:00	mark	acceptance	T4
+2026-10-22T12:01:22+01:00	bg-start	acceptance	bench run 1 reference CSV
+2026-10-22T13:07:47+01:00	bg-end	acceptance	bench run 1 reference CSV
+2026-10-22T13:08:43+01:00	bg-start	acceptance	bench run 2 with baseline
+2026-10-22T14:02:33+01:00	bg-end	acceptance	bench run 2 with baseline
+2026-10-22T14:03:41+01:00	mark	checks	T5
+2026-10-22T14:03:42+01:00	bg-start	checks	four acceptance checks
+2026-10-22T16:10:46+01:00	bg-end	checks	four acceptance checks
+2026-10-22T16:12:20+01:00	bg-start	checks	cargo checks Windows and WSL
+2026-10-22T16:25:07+01:00	bg-end	checks	cargo checks Windows and WSL
+2026-10-22T16:37:47+01:00	mark	fix	B1
+2026-10-22T16:48:34+01:00	mark	review	closing slice
+2026-10-22T16:54:05+01:00	mark	fix	review advisories
+2026-10-22T17:07:03+01:00	mark	close	
+2026-10-22T17:07:04+01:00	end		

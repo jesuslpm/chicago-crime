@@ -67,7 +67,8 @@ The binaries are in `target/release/`, without the `.exe` extension:
 The acceptance scripts of the CanopyDB generator and of the CanopyDB query app run only on Windows. On
 Linux the generator's memory criterion (AC-M4) is checked by hand: run the generator on the full reference
 CSV and read the line `Pico de memoria privada comprometida` of its summary, which must stay within
-512 MiB. The query app's memory criterion (AC-M8) is checked on Windows only.
+512 MiB. The query app's memory criterion (AC-M8) is checked on Windows only, and the comparison bench of
+the two pairs (`scripts/acceptance/run-canopy-comparison.ps1`) runs only on Windows too.
 
 The robustness scenarios do run on Linux, with the same binary and options as on Windows (see
 [Robustness scenarios](../../README.md#robustness-scenarios)). R13, the big CSV, comes out as not

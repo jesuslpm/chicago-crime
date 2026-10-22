@@ -207,207 +207,14 @@ function Get-BatchUnreadableMessage([string]$File) { "No se puede leer el lote $
 function Get-BatchEmptyMessage([string]$File) { "El lote $File no contiene ninguna consulta." }
 function Get-OutputReusedMessage([int]$Line, [string]$Path, [int]$Earlier) { "Línea ${Line}: el archivo de salida $Path ya lo usa la línea $Earlier." }
 function Get-BatchHeader([int]$Index, [int]$Total, [int]$Line) { "--- Consulta $Index de $Total (línea $Line) ---" }
-$StatsPattern = '^(?<count>[0-9.]+) resultados? en [0-9.]+,[0-9]{3} s\. Índices usados: (?<indexes>.*)\. Filtros sin índice: (?<filters>.*)\.$'
-$BatchHeaderPattern = '^--- Consulta (?<index>[0-9]+) de (?<total>[0-9]+) \(línea (?<line>[0-9]+)\) ---$'
-$BatchCompletedPattern = '^Lote completado: (?<total>[0-9.]+) consultas? en [0-9.]+,[0-9]{3} s\.$'
+# The patterns and readers of the query apps' stderr, shared with run-canopy-comparison.ps1.
+. (Join-Path $PSScriptRoot 'query-output.ps1')
 
 # --- CSV helpers (compiled: they read millions of lines) ---
 
 Add-Type -AssemblyName Microsoft.VisualBasic
-Add-Type -TypeDefinition @"
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
-
-public static class QueryAcceptance {
-    static readonly Encoding Utf8 = new UTF8Encoding(false);
-
-    // The first data row and the last data row of a CSV, as text.
-    public static string[] FirstAndLastRows(string path) {
-        string first, last = null, line;
-        using (var reader = new StreamReader(path, Utf8, false, 1 << 20)) {
-            reader.ReadLine();
-            first = reader.ReadLine();
-        }
-        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read)) {
-            long start = Math.Max(0, stream.Length - 4096);
-            stream.Seek(start, SeekOrigin.Begin);
-            using (var reader = new StreamReader(stream, Utf8)) {
-                while ((line = reader.ReadLine()) != null) { if (line.Length > 0) last = line; }
-            }
-        }
-        return new string[] { first, last };
-    }
-
-    // The first case number (second column, compared exactly) that a later row repeats, or null.
-    public static string FirstSharedCaseNumber(string path) {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        string line;
-        using (var reader = new StreamReader(path, Utf8, false, 1 << 20)) {
-            reader.ReadLine();
-            while ((line = reader.ReadLine()) != null) {
-                int first = line.IndexOf(',');
-                int second = first < 0 ? -1 : line.IndexOf(',', first + 1);
-                if (second < 0) continue;
-                string caseNumber = line.Substring(first + 1, second - first - 1).Trim('"');
-                if (!seen.Add(caseNumber)) return caseNumber;
-            }
-        }
-        return null;
-    }
-
-    // Writes the header and the data rows skip+1 .. skip+rows of a CSV to target, ending every
-    // line with a line feed like the reference CSV. Returns the rows written.
-    public static long WriteSlice(string source, string target, long skip, long rows) {
-        long written = 0;
-        string line;
-        using (var reader = new StreamReader(source, Utf8, false, 1 << 20))
-        using (var writer = new StreamWriter(target, false, Utf8, 1 << 20)) {
-            writer.NewLine = "\n";
-            writer.WriteLine(reader.ReadLine());
-            for (long i = 0; i < skip && reader.ReadLine() != null; i++) { }
-            while (written < rows && (line = reader.ReadLine()) != null) {
-                writer.WriteLine(line);
-                written++;
-            }
-        }
-        return written;
-    }
-
-    // The values of one CSV line, unquoted, joined by the unit separator: two lines that differ only
-    // in their quoting give the same text.
-    public static string CanonicalRow(string line) {
-        var fields = new List<string>();
-        var field = new StringBuilder();
-        bool quoted = false;
-        for (int i = 0; i < line.Length; i++) {
-            char c = line[i];
-            if (quoted) {
-                if (c != '"') field.Append(c);
-                else if (i + 1 < line.Length && line[i + 1] == '"') { field.Append('"'); i++; }
-                else quoted = false;
-            }
-            else if (c == '"') quoted = true;
-            else if (c == ',') { fields.Add(field.ToString()); field.Clear(); }
-            else field.Append(c);
-        }
-        fields.Add(field.ToString());
-        return String.Join("\u001F", fields);
-    }
-
-    // Compares two CSV files as sets of rows: the same first line and the same other lines, in
-    // any order, byte for byte or, with byValue, field value by field value. Returns null when
-    // equal, otherwise the first difference in words.
-    public static string CompareRowSets(string left, string right, bool byValue) {
-        string[] a = File.ReadAllLines(left, Utf8);
-        string[] b = File.ReadAllLines(right, Utf8);
-        if (byValue) {
-            a = Array.ConvertAll(a, CanonicalRow);
-            b = Array.ConvertAll(b, CanonicalRow);
-        }
-        if (a.Length == 0 || b.Length == 0) return "a file is empty";
-        if (a[0] != b[0]) return "the header lines differ";
-        if (a.Length != b.Length) return String.Format("{0} rows against {1}", a.Length - 1, b.Length - 1);
-        string[] x = new string[a.Length - 1], y = new string[b.Length - 1];
-        Array.Copy(a, 1, x, 0, x.Length);
-        Array.Copy(b, 1, y, 0, y.Length);
-        Array.Sort(x, StringComparer.Ordinal);
-        Array.Sort(y, StringComparer.Ordinal);
-        for (int i = 0; i < x.Length; i++) {
-            if (x[i] != y[i]) return ("first different row: " + x[i] + " / " + y[i]).Replace('\u001F', ',');
-        }
-        return null;
-    }
-
-    // The integers of a file with one per line.
-    public static HashSet<long> ReadIds(string path) {
-        var ids = new HashSet<long>();
-        foreach (string line in File.ReadLines(path, Utf8)) {
-            if (line.Length > 0) ids.Add(Int64.Parse(line));
-        }
-        return ids;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct Counters {
-        public uint cb; public uint PageFaultCount;
-        public UIntPtr PeakWorkingSetSize; public UIntPtr WorkingSetSize;
-        public UIntPtr QuotaPeakPagedPoolUsage; public UIntPtr QuotaPagedPoolUsage;
-        public UIntPtr QuotaPeakNonPagedPoolUsage; public UIntPtr QuotaNonPagedPoolUsage;
-        public UIntPtr PagefileUsage; public UIntPtr PeakPagefileUsage;
-    }
-
-    [DllImport("psapi.dll", SetLastError = true)]
-    static extern bool GetProcessMemoryInfo(IntPtr process, out Counters counters, uint size);
-
-    // The peak private committed bytes of a process, also once it has ended (while its handle
-    // is open); -1 when Windows does not tell.
-    public static long PeakPrivateBytes(IntPtr process) {
-        Counters counters;
-        if (!GetProcessMemoryInfo(process, out counters, (uint)Marshal.SizeOf(typeof(Counters)))) return -1;
-        return (long)counters.PeakPagefileUsage.ToUInt64();
-    }
-}
-
-// Samples without pause, on a thread of its own, the size of every file of a folder whose name
-// matches a pattern, until Stop: it sees what a short run writes to a temporary file that the
-// run deletes before it ends. Each size is read through a handle, which is current while the
-// writer still holds the file open.
-public sealed class TemporaryOutputWatch {
-    readonly string dir, pattern;
-    readonly Thread thread;
-    readonly Dictionary<string, long> largest = new Dictionary<string, long>(StringComparer.Ordinal);
-    volatile bool stopping;
-    long samples;
-
-    public TemporaryOutputWatch(string dir, string pattern) {
-        this.dir = dir;
-        this.pattern = pattern;
-        thread = new Thread(Run);
-        thread.IsBackground = true;
-        thread.Start();
-    }
-
-    public long Samples { get { return Interlocked.Read(ref samples); } }
-
-    void Run() {
-        while (!stopping) { Sample(); Thread.Yield(); }
-        Sample();
-    }
-
-    void Sample() {
-        string[] paths;
-        try { paths = Directory.GetFiles(dir, pattern); }
-        catch (IOException) { return; }
-        foreach (string path in paths) {
-            long length;
-            try {
-                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) {
-                    length = stream.Length;
-                }
-            }
-            catch (IOException) { continue; }
-            catch (UnauthorizedAccessException) { continue; }
-            string name = Path.GetFileName(path);
-            lock (largest) {
-                long known;
-                if (!largest.TryGetValue(name, out known) || length > known) largest[name] = length;
-            }
-        }
-        Interlocked.Increment(ref samples);
-    }
-
-    // Stops sampling and returns each file seen with the largest size it was seen holding.
-    public Dictionary<string, long> Stop() {
-        stopping = true;
-        thread.Join();
-        lock (largest) { return new Dictionary<string, long>(largest, StringComparer.Ordinal); }
-    }
-}
-"@
+# Compiled once per session: after editing the .cs file, run the script in a new session.
+if (-not ('QueryAcceptance' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'QueryAcceptance.cs') }
 
 # --- Results and report ---
 
@@ -433,8 +240,6 @@ function Format-Seconds([double]$Seconds) { Format-Invariant '{0:N1} s' @($Secon
 function Format-Millis([double]$Seconds) { Format-Invariant '{0:N0} ms' @($Seconds * 1000) }
 
 function Format-Count([long]$Value) { Format-Invariant '{0:N0}' @($Value) }
-
-function Get-Lines([string]$Text) { @($Text -split "`r?`n" | Where-Object { $_ -ne '' }) }
 
 function Format-Code([string]$Text) { "``````text`n$($Text.TrimEnd())`n``````" }
 
@@ -574,22 +379,6 @@ function Invoke-Query([string[]]$Arguments, [string]$Dataset = $DatasetDir, [swi
 }
 
 function Format-Query($Run) { Format-Command $QueryName ($Run.Arguments | Select-Object -Skip 2) }
-
-# The stats line of a completed query (decision C5), or $null.
-function Get-Stats([string]$Stderr) {
-    foreach ($line in Get-Lines $Stderr) {
-        $match = [regex]::Match($line, $StatsPattern)
-        if ($match.Success) {
-            return [pscustomobject]@{
-                Line    = $line
-                Count   = [long]$match.Groups['count'].Value.Replace('.', '')
-                Indexes = $match.Groups['indexes'].Value
-                Filters = $match.Groups['filters'].Value
-            }
-        }
-    }
-    $null
-}
 
 # The bare number a --count query prints, or -1.
 function Get-QueryCount($Run) {
@@ -799,33 +588,6 @@ function Format-BatchLines([string[]]$Lines) {
     (@($Lines | ForEach-Object { '`' + $_.Replace($WorkDir, '<work>') + '`' }) -join ' / ')
 }
 
-# The stderr of a batch: the lines before the first header, one section per header with the
-# lines under it, and the final line with what follows it.
-function Read-BatchStderr([string]$Stderr) {
-    $sections = New-Object System.Collections.Generic.List[object]
-    $before = New-Object System.Collections.Generic.List[string]
-    $final = $null
-    $afterFinal = 0
-    foreach ($line in Get-Lines $Stderr) {
-        $header = [regex]::Match($line, $BatchHeaderPattern)
-        $completed = [regex]::Match($line, $BatchCompletedPattern)
-        if ($null -ne $final) { $afterFinal++ }
-        elseif ($header.Success) {
-            $sections.Add([pscustomobject]@{
-                    Header = $line
-                    Index  = [int]$header.Groups['index'].Value
-                    Total  = [int]$header.Groups['total'].Value
-                    Line   = [int]$header.Groups['line'].Value
-                    Lines  = New-Object System.Collections.Generic.List[string]
-                })
-        }
-        elseif ($completed.Success) { $final = $completed }
-        elseif ($sections.Count -gt 0) { $sections[$sections.Count - 1].Lines.Add($line) }
-        else { $before.Add($line) }
-    }
-    [pscustomobject]@{ Sections = $sections; Before = $before; Final = $final; AfterFinal = $afterFinal }
-}
-
 # The problems of a batch's stderr against its expected form (decision B3): one header per query
 # that ran, in order, with its number, the total and its line; with -Completed, the final line
 # last with the total; without it, no final line.
@@ -887,9 +649,6 @@ function Format-Problems($List) { if ($List.Count -eq 0) { '' } else { '; PROBLE
 function Get-TableIds([string[]]$Rows) { , @($Rows | ForEach-Object { ($_ -split '\s+')[0] } | Sort-Object) }
 
 function Get-CsvIds($Records) { , @($Records | ForEach-Object { $_[0] } | Sort-Object) }
-
-# The parsed JSON document of a text, or $null.
-function Read-JsonDocument([string]$Text) { try { $Text | ConvertFrom-Json } catch { $null } }
 
 function Get-JsonIds($Document) { , @(@($Document.results) | ForEach-Object { [string]$_.ID } | Sort-Object) }
 
