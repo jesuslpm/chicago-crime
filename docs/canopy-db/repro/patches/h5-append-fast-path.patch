@@ -1,0 +1,222 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 45a3e20..56f64cc 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1228,6 +1228,7 @@ impl WriteTransaction {
+             len_delta: 0,
+             dirty: true,
+             cached_root: Default::default(),
++            append: Default::default(),
+         })
+     }
+ 
+@@ -1567,6 +1568,7 @@ impl Transaction {
+             len_delta: 0,
+             dirty: false,
+             cached_root: Default::default(),
++            append: Default::default(),
+         }
+     }
+ 
+@@ -1578,6 +1580,7 @@ impl Transaction {
+             len_delta: 0,
+             dirty: false,
+             cached_root: Default::default(),
++            append: Default::default(),
+         }
+     }
+ 
+@@ -2620,6 +2623,7 @@ impl Transaction {
+                         dirty,
+                         len_delta,
+                         cached_root: Default::default(),
++                        append: Default::default(),
+                     }));
+                 }
+                 TreeState::InUse { value } if value.id == id => {
+@@ -2665,6 +2669,7 @@ impl Transaction {
+                             dirty,
+                             len_delta,
+                             cached_root: Default::default(),
++                            append: Default::default(),
+                         }));
+                     }
+                     TreeState::Deleted { .. } => {
+@@ -2692,6 +2697,7 @@ impl Transaction {
+                 dirty: false,
+                 len_delta: 0,
+                 cached_root: Default::default(),
++                append: Default::default(),
+             }))
+         } else {
+             Ok(None)
+diff --git a/src/tree.rs b/src/tree.rs
+index 1065331..b52de8d 100644
+--- a/src/tree.rs
++++ b/src/tree.rs
+@@ -79,8 +79,33 @@ pub struct Tree<'tx> {
+     pub(crate) len_delta: i64,
+     pub(crate) dirty: bool,
+     pub(crate) cached_root: RefCell<Option<UntypedNode>>,
++    pub(crate) append: AppendHint,
+ }
+ 
++/// Prototype: the rightmost leaf of the tree, dirty in this transaction, so that keys past the
++/// last key of the tree go straight to it.
++#[derive(Default, Debug)]
++pub(crate) struct AppendHint {
++    leaf: Option<PageId>,
++    disabled: bool,
++}
++
++enum Append {
++    Done,
++    /// An append the fast path cannot do: take the full path, then find the rightmost leaf again.
++    Fallback,
++    /// Not an append: take the full path and stop trying in this tree instance.
++    NotAppend,
++    /// The fast path does not apply (e.g. overflow value): take the full path.
++    Skip,
++}
++
++fn append_enabled() -> bool {
++    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
++    *ENABLED.get_or_init(|| std::env::var("CANOPY_APPEND").map_or(true, |v| v != "0"))
++}
++
++
+ #[derive(Debug, Clone, Copy)]
+ pub(crate) enum TreeState {
+     Available {
+@@ -313,6 +338,7 @@ impl<'tx> Tree<'tx> {
+         start: Bound<&[u8]>,
+         end: Bound<&[u8]>,
+     ) -> Result<(), Error> {
++        self.append.leaf = None;
+         trace!(
+             "delete_range {} {:?} {:?}",
+             { self.value.root },
+@@ -370,6 +396,115 @@ impl<'tx> Tree<'tx> {
+     }
+ 
+     fn mutate(&mut self, key: &[u8], value: Option<&[u8]>) -> Result<(), Error> {
++        let walk = match value {
++            Some(v) => match self.try_append(key, v)? {
++                Append::Done => return Ok(()),
++                Append::Fallback => true,
++                Append::NotAppend => {
++                    self.append.leaf = None;
++                    self.append.disabled = true;
++                    false
++                }
++                Append::Skip => {
++                    self.append.leaf = None;
++                    false
++                }
++            },
++            None => {
++                self.append.leaf = None;
++                false
++            }
++        };
++        self.mutate_full(key, value)?;
++        if walk {
++            self.append.leaf = self.rightmost_dirty_leaf()?;
++        }
++        Ok(())
++    }
++
++    fn rightmost_dirty_leaf(&self) -> Result<Option<PageId>, Error> {
++        let mut id = self.value.root;
++        if id == PageId::default() {
++            return Ok(None);
++        }
++        loop {
++            let node = self.tx.pop_node(id)?;
++            if node.is_leaf() {
++                let dirty = node.dirty;
++                self.tx.stash_node(node)?;
++                return Ok(dirty.then_some(id));
++            }
++            let branch = Node::into_branch(node);
++            let next = branch.pointer_at(branch.num_keys());
++            self.tx.stash_node(branch)?;
++            id = next;
++        }
++    }
++
++    fn try_append(&mut self, key: &[u8], v: &[u8]) -> Result<Append, Error> {
++        if !append_enabled()
++            || self.append.disabled
++            || v.len() > MAX_INLINE_VALUE_LEN
++            || self.value.root == PageId::default()
++            || !self.tx.is_write_or_checkpoint_txn()
++            || self.tx.is_multi_write_tx()
++        {
++            return Ok(Append::Skip);
++        }
++        let Some(leaf_id) = self.append.leaf else {
++            return Ok(Append::Fallback);
++        };
++        let node = self.tx.pop_node(leaf_id)?;
++        if !node.dirty || !node.is_leaf() {
++            self.tx.stash_node(node)?;
++            return Ok(Append::Fallback);
++        }
++        let mut leaf = Node::into_leaf(node);
++        let num_keys = leaf.num_keys();
++        let value = MaybeValue::Bytes(v);
++        let verdict = if num_keys == 0 {
++            Err(Append::Fallback)
++        } else if !key.starts_with(leaf.key_prefix()) {
++            Err(if key > leaf.key_prefix() { Append::Fallback } else { Append::NotAppend })
++        } else {
++            let suffix = &key[leaf.key_prefix_len()..];
++            if suffix <= leaf.key_at(num_keys - 1) {
++                Err(Append::NotAppend)
++            } else if leaf.curr_size_left() < LeafNode::<false>::size_for_kv(&self.value, suffix, &value) {
++                Err(Append::Fallback)
++            } else {
++                Ok(())
++            }
++        };
++        if let Err(append) = verdict {
++            self.tx.stash_node(leaf)?;
++            return Ok(append);
++        }
++        // Same preamble as the full path.
++        if let Err(e) = self.validate_key_value_lengths(key, Some(v)) {
++            self.tx.stash_node(leaf)?;
++            return Err(e);
++        }
++        *self.cached_root.get_mut() = None;
++        self.tx.mark_dirty();
++        if self.name.is_some() {
++            if let Some(write_batch) = &mut *self.tx.wal_write_batch.borrow_mut() {
++                write_batch.push_insert(self.value.id, key, v)?;
++            }
++        }
++        self.inc_num_keys(1);
++        let suffix = &key[leaf.key_prefix_len()..];
++        let existing = self
++            .tx
++            .make_dirty(&mut leaf)?
++            .insert_kv(Err(num_keys), suffix, &value)
++            .unwrap();
++        self.free_value(&existing)?;
++        self.tx.stash_node(leaf)?;
++        Ok(Append::Done)
++    }
++
++    fn mutate_full(&mut self, key: &[u8], value: Option<&[u8]>) -> Result<(), Error> {
+         if !self.tx.is_write_or_checkpoint_txn() {
+             return Err(Error::WriteTransactionRequired);
+         }
+@@ -968,6 +1103,7 @@ impl<'tx> Tree<'tx> {
+     }
+ 
+     pub(crate) fn compact(&mut self, page_id_threshold: PageId) -> Result<(), Error> {
++        self.append.leaf = None;
+         fn make_dirty_inc_parents<'node, TYPE: NodeType>(
+             tree: &mut Tree<'_>,
+             node: &'node mut Node<TYPE>,

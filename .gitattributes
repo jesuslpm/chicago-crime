@@ -1,0 +1,2 @@
+# Patches for third-party sources keep LF endings so that `git apply` matches them on Windows checkouts.
+docs/canopy-db/repro/patches/*.patch text eol=lf
