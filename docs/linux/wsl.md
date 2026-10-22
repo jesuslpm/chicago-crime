@@ -96,9 +96,10 @@ Linux the generator's memory criterion (AC-M4) is checked by hand: run the gener
 CSV and read the line `Pico de memoria privada comprometida` of its summary, which must stay within
 512 MiB. The query app's memory criterion (AC-M8) is checked on Windows only.
 
-The robustness scenarios do run on Linux, with the same binary and options as on Windows, from the copy in the Linux file system (see
-[Robustness scenarios](../../README.md#robustness-scenarios)). R11 and R12, a version deleted while a query
-app has it open or waits for it, can only be provoked here; R13, the big CSV, comes out as not applicable:
+The robustness scenarios run on Linux too, with the same binary and options as on Windows, from the copy in
+the Linux file system (see
+[Robustness scenarios](../../README.md#robustness-scenarios)). R13, the big CSV, comes out as not
+applicable:
 
 ```bash
 cargo build --release --workspace

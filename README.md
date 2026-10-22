@@ -404,7 +404,7 @@ the contract says must happen in thirteen scenarios, R1 to R13:
 | R3–R7 | Kill or cancel the CanopyDB query app midway, a batch, a query app waiting for the dataset, and the one holding it. |
 | R8, R9 | Four query apps waiting at once; query apps in a loop while the generator publishes ten versions. |
 | R10 | Kill the generator while a batch reads the previous version. |
-| R11, R12 | Linux only: the generator deletes a version a query app has open, or is waiting for. |
+| R11, R12 | The generator deletes a version a query app has open, or is waiting for. |
 | R13 | Windows only: generate and query the triple of the reference CSV. |
 
 Build everything in release, then run the scenarios from the repository root with the reference CSV and a
@@ -427,7 +427,7 @@ target\release\crime-canopy-scenarios.exe --csv chicago-crime-data.csv --work wo
 
 Each variant prints one line: `CUMPLIDO`, `NO CUMPLIDO` (with the failed checks), `NOT MET (Hn)`, `NO
 EJECUTADO` (the signal never landed in its phase after five attempts, or there is no disk space) or `NO
-APLICA` (R11 and R12 on Windows, R13 on Linux), followed by what it observed. The last line starts with
+APLICA` (R13 on Linux), followed by what it observed. The last line starts with
 `PASS:` or `FAIL:`; the exit code is 1 when a variant is not met or did not run, 0 otherwise. The run also
 writes the rows of the scenario log to `<work>/registro-<Sistema>-<fecha>.md`: add them to
 [`docs/canopy-db/escenarios.md`](docs/canopy-db/escenarios.md), the scenario log, after classifying any

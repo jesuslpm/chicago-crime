@@ -48,7 +48,7 @@ Verified on 2026-10-22 against the repository and the closing reports of childre
 | CanopyDB query app killed or cancelled halfway | No test kills or cancels a query app or a batch halfway through a query and checks that the next open does not wait. |
 | Wait on an open dataset (KC2) | Tested with a single query app waiting; never with several at once, nor with the one holding the dataset killed while another waits. |
 | Version that disappears during the wait | The CanopyDB query app re-reads the pointer and opens the new version, but no PRD says so and it has not been tested: on Windows it cannot be provoked, because the generator cannot delete an open version. |
-| Deleting an open version | On Windows the generator cannot and treats it as the parent sets (flow A, step 5). On Linux the deletion works even if a query app has the version open; what happens to that query app has not been tested nor does any PRD say. |
+| Deleting an open version | On Windows the generator cannot and treats it as the parent sets (flow A, step 5). On Linux the deletion works even if a query app has the version open; what happens to that query app has not been tested nor does any PRD say. *Annotation of 2026-10-22: with a CanopyDB dataset, the Windows generator also deletes a version a query app has open, without a warning (probe of the run, log entry L12 of `odd/tasks/canopy-db-robustez.md`).* |
 | Publishing during a batch | AC-M7 is checked on Windows with a held batch: the JSON of each query states the version that the batch opened. There are no tests with query apps in parallel during several consecutive publications. |
 | Large data | No test exceeds the records of the reference CSV, and there is no tool to build a larger CSV. |
 | Linux | The tests pass on Ubuntu 24.04 over WSL2. The acceptance checks of the previous children only run on Windows (out of scope in the parent). The Linux guides ask for the code and the data to be on the Linux file system. |
@@ -143,6 +143,8 @@ is left as not run.
 
 All the scenarios run on both systems, except R11 and R12, which can only be provoked on Linux, and R13, which
 only runs on Windows (KR3). On the other system, those scenarios come out as not applicable.
+*Annotation of 2026-10-22: R11 and R12 can be provoked on Windows too (see the annotation of "Deleting an open
+version" in the starting state), so they run on both systems; only R13 is limited to Windows.*
 
 ## Scenario log
 

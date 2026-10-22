@@ -46,7 +46,7 @@ pub fn scenarios() -> Vec<Scenario> {
         },
         Scenario {
             id: "R11",
-            systems: Systems::LinuxOnly,
+            systems: Systems::Both,
             racy: true,
             variants: vec![
                 ("consultor-f11", R11_CHECKS.to_vec()),
@@ -56,7 +56,7 @@ pub fn scenarios() -> Vec<Scenario> {
         },
         Scenario {
             id: "R12",
-            systems: Systems::LinuxOnly,
+            systems: Systems::Both,
             racy: true,
             variants: vec![("lote-y-espera", R12_CHECKS.to_vec())],
             run: r12,
@@ -563,7 +563,7 @@ fn r9_generation(context: &Context, output: &Path, label: &str) -> Generation {
 }
 
 // ---------------------------------------------------------------------------------------------
-// R11 and R12: a version deleted while a query app has it open (Linux only).
+// R11 and R12: a version deleted while a query app has it open.
 // ---------------------------------------------------------------------------------------------
 
 /// How long the generator pauses right before its switch: time for the holder to open the

@@ -19,8 +19,6 @@ use crate::report::VariantResult;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Systems {
     Both,
-    /// R11 and R12: only Linux lets a generator delete a version a query app has open.
-    LinuxOnly,
     /// R13 (decision KR3).
     WindowsOnly,
 }
@@ -29,9 +27,6 @@ impl Systems {
     /// Why the scenario does not apply in this system, if it does not.
     pub fn not_here(self) -> Option<&'static str> {
         match self {
-            Systems::LinuxOnly if cfg!(windows) => {
-                Some("solo en Linux: en Windows el generador no puede borrar una versión abierta")
-            }
             Systems::WindowsOnly if !cfg!(windows) => {
                 Some("solo en Windows: los datos grandes no se repiten en Linux (decisión KR3)")
             }

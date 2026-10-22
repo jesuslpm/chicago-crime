@@ -161,7 +161,6 @@ fn open_version(
         wait,
         waiting_since,
     )?;
-    probe::mark(phase::OPENED);
     let engine = |failure: EngineFailure| Attempt::Broken(engine_failure(folder, &failure));
     let database = guarded(|| environment.get_database_with(DATABASE_NAME, stored))
         .map_err(engine)?
@@ -174,6 +173,9 @@ fn open_version(
             return Err(not_found(folder).into());
         }
     }
+    // The version is open: from here a generator that deletes it does not change what this run
+    // reads (decision KR7 of the canopy-db-robustez PRD).
+    probe::mark(phase::OPENED);
     let version = version_dir
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())

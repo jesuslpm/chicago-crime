@@ -39,7 +39,8 @@ pub mod phase {
     pub const CURRENT_TMP: &str = "current-tmp";
     /// Generator: `CURRENT` names the new version and the previous one is not deleted yet.
     pub const SWITCHED: &str = "switched";
-    /// CanopyDB query app: the base is open (its lock is held) and its tables are being opened.
+    /// CanopyDB query app: the base, its database and its six tables are open (its lock is held)
+    /// and no query has started.
     pub const OPENED: &str = "opened";
     /// Query apps: a query starts; a batch marks it once per query.
     pub const QUERY: &str = "query";

@@ -48,15 +48,15 @@ The PRD wins on any product question; read it until its "Referencias". Every rul
 | Id | Specs | Route | Status | Commit |
 |---|---|---|---|---|
 | T1 | S3, S8 | inline | done (RED: partial version → `NotFound`, replaced version waited 10 s; GREEN 4/4 + markers) | `fbc7bc7`, `01e8e41` |
-| T2 | S1 (framework, R5 as model), S2 | inline | in progress | — |
-| T3 | S1 (R1, R2, R10) | delegated: parallel with T4a, T4b | pending | — |
-| T4a | S1 (R3, R4, R6, R7) | delegated: parallel with T3, T4b | pending | — |
-| T4b | S1 (R8, R9, R11, R12) | delegated: parallel with T3, T4a | pending | — |
+| T2 | S1 (framework, R5 as model), S2 | inline | done (R5 met on Windows: 130 at 0.05 s and 0.09 s) | `1c9bcac` |
+| T3 | S1 (R1, R2, R10) | delegated: parallel with T4a, T4b | done (Windows: R1 14/14, R2 5/5, R10 1/1) | `4977e73` |
+| T4a | S1 (R3, R4, R6, R7) | delegated: parallel with T3, T4b | done (Windows: 12/12 with R5) | `942baa9` |
+| T4b | S1 (R8, R9, R11, R12) | delegated: parallel with T3, T4a | done (Windows: R8 a/b and R9 with 1–2 publications) | `a04f927` |
 | T5 | S4 | delegated: parallel with T6 (launched while T1 was reviewed) | done (RED 0/14, GREEN 22/22) | see L8 |
 | T6 | S6 | delegated: parallel with T5 | done | `804c84b` |
-| T7 | S1 (R13) | inline, after T2 and T5 | pending | — |
-| T8 | S1, S5 | runs on Windows and Linux; scenario log | pending | — |
-| T9 | S7 | inline | pending | — |
+| T7 | S1 (R13) | inline, after T2 and T5 | done (met: 25,970,712 records, 231.9 MiB, 11 counts equal, AC-M8 ratio 2.58) | `c2db948` |
+| T8 | S1, S5 | runs on Windows and Linux; scenario log | in progress | — |
+| T9 | S7 | inline | docs and annotations done; closing pending | `2c36d0e` |
 
 Route evidence: T3, T4a and T4b are independent units of behavior (one scenario file each) with disjoint edit
 surfaces and several minutes of work each, launched together once T2 fixes their shared framework; T5 and T6 are
@@ -97,3 +97,25 @@ shared contract or depend on the others.
   first two characters and takes the lowest free value of that space; when it is full it widens to 7, 8 and 9
   digits (`HH0000000`). Uniqueness always holds. F2 (exact case number) is unchanged and F9 (`JA`, which does not
   overflow) still triples, so R13's expectations hold. The tool stops with code 1 if a prefix runs out at 9 digits.
+- **L9** (T2): the first real R5 sent no Ctrl+C: the runner inherits "ignore Ctrl+C" and so did the app. The
+  Windows host now turns Ctrl+C back on before starting the app (as `send-ctrl-c.ps1` does); then R5 met.
+- **L10** (RDD, T2–T6): commits `fbc7bc7..1c9bcac` (`01e8e41`, `804c84b`, `c82612e`, `1c9bcac`), lenses resilience
+  and reliability, risk high (process boundary). Approved and acknowledged. Findings: R3-001 WARNING
+  (reliability), `crime-big-csv` dropped the error of its last buffered write, so a full disk could publish a
+  truncated file: fixed in `db354ba`. Lineage `review-46b893f6ecb80991`.
+- **L11** (Linux): WSL distribution `Ubuntu` (24.04.1), cargo 1.99.0; the reference CSV is already at
+  `~/data/chicago-crime-data.csv` (2,406,401,982 bytes). The worktree's `.git` points to a Windows path, so the
+  Linux copy `~/canopy-db-robustez` is cloned from a git bundle of the branch.
+- **L12** (finding about the starting state, default taken during the run): T4b saw no "no se ha podido eliminar
+  la versión anterior" in 15 Windows generations against looping query apps. Probe on Windows: a query app held a
+  copy paused at `opened` 240 s while the generator republished it with `--overwrite`: the generator ended 0 with
+  no warning and the old version folder was gone. So with CanopyDB datasets Windows also deletes an open version
+  (Rust opens files sharing delete). Defaults: R11 and R12 run on both systems; the PRD's starting state and
+  "Sistemas" get an annotation (not a rewrite). The probe also showed `opened` was marked after the environment
+  opened but before the database and its tables: a deletion there made the query app reopen the new version
+  (correct under KR7's "aún no la ha abierto", but a holder paused there had not really opened its version yet).
+  `opened` now marks the end of the opening (base, database and six tables open, lock held), before any query;
+  R3's "durante la apertura" is that point (updates L4).
+- **L13** (T3): one unexplained miss in a first R2 run under peak load: a generator ended during `read` with empty
+  stderr and only `read` in its phase file; the retry landed and it never happened again (evidence kept in
+  `work/old-T3/runs-R2-first/0004-R2_carga/`). Watched in the final runs.

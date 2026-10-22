@@ -47,7 +47,7 @@ Verificado el 2026-10-22 sobre el repositorio y los informes de cierre de los hi
 | Consultor CanopyDB matado o cancelado a mitad | Ninguna prueba mata o cancela un consultor o un lote a mitad de una consulta y comprueba que la siguiente apertura no espera. |
 | Espera ante un conjunto abierto (KC2) | Probada con un solo consultor esperando; nunca con varios a la vez ni con el que tiene el conjunto matado mientras otro espera. |
 | Versión que desaparece durante la espera | El consultor CanopyDB vuelve a leer el puntero y abre la versión nueva, pero ningún PRD lo dice y no se ha probado: en Windows no se puede provocar, porque el generador no puede borrar una versión abierta. |
-| Borrar una versión abierta | En Windows el generador no puede y lo trata como fija el padre (flujo A, paso 5). En Linux el borrado funciona aunque un consultor la tenga abierta; qué le pasa a ese consultor no se ha probado ni lo dice ningún PRD. |
+| Borrar una versión abierta | En Windows el generador no puede y lo trata como fija el padre (flujo A, paso 5). En Linux el borrado funciona aunque un consultor la tenga abierta; qué le pasa a ese consultor no se ha probado ni lo dice ningún PRD. *Anotación del 2026-10-22: con un conjunto CanopyDB, el generador de Windows también borra una versión que un consultor tiene abierta, sin aviso (prueba de la ejecución, registro L12 de `odd/tasks/canopy-db-robustez.md`).* |
 | Publicación durante un lote | AC-M7 se comprueba en Windows con un lote retenido: el JSON de cada consulta indica la versión que abrió el lote. No hay pruebas con consultores en paralelo durante varias publicaciones seguidas. |
 | Datos grandes | Ninguna prueba supera los registros del CSV de referencia, y no hay herramienta para fabricar un CSV mayor. |
 | Linux | Las pruebas pasan en Ubuntu 24.04 sobre WSL2. Las verificaciones de aceptación de los hijos anteriores solo se ejecutan en Windows (fuera de alcance en el padre). Las guías de Linux piden el código y los datos en el sistema de archivos de Linux. |
@@ -142,6 +142,8 @@ dice cuánto necesita y queda como no ejecutado.
 
 Todos los escenarios se ejecutan en los dos sistemas, salvo R11 y R12, que solo se pueden provocar en Linux, y
 R13, que solo se ejecuta en Windows (KR3). En el otro sistema, esos escenarios salen como no aplicables.
+*Anotación del 2026-10-22: R11 y R12 también se provocan en Windows (ver la anotación de "Borrar una versión
+abierta" en el estado de partida), así que se ejecutan en los dos sistemas; solo R13 queda limitado a Windows.*
 
 ## Registro de escenarios
 
