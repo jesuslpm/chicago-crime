@@ -13,8 +13,8 @@ use clap::error::{ContextKind, ContextValue, ErrorKind};
 use clap::parser::ValueSource;
 use clap::{ArgAction, ArgMatches, CommandFactory, FromArgMatches, Parser};
 
-use crate::messages;
 use crate::query::RawCondition;
+use crate::{App, messages};
 
 /// The exit codes of [`crate::exit_code`], explained at the end of the help (decision C6).
 const EXIT_CODES_HELP: &str = "\
@@ -35,13 +35,12 @@ que el analista ha cancelado el lote. Si se cierra la salida estándar, el lote 
 /// Command line options as typed by the analyst. The limit and the format are read as text so
 /// that their errors get the PRD messages instead of clap's.
 #[derive(Debug, Parser)]
+// The name, the description, the usage and the end of the help come from the [`App`] (see
+// [`command`]).
 #[command(
     name = "crime-query",
-    about = "Consulta el conjunto de datos de delitos de Chicago publicado por el generador.",
-    override_usage = "crime-query --dataset <CARPETA> [opciones]\n     crime-query --dataset <CARPETA> --batch <ARCHIVO>",
     // `{options}` and `{after-help}` already bring the line breaks that separate them.
     help_template = "{about}\n\nUso: {usage}\n\nOpciones:\n{options}{after-help}\n",
-    after_help = EXIT_CODES_HELP,
     disable_help_flag = true
 )]
 struct Args {
@@ -213,16 +212,26 @@ pub enum Parsed {
     Invalid(String),
 }
 
-/// Parses the command line (`args` includes the program name).
-///
-/// The errors that exist without `--batch` come first, with their messages; then, with
-/// `--batch`, the first query option typed next to it.
+/// Parses the command line of the original query app (`args` includes the program name).
 pub fn parse<I, T>(args: I) -> Parsed
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let (args, matches) = match matched(args) {
+    parse_for(&crate::APP, args)
+}
+
+/// Parses the command line of the query app `app` (`args` includes the program name); its help
+/// carries the name and texts of `app`.
+///
+/// The errors that exist without `--batch` come first, with their messages; then, with
+/// `--batch`, the first query option typed next to it.
+pub fn parse_for<I, T>(app: &App, args: I) -> Parsed
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString> + Clone,
+{
+    let (args, matches) = match matched(app, args) {
         Ok(parsed) => parsed,
         Err(error) => return translate(&error),
     };
@@ -257,7 +266,7 @@ pub fn parse_line(words: &[String], dataset: &Path) -> Result<Options, String> {
     ]
     .into_iter()
     .chain(words.iter().map(OsString::from));
-    let (args, matches) = match matched(args) {
+    let (args, matches) = match matched(&crate::APP, args) {
         Ok(parsed) => parsed,
         Err(error) => {
             return Err(match translate(&error) {
@@ -287,14 +296,33 @@ fn first_query_option(matches: &ArgMatches) -> Option<&'static str> {
         .map(|(_, option)| option)
 }
 
-fn matched<I, T>(args: I) -> Result<(Args, ArgMatches), clap::Error>
+fn matched<I, T>(app: &App, args: I) -> Result<(Args, ArgMatches), clap::Error>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    Args::command()
+    command(app)
         .try_get_matches_from(args)
         .and_then(|matches| Ok((Args::from_arg_matches(&matches)?, matches)))
+}
+
+/// The command line of `app`: its name and description, its usage lines, and the exit codes with
+/// its note at the end of the help.
+fn command(app: &App) -> clap::Command {
+    let usage = format!(
+        "{name} --dataset <CARPETA> [opciones]\n     {name} --dataset <CARPETA> --batch <ARCHIVO>",
+        name = app.name
+    );
+    let after_help = if app.help_note.is_empty() {
+        EXIT_CODES_HELP.to_owned()
+    } else {
+        format!("{EXIT_CODES_HELP}\n\n{}", app.help_note)
+    };
+    Args::command()
+        .name(app.name)
+        .about(app.about)
+        .override_usage(usage)
+        .after_help(after_help)
 }
 
 fn translate(error: &clap::Error) -> Parsed {

@@ -14,8 +14,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use crate::cli::{self, BatchOptions, Options};
-use crate::run::{Outcome, report, run_query, say};
-use crate::{Dataset, ExecError, Query, exit_code, messages};
+use crate::run::{Outcome, open_failed, report, run_query, say};
+use crate::{App, ExecError, Query, exit_code, messages};
 
 /// One query of the batch, checked.
 struct Line {
@@ -34,14 +34,25 @@ pub fn run_batch(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> u8 {
+    run_batch_with(&crate::APP, options, cancel, stdout, stderr)
+}
+
+/// [`run_batch`] for the query app `app`, which opens the dataset with its own engine.
+pub fn run_batch_with(
+    app: &App,
+    options: &BatchOptions,
+    cancel: &dyn Fn() -> bool,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> u8 {
     let started = Instant::now();
     let lines = match check(options) {
         Ok(lines) => lines,
         Err((message, code)) => return report(stderr, message, code),
     };
-    let dataset = match Dataset::open(&options.dataset) {
+    let dataset = match (app.open)(&options.dataset, cancel, stderr) {
         Ok(dataset) => dataset,
-        Err(error) => return report(stderr, error, exit_code::REJECTED),
+        Err(error) => return open_failed(stderr, error),
     };
     let total = lines.len();
     for (index, line) in lines.iter().enumerate() {
@@ -53,7 +64,14 @@ pub fn run_batch(
             stderr,
             messages::batch_header(index + 1, total, line.number),
         );
-        match run_query(&line.options, &line.query, &dataset, cancel, stdout, stderr) {
+        match run_query(
+            &line.options,
+            &line.query,
+            dataset.as_ref(),
+            cancel,
+            stdout,
+            stderr,
+        ) {
             Outcome::Completed => {}
             Outcome::StdoutClosed => return exit_code::COMPLETED,
             Outcome::Failed(code) => return code,

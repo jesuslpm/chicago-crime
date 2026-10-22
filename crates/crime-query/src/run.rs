@@ -24,7 +24,7 @@ use tempfile::NamedTempFile;
 
 use crate::cli::{Format, Mode, Options};
 use crate::output::RecordWriter;
-use crate::{Dataset, ExecError, Execution, Query, exit_code, messages};
+use crate::{App, ExecError, Execution, OpenError, Query, Source, exit_code, messages};
 
 /// The end of the name of every temporary output file, after `.<target name>.` and six random
 /// characters.
@@ -38,15 +38,35 @@ pub fn run(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> u8 {
+    run_with(&crate::APP, options, cancel, stdout, stderr)
+}
+
+/// [`run`] for the query app `app`, which opens the dataset with its own engine.
+pub fn run_with(
+    app: &App,
+    options: &Options,
+    cancel: &dyn Fn() -> bool,
+    stdout: &mut dyn Write,
+    stderr: &mut dyn Write,
+) -> u8 {
     let query = match Query::build(&options.conditions) {
         Ok(query) => query.with_limit(options.limit),
         Err(error) => return report(stderr, error, exit_code::REJECTED),
     };
-    let dataset = match Dataset::open(&options.dataset) {
+    let dataset = match (app.open)(&options.dataset, cancel, stderr) {
         Ok(dataset) => dataset,
-        Err(error) => return report(stderr, error, exit_code::REJECTED),
+        Err(error) => return open_failed(stderr, error),
     };
-    run_query(options, &query, &dataset, cancel, stdout, stderr).code()
+    run_query(options, &query, dataset.as_ref(), cancel, stdout, stderr).code()
+}
+
+/// Reports why the dataset could not be opened: 130 when the analyst cancelled, 1 otherwise.
+pub(crate) fn open_failed(stderr: &mut dyn Write, error: OpenError) -> u8 {
+    let code = match error {
+        OpenError::Cancelled => exit_code::CANCELLED,
+        _ => exit_code::REJECTED,
+    };
+    report(stderr, error, code)
 }
 
 /// How one query ended.
@@ -77,7 +97,7 @@ impl Outcome {
 pub(crate) fn run_query(
     options: &Options,
     query: &Query,
-    dataset: &Dataset,
+    dataset: &dyn Source,
     cancel: &dyn Fn() -> bool,
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
@@ -140,7 +160,7 @@ enum Failure {
 struct Job<'a> {
     format: Format,
     query: &'a Query,
-    dataset: &'a Dataset,
+    dataset: &'a dyn Source,
 }
 
 impl Job<'_> {

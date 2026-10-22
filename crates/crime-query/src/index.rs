@@ -100,6 +100,18 @@ impl IndexValue {
     }
 }
 
+/// A cursor over the keys of one index table, in ascending byte order: the only thing a storage
+/// engine provides for an [`IdStream`]. It holds no more than a bounded amount of keys at a time,
+/// so a stream's memory does not grow with its result (decision C7).
+pub trait KeyCursor {
+    /// Moves to the first key not smaller than `start`; `Ok(false)` when there is none.
+    fn seek(&mut self, start: &[u8]) -> Result<bool, ReadError>;
+    /// Moves to the next key; `Ok(false)` after the last one.
+    fn advance(&mut self) -> Result<bool, ReadError>;
+    /// The current key, after a `seek` or `advance` that answered `Ok(true)`.
+    fn key(&self) -> &[u8];
+}
+
 /// Where a stream stops.
 #[derive(Debug)]
 enum Bound {
@@ -112,115 +124,63 @@ enum Bound {
 }
 
 /// The IDs of one index value, in ascending ID order, or of one date range or text prefix, in
-/// value and then ID order, read lazily from the index table.
+/// value and then ID order, read lazily from the index table through a [`KeyCursor`].
 ///
 /// A read failure anywhere during the stream ends it with one [`ReadError`], never with fewer
 /// IDs; nothing follows an error.
 pub struct IdStream {
-    table: Table,
-    entries: TableIterator,
+    cursor: Box<dyn KeyCursor>,
     /// The key to seek to, until the first item is read.
     start: Option<Vec<u8>>,
     bound: Bound,
-    health: Arc<ReadHealth>,
     folder: PathBuf,
     finished: bool,
 }
 
 impl IdStream {
     pub(crate) fn for_value(
-        table: &Table,
+        cursor: Box<dyn KeyCursor>,
         value: &IndexValue,
-        health: Arc<ReadHealth>,
         folder: PathBuf,
     ) -> Self {
-        Self::new(
-            table,
-            value.prefix(),
-            Bound::Value(value.clone()),
-            health,
-            folder,
-        )
+        Self::new(cursor, value.prefix(), Bound::Value(value.clone()), folder)
     }
 
     /// Text values that start with `prefix`, already in the [`index_text`] form. Packed strings
     /// sort as their UTF-8 bytes, so those values are one run of keys from the packed `(prefix,)`
     /// on, sorted by value and then ID.
-    pub(crate) fn for_prefix(
-        table: &Table,
-        prefix: &str,
-        health: Arc<ReadHealth>,
-        folder: PathBuf,
-    ) -> Self {
+    pub(crate) fn for_prefix(cursor: Box<dyn KeyCursor>, prefix: &str, folder: PathBuf) -> Self {
         Self::new(
-            table,
+            cursor,
             pack(&(prefix,)),
             Bound::Prefix(prefix.to_owned()),
-            health,
             folder,
         )
     }
 
     /// Dates within `[from, to]`, both as seconds of the civil clock.
     pub(crate) fn for_dates(
-        table: &Table,
+        cursor: Box<dyn KeyCursor>,
         from: i64,
         to: i64,
-        health: Arc<ReadHealth>,
         folder: PathBuf,
     ) -> Self {
-        Self::new(table, pack(&(from,)), Bound::DatesUpTo(to), health, folder)
+        Self::new(cursor, pack(&(from,)), Bound::DatesUpTo(to), folder)
     }
 
-    fn new(
-        table: &Table,
-        start: Vec<u8>,
-        bound: Bound,
-        health: Arc<ReadHealth>,
-        folder: PathBuf,
-    ) -> Self {
+    fn new(cursor: Box<dyn KeyCursor>, start: Vec<u8>, bound: Bound, folder: PathBuf) -> Self {
         Self {
-            table: table.clone(),
-            entries: table.iter(),
+            cursor,
             start: Some(start),
             bound,
-            health,
             folder,
             finished: false,
         }
     }
 
-    /// Moves to the first key not smaller than `start`; `false` when there is none.
-    ///
-    /// `TableIterator::seek` also leaves the iterator invalid when `start` falls between the
-    /// last key of a block and the separator key the table keeps for that block, which is
-    /// greater than that last key but smaller than the next block's first key. Then the next
-    /// block holds the wanted key: the iterator still points at the exhausted block, so
-    /// advancing reads that block again from its start (all its keys are smaller than `start`)
-    /// and then the next one. A seek past the last key leaves it reset instead, where
-    /// advancing would restart from the first key of the table, so that case is told apart
-    /// first through the block the table index names for `start`.
-    fn seek(&mut self, start: &[u8]) -> bool {
-        self.entries.seek(start);
-        if self.entries.valid() {
-            return true;
-        }
-        if self.health.failure().is_some()
-            || self.table.approx_offset_of(start) == self.table.approx_offset_of(PAST_EVERY_KEY)
-        {
-            return false;
-        }
-        while self.entries.advance() {
-            if self.entries.current_key().is_some_and(|key| key >= start) {
-                return true;
-            }
-        }
-        false
-    }
-
     /// The ID of the current key, `None` when the key is past the bound.
     fn current(&self) -> Option<Result<i64, ReadError>> {
-        let key = self.entries.current_key()?;
+        let key = self.cursor.key();
         let Some((value, id)) = decode_key(key) else {
             return Some(Err(self.error(format!("malformed index key {key:02x?}"))));
         };
@@ -250,18 +210,91 @@ impl Iterator for IdStream {
             return None;
         }
         let positioned = match self.start.take() {
-            Some(start) => self.seek(&start),
-            None => self.entries.advance(),
+            Some(start) => self.cursor.seek(&start),
+            None => self.cursor.advance(),
         };
-        let mut item = if positioned { self.current() } else { None };
-        // The iterator may have skipped an unreadable block to get here, or stopped at one.
-        if let Some(cause) = self.health.failure() {
-            item = Some(Err(self.error(cause)));
-        }
+        let item = match positioned {
+            Ok(true) => self.current(),
+            Ok(false) => None,
+            Err(error) => Some(Err(error)),
+        };
         if !matches!(item, Some(Ok(_))) {
             self.finished = true;
         }
         item
+    }
+}
+
+/// The [`KeyCursor`] of a LevelDB table, checked against the [`ReadHealth`] of the dataset.
+pub(crate) struct TableCursor {
+    table: Table,
+    entries: TableIterator,
+    health: Arc<ReadHealth>,
+    folder: PathBuf,
+}
+
+impl TableCursor {
+    pub(crate) fn new(table: &Table, health: Arc<ReadHealth>, folder: PathBuf) -> Self {
+        Self {
+            table: table.clone(),
+            entries: table.iter(),
+            health,
+            folder,
+        }
+    }
+
+    /// The table iterator may have skipped an unreadable block to get here, or stopped at one.
+    fn checked(&self, positioned: bool) -> Result<bool, ReadError> {
+        match self.health.failure() {
+            Some(cause) => Err(ReadError::new(self.folder.clone(), cause)),
+            None => Ok(positioned),
+        }
+    }
+
+    /// Moves to the first key not smaller than `start`; `false` when there is none.
+    ///
+    /// `TableIterator::seek` also leaves the iterator invalid when `start` falls between the
+    /// last key of a block and the separator key the table keeps for that block, which is
+    /// greater than that last key but smaller than the next block's first key. Then the next
+    /// block holds the wanted key: the iterator still points at the exhausted block, so
+    /// advancing reads that block again from its start (all its keys are smaller than `start`)
+    /// and then the next one. A seek past the last key leaves it reset instead, where
+    /// advancing would restart from the first key of the table, so that case is told apart
+    /// first through the block the table index names for `start`.
+    fn seek_unchecked(&mut self, start: &[u8]) -> bool {
+        self.entries.seek(start);
+        if self.entries.valid() {
+            return true;
+        }
+        if self.health.failure().is_some()
+            || self.table.approx_offset_of(start) == self.table.approx_offset_of(PAST_EVERY_KEY)
+        {
+            return false;
+        }
+        while self.entries.advance() {
+            if self.entries.current_key().is_some_and(|key| key >= start) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl KeyCursor for TableCursor {
+    fn seek(&mut self, start: &[u8]) -> Result<bool, ReadError> {
+        let positioned = self.seek_unchecked(start);
+        self.checked(positioned)
+    }
+
+    fn advance(&mut self) -> Result<bool, ReadError> {
+        let positioned = self.entries.advance();
+        self.checked(positioned)
+    }
+
+    fn key(&self) -> &[u8] {
+        self.entries
+            .current_key()
+            .expect("a key after a successful seek or advance")
     }
 }
 

@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use crime_dataset::{CrimeRecord, IndexKind};
 
 use crate::query::{DateInterval, Equality};
-use crate::{Dataset, Field, IdStream, IndexValue, Query, ReadError, messages};
+use crate::{Field, IdStream, IndexValue, Query, ReadError, Source, messages};
 
 /// Why an execution stopped before it completed. [`fmt::Display`] gives the message for the
 /// analyst.
@@ -94,7 +94,7 @@ impl Summary {
 /// `None`. [`Execution::count`] counts the results instead, without reading records unless a
 /// filter needs them. [`Execution::summary`] reports the run once it has ended.
 pub struct Execution<'a> {
-    dataset: &'a Dataset,
+    dataset: &'a dyn Source,
     query: &'a Query,
     cancel: &'a dyn Fn() -> bool,
     candidates: Candidates<'a>,
@@ -113,7 +113,7 @@ impl<'a> Execution<'a> {
     /// before each of those checks and then for every ID examined; once it answers `true` the
     /// execution ends with [`ExecError::Cancelled`], here or from the iterator.
     pub fn start(
-        dataset: &'a Dataset,
+        dataset: &'a dyn Source,
         query: &'a Query,
         cancel: &'a dyn Fn() -> bool,
     ) -> Result<Self, ExecError> {
@@ -361,7 +361,7 @@ enum Runs<'a> {
 
 impl Runs<'_> {
     /// The stream of the next run, `None` after the last one.
-    fn next_stream(&mut self, dataset: &Dataset) -> Option<IdStream> {
+    fn next_stream(&mut self, dataset: &dyn Source) -> Option<IdStream> {
         match self {
             Runs::Dates(intervals) => {
                 let interval = intervals.next()?;
@@ -377,7 +377,7 @@ impl Runs<'_> {
 
 /// An index read over disjoint runs of keys, with the other indexed conditions checked per ID.
 struct Scan<'a> {
-    dataset: &'a Dataset,
+    dataset: &'a dyn Source,
     runs: Runs<'a>,
     stream: Option<IdStream>,
     /// The requested IDs, sorted, when there is an ID condition.

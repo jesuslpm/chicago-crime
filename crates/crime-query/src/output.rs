@@ -24,7 +24,7 @@ use crime_dataset::{CrimeRecord, HEADER};
 use serde::Serialize;
 
 use crate::cli::Format;
-use crate::{Dataset, Interpreted};
+use crate::{Interpreted, Source};
 
 /// Width of each table column, in characters: the larger of the header and a typical maximum
 /// of the field's values in the reference CSV, so that almost every row lines up. Where the
@@ -71,7 +71,7 @@ enum Sink<W: Write> {
 struct DatasetInfo<'a> {
     version: &'a str,
     generated_at: &'a str,
-    schema_version: u32,
+    schema_version: serde_json::Value,
 }
 
 impl<W: Write> RecordWriter<W> {
@@ -81,7 +81,7 @@ impl<W: Write> RecordWriter<W> {
         format: Format,
         mut out: W,
         query: &Interpreted,
-        dataset: &Dataset,
+        dataset: &dyn Source,
     ) -> io::Result<Self> {
         let sink = match format {
             Format::Table => {
@@ -99,8 +99,8 @@ impl<W: Write> RecordWriter<W> {
             Format::Json => {
                 let info = DatasetInfo {
                     version: dataset.version(),
-                    generated_at: &dataset.manifest().generated_at,
-                    schema_version: dataset.manifest().schema_version,
+                    generated_at: dataset.generated_at(),
+                    schema_version: dataset.schema_version(),
                 };
                 out.write_all(b"{\"query\":")?;
                 serde_json::to_writer(&mut out, query)?;

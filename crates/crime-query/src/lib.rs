@@ -24,11 +24,16 @@
 //!   dataset is opened once, then run one after the other as they would run alone (decision K7
 //!   of the canopy-db PRD);
 //! - [`cli`]: the command line in Spanish, and [`exit_code`];
+//! - [`App`]: a query app's name, help and opener, with [`main`], the whole program; [`APP`] is
+//!   this one. The engine behind the dataset is reached through [`Source`]: the LevelDB
+//!   [`Dataset`] here, or the primitive [`Tables`] of another engine (the CanopyDB query app,
+//!   decision K1 of the canopy-db PRD) wrapped in a [`TablesSource`];
 //! - [`messages`]: every user-facing text.
 //!
 //! Nothing here holds IDs or records in memory in proportion to a result (decision C7): streams
 //! read one index entry at a time, lookups read one entry and the output writes one record.
 
+mod app;
 mod batch;
 pub mod cli;
 mod dataset;
@@ -39,18 +44,21 @@ pub mod messages;
 pub mod output;
 mod query;
 mod run;
+mod source;
 mod tracked;
 
-pub use batch::run_batch;
+pub use app::{APP, App, Opener, main};
+pub use batch::{run_batch, run_batch_with};
 pub use dataset::{Dataset, OpenError, ReadError};
 pub use exec::{ExecError, Execution, Summary};
 pub use fields::{Field, FieldType};
-pub use index::{IdStream, IndexValue};
+pub use index::{IdStream, IndexValue, KeyCursor};
 pub use query::{
     Applied, AppliedCondition, AppliedInterval, AppliedValue, DateInterval, Equality, Filter,
     Interpreted, Query, QueryError, RawCondition,
 };
-pub use run::run;
+pub use run::{run, run_with};
+pub use source::{Source, Tables, TablesSource};
 
 /// Exit codes of the binary (decision C6), the same as the generator's.
 pub mod exit_code {

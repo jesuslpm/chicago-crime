@@ -28,7 +28,7 @@ use crime_dataset::{
 use serde::Deserialize;
 use sstable::{Options, Status, Table};
 
-use crate::index::{IdStream, IndexValue};
+use crate::index::{IdStream, IndexValue, TableCursor};
 use crate::messages;
 use crate::tracked::{ReadHealth, TABLE_FOOTER_BYTES, TrackedFile, read_exact_at};
 
@@ -48,6 +48,11 @@ pub enum OpenError {
     IncompatibleSchema { found: u32 },
     /// A file exists but cannot be read, or a table file is not a table.
     Unreadable { folder: PathBuf, cause: String },
+    /// The analyst cancelled while the dataset was being opened (exit code 130).
+    Cancelled,
+    /// A rejection that only the dataset of another storage engine has, with its message: one or
+    /// more lines for the analyst (exit code 1).
+    Rejected(String),
 }
 
 impl fmt::Display for OpenError {
@@ -60,6 +65,8 @@ impl fmt::Display for OpenError {
             OpenError::Unreadable { folder, .. } => {
                 f.write_str(&messages::dataset_unreadable(folder))
             }
+            OpenError::Cancelled => f.write_str(&messages::query_cancelled()),
+            OpenError::Rejected(message) => f.write_str(message),
         }
     }
 }
@@ -67,16 +74,32 @@ impl fmt::Display for OpenError {
 impl std::error::Error for OpenError {}
 
 /// A read of the open dataset failed: the query must abort rather than return a partial result.
-/// [`fmt::Display`] gives the message for the analyst; [`ReadError::cause`] says what failed.
+/// [`fmt::Display`] gives the message for the analyst, after the detail line when there is one;
+/// [`ReadError::cause`] says what failed.
 #[derive(Debug, Clone)]
 pub struct ReadError {
     folder: PathBuf,
     cause: String,
+    detail: Option<String>,
 }
 
 impl ReadError {
-    pub(crate) fn new(folder: PathBuf, cause: String) -> Self {
-        Self { folder, cause }
+    pub fn new(folder: PathBuf, cause: String) -> Self {
+        Self {
+            folder,
+            cause,
+            detail: None,
+        }
+    }
+
+    /// A failure that also shows the analyst `detail`, a line of its own just before the
+    /// message: the error of another storage engine, for instance.
+    pub fn with_detail(folder: PathBuf, cause: String, detail: String) -> Self {
+        Self {
+            folder,
+            cause,
+            detail: Some(detail),
+        }
     }
 
     /// What failed, in English, for diagnostics.
@@ -87,6 +110,9 @@ impl ReadError {
 
 impl fmt::Display for ReadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(detail) = &self.detail {
+            writeln!(f, "{detail}")?;
+        }
         f.write_str(&messages::dataset_unreadable(&self.folder))
     }
 }
@@ -167,34 +193,23 @@ impl Dataset {
     /// Every ID whose `kind` index holds exactly `value`, in ascending ID order. For the
     /// equality indexes: primary type, district, community area and case number.
     pub fn ids_with_value(&self, kind: IndexKind, value: &IndexValue) -> IdStream {
-        IdStream::for_value(
-            self.index(kind),
-            value,
-            Arc::clone(&self.health),
-            self.folder.clone(),
-        )
+        IdStream::for_value(self.cursor(kind), value, self.folder.clone())
     }
 
     /// Every ID whose `kind` index holds a text value that starts with `prefix`, in value and
     /// then ID order (not ID order). `prefix` is in the index form, lowercase. For the text
     /// indexes: primary type, district and case number.
     pub fn ids_with_prefix(&self, kind: IndexKind, prefix: &str) -> IdStream {
-        IdStream::for_prefix(
-            self.index(kind),
-            prefix,
-            Arc::clone(&self.health),
-            self.folder.clone(),
-        )
+        IdStream::for_prefix(self.cursor(kind), prefix, self.folder.clone())
     }
 
     /// Every ID whose date is within `[from, to]`, both ends included, in date and then ID
     /// order (not ID order).
     pub fn ids_in_date_range(&self, from: CivilDateTime, to: CivilDateTime) -> IdStream {
         IdStream::for_dates(
-            self.index(IndexKind::Date),
+            self.cursor(IndexKind::Date),
             from.seconds(),
             to.seconds(),
-            Arc::clone(&self.health),
             self.folder.clone(),
         )
     }
@@ -222,6 +237,14 @@ impl Dataset {
 
     fn index(&self, kind: IndexKind) -> &Table {
         &self.indexes[usize::from(kind.ordinal())]
+    }
+
+    fn cursor(&self, kind: IndexKind) -> Box<TableCursor> {
+        Box::new(TableCursor::new(
+            self.index(kind),
+            Arc::clone(&self.health),
+            self.folder.clone(),
+        ))
     }
 
     fn primary_value(&self, id: i64) -> Result<Option<Vec<u8>>, ReadError> {
