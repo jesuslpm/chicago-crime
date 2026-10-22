@@ -12,3 +12,5 @@
 2026-10-22T12:01:00+01:00	mark	review	T2
 2026-10-22T12:01:22+01:00	mark	acceptance	T4
 2026-10-22T12:01:22+01:00	bg-start	acceptance	bench run 1 reference CSV
+2026-10-22T13:07:47+01:00	bg-end	acceptance	bench run 1 reference CSV
+2026-10-22T13:08:43+01:00	bg-start	acceptance	bench run 2 with baseline
