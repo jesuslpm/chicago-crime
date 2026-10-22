@@ -812,7 +812,7 @@ function Test-MidBatchPublication {
     $versionOk = $null -eq $split
     if ($split) { $problems.Add("stdout: $split") }
     else {
-        foreach ($i in @(0, 1, $FixedQueries.Count, $FixedQueries.Count + 1)) {
+        foreach ($i in @(0, 1, $FixedQueries.Count, ($FixedQueries.Count + 1))) {
             $document = Read-JsonFile $targets[$i]
             $version = if ($null -ne $document) { [string]$document.dataset.version } else { '(no JSON)' }
             $versionOk = $versionOk -and $version -ceq $old
