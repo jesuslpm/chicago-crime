@@ -213,6 +213,7 @@ function Get-BatchHeader([int]$Index, [int]$Total, [int]$Line) { "--- Consulta $
 # --- CSV helpers (compiled: they read millions of lines) ---
 
 Add-Type -AssemblyName Microsoft.VisualBasic
+# Compiled once per session: after editing the .cs file, run the script in a new session.
 if (-not ('QueryAcceptance' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'QueryAcceptance.cs') }
 
 # --- Results and report ---
@@ -648,9 +649,6 @@ function Format-Problems($List) { if ($List.Count -eq 0) { '' } else { '; PROBLE
 function Get-TableIds([string[]]$Rows) { , @($Rows | ForEach-Object { ($_ -split '\s+')[0] } | Sort-Object) }
 
 function Get-CsvIds($Records) { , @($Records | ForEach-Object { $_[0] } | Sort-Object) }
-
-# The parsed JSON document of a text, or $null.
-function Read-JsonDocument([string]$Text) { try { $Text | ConvertFrom-Json } catch { $null } }
 
 function Get-JsonIds($Document) { , @(@($Document.results) | ForEach-Object { [string]$_.ID } | Sort-Object) }
 

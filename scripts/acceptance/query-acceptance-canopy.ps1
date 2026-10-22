@@ -9,7 +9,9 @@
     the SSTable datasets that must be rejected), the fixed query set (canopy-fixed-queries.txt, KC7),
     the memory runs of AC-M8 and the rows of the PRD's own criteria: AC-M2-F1..F11, AC-M5, AC-M6,
     AC-M7, AC-M8, AC-M8 (SSTables) and AC-KC2..AC-KC7. It uses the original script's variables and
-    functions ($DatasetDir, Invoke-Program, Test-BatchShape, ...) as they are when it runs.
+    functions ($DatasetDir, Invoke-Program, Test-BatchShape, ...) as they are when it runs, and the
+    readers of query-output.ps1 (Split-BatchWords, Read-JsonFile, Compare-JsonDocuments, ...), which
+    run-query-acceptance.ps1 dot-sources before it.
 #>
 
 $SstGeneratorExe = Join-Path $RepoRoot 'target\release\crime-generator.exe'
@@ -18,7 +20,6 @@ $CanopyPackages = @('crime-canopy-generator', 'crime-canopy-query', 'crime-canop
 # Free space the CanopyDB run needs (see the help of run-canopy-query-acceptance.ps1).
 $CanopyRequiredGb = 16
 $FixedQueriesTemplate = Join-Path $PSScriptRoot 'canopy-fixed-queries.txt'
-$FixedPlaceholder = '<número>'
 # The select on the CSV that counts the expected results of F1 to F11 (F10: at most its limit).
 $FixedSelects = @('fixed-f1', 'case', 'theft', 'rare', 'month', 'theft-2005-2015', 'theft-008', 'theft-month-arrest', 'prefix-ja', 'theft', 'theft')
 # AC-M5: the batch that holds the base lasts about this long (more than 45 s), the short one about
@@ -64,6 +65,7 @@ $FixedMemoryRuns = @{}
 $FixedBatchRuns = @{}
 $FixedAlone = @{}
 
+# Compiled once per session: after editing the .cs file, run the script in a new session.
 if (-not ('CanopyQueryAcceptance' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'CanopyQueryAcceptance.cs') }
 
 # --- Rows ---
@@ -147,34 +149,12 @@ function Initialize-CanopySmallDatasets {
 function Initialize-FixedQueries {
     $script:FixedOutDir = Join-Path $OutDir 'fixed'
     New-Item -ItemType Directory -Force -Path $FixedOutDir | Out-Null
-    $lines = @([System.IO.File]::ReadAllText($FixedQueriesTemplate, $Utf8) -split "`r?`n")
-    if ($lines.Count -gt 0 -and $lines[-1] -eq '') { $lines = @($lines | Select-Object -First ($lines.Count - 1)) }
-    $batchLines = New-Object System.Collections.Generic.List[string]
-    $queries = New-Object System.Collections.Generic.List[object]
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        $rest = $line.TrimStart(' ', "`t")
-        if ($rest -eq '' -or $rest.StartsWith('#')) { $batchLines.Add($line); continue }
-        $line = $line.Replace($FixedPlaceholder, $sharedCase)
-        $words = Split-BatchWords $line
-        $formatAt = [array]::IndexOf($words, '--format')
-        $limitAt = [array]::IndexOf($words, '--limit')
-        $kind = if ($words -ccontains '--count') { 'count' } elseif ($formatAt -ge 0) { $words[$formatAt + 1] } else { 'table' }
-        $queries.Add([pscustomobject]@{
-                Id         = 'F{0}' -f ($queries.Count + 1)
-                Line       = $line
-                LineNumber = $i + 1
-                Arguments  = $words
-                Kind       = $kind
-                Extension  = if ($kind -eq 'json' -or $kind -eq 'csv') { $kind } else { 'txt' }
-                Limit      = if ($limitAt -ge 0) { [long]$words[$limitAt + 1] } else { [long]-1 }
-                Select     = if ($queries.Count -lt $FixedSelects.Count) { $FixedSelects[$queries.Count] } else { $null }
-            })
-        $batchLines.Add($line)
-    }
+    $fixed = Read-FixedQueries $FixedQueriesTemplate $sharedCase
+    $queries = @($fixed.Queries)
     if ($queries.Count -ne $FixedSelects.Count) { throw "$FixedQueriesTemplate holds $($queries.Count) queries, not F1 to F11." }
-    $script:FixedQueries = $queries.ToArray()
-    $script:FixedBatchFile = New-BatchFile 'canopy-fixed-queries.txt' $batchLines.ToArray()
+    for ($i = 0; $i -lt $queries.Count; $i++) { $queries[$i] | Add-Member -NotePropertyName Select -NotePropertyValue $FixedSelects[$i] }
+    $script:FixedQueries = $queries
+    $script:FixedBatchFile = New-BatchFile 'canopy-fixed-queries.txt' $fixed.BatchLines
 }
 
 function Get-FixedQuery([string]$Id) { @($FixedQueries | Where-Object { $_.Id -eq $Id })[0] }
@@ -354,23 +334,6 @@ function Add-FixedMemoryRows {
 }
 
 # --- AC-M2 and AC-KC6: the fixed set with both query apps ---
-
-function Read-JsonFile([string]$Path) {
-    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
-    Read-JsonDocument ([System.IO.File]::ReadAllText($Path, $Utf8))
-}
-
-# The problem of two JSON outputs of the same query, or $null: the same interpreted query and the same
-# records in any order.
-function Compare-JsonDocuments($Left, $Right) {
-    if ($null -eq $Left -or $null -eq $Right) { return 'a JSON document is missing or does not parse' }
-    if (($Left.query | ConvertTo-Json -Depth 6 -Compress) -cne ($Right.query | ConvertTo-Json -Depth 6 -Compress)) { return 'the interpreted queries differ' }
-    $leftRecords = @(@($Left.results) | ForEach-Object { $_ | ConvertTo-Json -Depth 4 -Compress } | Sort-Object)
-    $rightRecords = @(@($Right.results) | ForEach-Object { $_ | ConvertTo-Json -Depth 4 -Compress } | Sort-Object)
-    if ($leftRecords.Count -ne $rightRecords.Count) { return ('{0} records against {1}' -f $leftRecords.Count, $rightRecords.Count) }
-    if (($leftRecords -join "`n") -cne ($rightRecords -join "`n")) { return 'the records differ' }
-    $null
-}
 
 function Get-FixedOutput([string]$Prefix, $Query) { Join-Path $FixedOutDir ('{0}-{1}.{2}' -f $Prefix, $Query.Id, $Query.Extension) }
 

@@ -47,9 +47,9 @@ criteria, verbatim:
 
 | Id | Specs | Route | Status | Evidence |
 |---|---|---|---|---|
-| T1 | S8 (no regression) | inline | pending | Extract the C# helpers and the query-output readers of the acceptance scripts into shared files, no behavior change. |
-| T2 | S1–S6 | inline | pending | The bench: library + script + tests with a fake runner. |
-| T3 | S7 | inline | pending | Script help, README, Linux guides. |
+| T1 | S8 (no regression) | inline | done (`72843da`; acceptance proof in T5) | Extract the C# helpers and the query-output readers of the acceptance scripts into shared files, no behavior change. Smoke: both `.cs` compile, `Get-Stats`, `Split-BatchWords`, `Read-BatchStderr` answer as before, 0 parse errors in the three query scripts. |
+| T2 | S1–S6 | inline | done (feat commit after `4826d1a`) | The bench: `canopy-comparison.ps1` (library), `run-canopy-comparison.ps1` (script and help), `tests/canopy-comparison.tests.ps1` (17 tests, fake applications): all pass. Smoke on 200,000 rows of the reference CSV, R=1: `PASS: 50 runs, same results in all 11 queries`. |
+| T3 | S7 | inline | done with T2 (H5 link in T4) | Script help, README section "Compare the two pairs" and layout, Linux guides. |
 | T4 | S1, S2, S7 | inline | pending | Two bench runs on the reference CSV; first report and data table committed; H5 link. |
 | T5 | S8 | inline | pending | fmt, clippy, tests on Windows and WSL; the four acceptance checks on Windows. |
 
@@ -76,3 +76,21 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   takes its process runner and environment probes as parameters (the script passes the real ones), so no visible
   option exists; CanopyDB settings are read from the Rust sources of the measured commit, `unknown` per setting
   when a pattern no longer matches.
+- **L5** RDD review 1 — commits `8f30aec..4826d1a` (T1 and this document; base `8f30aec`, assessed `high`,
+  process boundary in the moved C#). Lenses readability, reliability. Result: approved and acknowledged
+  (authority burned), lineage `review-406a602ce04b176f`. Findings, all informational: R2-001 and R3-001
+  WARNING, `query-acceptance-canopy.ps1` uses `Split-BatchWords` from `query-output.ps1` without saying so
+  (it gets it through `run-query-acceptance.ps1`): resolved in T2 with a header note; R2-002 and R3-002
+  SUGGESTION, the `-as [type]` guard keeps a stale type in a long-lived session: resolved in T2 with a comment;
+  R2-003 SUGGESTION, comments name the bench before it exists: resolved by T2; R2-004 SUGGESTION, T1 still
+  `pending` in this table: updated. Reviewed boundary: `4826d1a`.
+- **L6** T2 (2026-10-22): the bench library, script and tests were written together; RED was observed on the
+  bench, not test-first: the first test run failed 15 of 17 (an array passed whole through `Sort-Object`, a
+  `@()` that wrapped a series again so `Runs` read `1 of 2`, a PowerShell 5.1 `foreach` over `@(List)` under
+  strict mode, and patterns of the tests), then all 17 passed. Also moved to `query-output.ps1`: the JSON
+  readers and `Read-FixedQueries` (the acceptance's `Initialize-FixedQueries` now uses it); the stats and
+  batch patterns gained a `seconds` group. Defaults taken: the header's CanopyDB settings list what each
+  app's own source sets (the query app also opens with the database options the generator stored), without
+  `compress_overflow_values` (the Options line shows compression); a failed run's note keeps the stderr
+  line's own final dot (`...existente..`), as the PRD's literal `<motivo>.` gives. Smoke on a 200,000-row
+  CSV (R=1, real build): PASS, 50 runs, 119.6 s; its report was deleted, not kept.

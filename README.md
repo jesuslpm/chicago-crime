@@ -498,6 +498,41 @@ different fields must all hold:
 target\release\crime-acceptance.exe select --csv chicago-crime-data.csv --where "Primary Type=THEFT" --startswith "Primary Type=CRIM"
 ```
 
+## Compare the two pairs
+
+[`scripts/acceptance/run-canopy-comparison.ps1`](scripts/acceptance/run-canopy-comparison.ps1) is the
+comparison bench of the CanopyDB module ([PRD](docs/prd/chicago-crime/canopy-db-comparacion.prd.md)). It
+generates the same CSV with both generators, runs the [fixed query set](#fixed-query-set) with both query
+apps, alone and in a batch, checks that both pairs return the same results and writes a report with the
+figures of both pairs to [`docs/canopy-db/comparisons/`](docs/canopy-db/comparisons), named
+`<yyyy-MM-dd-HHmmss>-<commit>.md`, next to a `.csv` data table with every measure. Keeping a report in the
+repository is your decision: commit it or delete it.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-canopy-comparison.ps1 -WorkDir work\comparison
+```
+
+- **Parameters**: `-WorkDir` (required; its own folder, never the one of an acceptance check), `-Csv`
+  (default `chicago-crime-data.csv`), `-Repetitions` (default 5), `-NoCompression` (both generators
+  without compression), `-Baseline <data table>` and `-SkipBuild`.
+- **What it measures**: each generation is repeated `-Repetitions` times, alternating the two generators:
+  duration and peak from its final summary, and the size of the published files. Each query runs alone as
+  a new process, first once (run 0, reported apart: the first query after a generation) and then
+  `-Repetitions` times, alternating the two query apps; then the 11 in a batch, the same way. A query app's
+  peak is its peak private committed memory, read when it ends. The report gives medians of runs 1 to
+  `-Repetitions`; nothing is measured cold, since the operating system's file cache holds the datasets.
+- **When it fails**: it ends with 1 when a run fails or the two pairs return different results (`DIFFERENT`
+  in the report), and with 0 otherwise. It never fails on a figure; figures over an inherited limit
+  (512 MiB, 1 s by ID, the memory ratio of AC-M8) are listed under `Notes`.
+- **Compare with an earlier run**: `-Baseline docs\canopy-db\comparisons\<report>.csv` adds a section with
+  each median next to the earlier one, the change in percent and whether it stays within the tolerance
+  (20 % or 0.050 s for times, 10 % or 2 MiB for memory, 1 % for sizes).
+- **Cost**: run it with the machine without other load. It needs about 14 GB free in `-WorkDir`; with the
+  reference extract and 5 repetitions it takes about 40 minutes.
+
+The script and its tests (`scripts/acceptance/tests/canopy-comparison.tests.ps1`, run with
+`powershell -NoProfile -ExecutionPolicy Bypass -File`) run only on Windows.
+
 ## Work on several changes at once
 
 Each change can live in its own copy of the repository (a git worktree) with its own agent session, so two
@@ -540,8 +575,8 @@ through `edge-tts`, so generating needs an internet connection.
 | `crates/crime-canopy-generator` | The CanopyDB generator: the generator's pipeline with a CanopyDB storage. |
 | `crates/crime-canopy-acceptance` | Independent verifier of a CanopyDB dataset, with a mode that compares two datasets of either engine. |
 | `crates/crime-canopy-query` | The CanopyDB query app: the query app with a CanopyDB reader. |
-| `docs/canopy-db` | The CanopyDB findings register and its reproductions. |
-| `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
+| `docs/canopy-db` | The CanopyDB findings register and its reproductions, and the comparison bench's reports (`comparisons/`). |
+| `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app), the comparison bench and its tests. |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |
 | `scripts/slides` | Generates one MP3 per slide from the talk's speaker notes into `docs/methodology/audio`, played with the ▶ Nota button of the presenter view; see [Speaker-note audio](#speaker-note-audio). |
 | `docs/prd` | Product requirements: Spanish originals with English translations. |

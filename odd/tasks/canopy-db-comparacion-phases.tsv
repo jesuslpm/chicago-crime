@@ -2,3 +2,10 @@
 2026-10-22T11:35:00+01:00	mark	plan	
 2026-10-22T11:35:49+01:00	mark	implement	T1
 2026-10-22T11:36:55+01:00	mark	review	T1
+2026-10-22T11:37:52+01:00	bg-start	review	RDD T1 reviewers
+2026-10-22T11:38:03+01:00	mark	implement	T2
+2026-10-22T11:38:29+01:00	bg-end	review	RDD T1 reviewers
+2026-10-22T11:40:46+01:00	mark	implement	T2
+2026-10-22T11:51:56+01:00	mark	checks	T2
+2026-10-22T11:57:52+01:00	bg-start	checks	smoke bench small CSV
+2026-10-22T11:59:58+01:00	bg-end	checks	smoke bench small CSV
