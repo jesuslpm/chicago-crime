@@ -51,7 +51,7 @@ criteria, verbatim:
 | T2 | S1–S6 | inline | done (feat commit after `4826d1a`) | The bench: `canopy-comparison.ps1` (library), `run-canopy-comparison.ps1` (script and help), `tests/canopy-comparison.tests.ps1` (17 tests, fake applications): all pass. Smoke on 200,000 rows of the reference CSV, R=1: `PASS: 50 runs, same results in all 11 queries`. |
 | T3 | S7 | inline | done with T2 (H5 link in T4) | Script help, README section "Compare the two pairs" and layout, Linux guides. |
 | T4 | S1, S2 (part), S7 | inline | done; AC-M10 repeat half NOT MET (external load) | Run 1 `2026-10-22-120128-fea8c09`: PASS, 154 runs, 11 SAME, 3,966.6 s. Run 2 `2026-10-22-130851-82ffd76` with `-Baseline` run 1: PASS, 154 runs, 11 SAME, 3,210.0 s; 37 time rows `outside tolerance`, every memory, size and count row inside. Both reports committed; H5 links them. |
-| T5 | S8 | inline | done | fmt and clippy clean; Windows 560 passed, 0 failed (61 binaries); Linux (WSL Ubuntu, fresh clone of `b037f18`) 562 passed, 0 failed (61 binaries); bench tests 17 passed; acceptance: query 106/106, CanopyDB query 151/151, generator 15/15, CanopyDB generator 17/17. |
+| T5 | S8 | inline | done | fmt and clippy clean; Windows 560 passed, 0 failed (61 binaries); Linux (WSL Ubuntu, fresh clone of `b037f18`) 562 passed, 0 failed (61 binaries); bench tests 19 passed after the fixes (17 at T5); acceptance: query 106/106, CanopyDB query 151/151, generator 15/15, CanopyDB generator 17/17. |
 
 Route evidence: one understood change per task, no parallel units, so every task stays inline (no writer
 trigger). T1 touches shared acceptance code (risk item 6: only the acceptance runs of T5 catch a regression).
@@ -106,7 +106,8 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   report has every section and figure (met); the repeat has 37 time rows outside the tolerance (not met).
   Cause, from the data table: external load episodes that slowed both engines at once (F3 runs 2–5 of run 1:
   1.1 s to 4.5 s in both pairs; F6 runs 1–3: two to three times slower), and run 2's generations slower
-  (156.4 s against 111.6 s) while its queries were faster and steadier (batch: 0 out of tolerance). Memory,
+  (156.4 s against 111.6 s) while its queries were faster and steadier (its Batch table's within-run `Out of
+  tolerance` is 0, against the Baseline section's seven batch rows outside the run-1 medians). Memory,
   sizes and counts reproduce. Decision (default, no questions during the run): KM5 is not widened, since its
   rule covers the variation of the reference machine without other load and the needed widening (about
   80 %) would make the bench useless; AC-M10's repeat stays pending a run on a quiet machine, in the closing
@@ -146,3 +147,21 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   "AC-KM3: a baseline with the header but a damaged row is not a data file" (19 of 19 pass); R3-001 WARNING,
   `Split-FirstBatch` relies on run 0's result counts to split the batch output: kept, since a batch run 0
   without a query's stats line is already a failed run and its queries from there on are `INCOMPLETE`.
+- **L12** Review 3 — `b037f18..5a34839` (B1 fix, review fixes, logs): `medium`; lenses reliability,
+  readability; approved and acknowledged, lineage `review-1a642aa7c1bc8975`. Findings, informational: R2-001
+  SUGGESTION, T5's row gave the bench tests before the fixes (17): the row now says 19; R2-002 SUGGESTION,
+  `Read-ComparisonData`'s comment reads unevenly and does not say one bad row rejects the file: left as a
+  follow-up; R3-001 WARNING, the rename has no alias for callers outside the candidate: checked, no script
+  calls the old name (`grep` gives 0); R3-002 SUGGESTION, no test for a wrong field count or a non-numeric
+  exit code in a baseline: left as a follow-up. Review 4 — `44ef53a..b037f18` (the two reports, H5,
+  measured duration, logs), from a detached HEAD at `b037f18`: `medium`; lens readability; approved and
+  acknowledged, lineage `review-3314685d6ed26845`. Findings, informational: R2-001 SUGGESTION, report 1 names
+  the mistyped work folder with no note: kept as generated (explained in L8 and the closing report); R2-002
+  SUGGESTION, L8's "0 out of tolerance" mixed the two tolerance checks: L8 now says which; R2-003 SUGGESTION,
+  `run-canopy-comparison.ps1` gained a UTF-8 BOM: intended, Windows PowerShell 5.1 needs it in a script that
+  may hold non-ASCII text, as the other acceptance scripts have. Every commit of the branch after the PRD has
+  now been through RDD: reviews 1 to 4 cover `8f30aec..5a34839`.
+
+## Closing
+
+Closing report: [canopy-db-comparacion-report.md](canopy-db-comparacion-report.md).
