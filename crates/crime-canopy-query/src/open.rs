@@ -47,6 +47,9 @@ const OPEN_ATTEMPTS: usize = 3;
 /// The pause between two attempts to open a base another process has open.
 const RETRY: Duration = Duration::from_millis(100);
 
+/// Added to the wait before the rejection: well inside AC-M5's window of 30 to 35 s.
+const DEADLINE_MARGIN: Duration = Duration::from_millis(100);
+
 /// The longest a Ctrl+C waits to be noticed during the wait.
 const CANCEL_POLL: Duration = Duration::from_millis(50);
 
@@ -254,7 +257,9 @@ fn open_environment(
             let _ = writeln!(stderr, "{}", messages::waiting(folder, wait));
             Instant::now()
         });
-        let deadline = since + wait;
+        // The margin keeps the rejection after the wait as whoever reads the warning sees it,
+        // even when the warning reaches them late through a pipe (AC-M5: 30 to 35 s).
+        let deadline = since + wait + DEADLINE_MARGIN;
         let next_attempt = Instant::now() + RETRY;
         loop {
             if cancel() {
