@@ -22,3 +22,5 @@
 2026-10-22T14:32:59+01:00	bg-start	acceptance	Windows final runs
 2026-10-22T14:34:30+01:00	bg-start	acceptance	Linux final runs
 2026-10-22T14:52:07+01:00	mark	fix	T8
+2026-10-22T14:57:02+01:00	mark	acceptance	T8
+2026-10-22T17:11:35+01:00	mark	wait	user stop

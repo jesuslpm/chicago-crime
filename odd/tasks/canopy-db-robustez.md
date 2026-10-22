@@ -136,3 +136,8 @@ shared contract or depend on the others.
   the final checkpoint starts, not inside the checkpoint write: the whole dump-to-publish lasts under 1 s),
   A3 (R13 reads the generator's own peak line, as the generator acceptance does for AC-M4), A5 of KR7 (a dataset
   replaced more than three times during one opening ends with `not_found`, as the baseline did).
+- **L17** (2026-10-22 17:11, user): "Páralo". The final runs of T8 were stopped on both systems before any scenario printed
+  its result; no app or runner process is left. Pending: T8 (full runs of R1–R13 on Windows and Linux, rows in
+  `docs/canopy-db/escenarios.md`), `cargo test --workspace` on Linux for AC-M13, the RDD review of the last
+  slice (`1c9bcac..HEAD`, last assessment `under_budget`), the closing report. To resume: rebuild, copy the
+  binaries to each `work/final-*/bin`, and run the three runners per system again (L15).
