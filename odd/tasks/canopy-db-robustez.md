@@ -47,18 +47,21 @@ The PRD wins on any product question; read it until its "Referencias". Every rul
 
 | Id | Specs | Route | Status | Commit |
 |---|---|---|---|---|
-| T1 | S3, S8 | inline | pending | — |
-| T2 | S1 (framework), S2 | inline | pending | — |
-| T3 | S1 (R1, R2, R10) | delegated: parallel with T4, T5, T6 | pending | — |
-| T4 | S1 (R3–R9, R11, R12) | delegated: parallel with T3, T5, T6 | pending | — |
-| T5 | S4 | delegated: parallel with T3, T4, T6 | pending | — |
-| T6 | S6 | delegated: parallel with T3, T4, T5 | pending | — |
+| T1 | S3, S8 | inline | done (RED: partial version → `NotFound`, replaced version waited 10 s; GREEN 4/4 + markers) | `fbc7bc7`, `01e8e41` |
+| T2 | S1 (framework, R5 as model), S2 | inline | in progress | — |
+| T3 | S1 (R1, R2, R10) | delegated: parallel with T4a, T4b | pending | — |
+| T4a | S1 (R3, R4, R6, R7) | delegated: parallel with T3, T4b | pending | — |
+| T4b | S1 (R8, R9, R11, R12) | delegated: parallel with T3, T4a | pending | — |
+| T5 | S4 | delegated: parallel with T6 (launched while T1 was reviewed) | done (RED 0/14, GREEN 22/22) | see L8 |
+| T6 | S6 | delegated: parallel with T5 | done | `804c84b` |
 | T7 | S1 (R13) | inline, after T2 and T5 | pending | — |
 | T8 | S1, S5 | runs on Windows and Linux; scenario log | pending | — |
 | T9 | S7 | inline | pending | — |
 
-Route evidence: T3–T6 are independent units of behavior with disjoint edit surfaces, each several minutes of
-work, launched together (Writer trigger (a)); T1, T2, T7 and T9 are the shared contract or depend on the others.
+Route evidence: T3, T4a and T4b are independent units of behavior (one scenario file each) with disjoint edit
+surfaces and several minutes of work each, launched together once T2 fixes their shared framework; T5 and T6 are
+independent of everything else and were launched together earlier (Writer trigger (a)). T1, T2, T7 and T9 are the
+shared contract or depend on the others.
 
 ## Log
 
@@ -76,3 +79,21 @@ work, launched together (Writer trigger (a)); T1, T2, T7 and T9 are the shared c
   console of its own, on Linux through `SIGINT`.
 - **L4** (decision): "durante la apertura de la base" (R3) is the pause right after the query app opens the
   CanopyDB environment, so the lock is held when it dies.
+- **L5** (RDD, T1): commits `3d07096..fbc7bc7`, lenses resilience and reliability (item 4 escalated: the query
+  app's open races a generator). Result: approved and acknowledged. Findings: R3-001 WARNING (reliability), the
+  query app's `opened` and `query` markers had no test: fixed in `01e8e41`. Lineage `review-f6bb71545eaced32`.
+- **L6** (T6): five English issue drafts in `docs/canopy-db/issues/`, field `Borrador del issue` in every entry of
+  the findings log; the H2, H3 and H5 snippets compiled and reproduced against canopydb 0.2.5 (H5 took 55.1 s
+  with other writers running). Nothing published.
+- **L7** (decision, T2): the runner is `crates/crime-canopy-scenarios`; states print as `CUMPLIDO`, `NO CUMPLIDO`,
+  `NOT MET (Hn)`, `NO EJECUTADO`, `NO APLICA`; the last line starts with `PASS:` or `FAIL:`; associations are
+  `--not-met <escenario>/<variante>/<comprobación>=<hallazgo>`, so `NOT MET` absorbs only the named check (KR6);
+  each run writes the scenario-log rows to `<work>/registro-<Sistema>-<fecha>.md`. The big CSV tool is only
+  required when R13 runs.
+- **L8** (default taken during the run, to list in the closing report): S4's "un número de caso nuevo con las dos
+  mismas letras iniciales y el mismo formato" cannot hold on the reference CSV: prefixes HH, HJ, HK, HL and HM
+  already use 447,126–485,389 of their 1,000,000 two-letters-plus-six-digits numbers, so two copies do not fit,
+  and 480,094 case numbers have another shape (479,997 are one letter plus six digits). Default: the copy keeps the
+  first two characters and takes the lowest free value of that space; when it is full it widens to 7, 8 and 9
+  digits (`HH0000000`). Uniqueness always holds. F2 (exact case number) is unchanged and F9 (`JA`, which does not
+  overflow) still triples, so R13's expectations hold. The tool stops with code 1 if a prefix runs out at 9 digits.

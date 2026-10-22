@@ -1,0 +1,19 @@
+[package]
+name = "crime-canopy-scenarios"
+description = "Robustness scenarios of the CanopyDB apps (canopy-db-robustez PRD): kills, Ctrl+C, concurrent processes and large data, run against the real binaries."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+crime-dataset.workspace = true
+csv.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_System_Console", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tempfile.workspace = true
