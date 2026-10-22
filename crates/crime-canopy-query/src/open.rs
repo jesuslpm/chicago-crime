@@ -11,7 +11,9 @@
 //!    rewrite them) and check that its six trees exist; nothing is ever created.
 //!
 //! As in the original query app, a version that vanished in between (a generator published
-//! another one and deleted it) makes the opening start over, a few times at most.
+//! another one and deleted it) makes the opening start over, a few times at most. So does a
+//! version that `CURRENT` no longer names and that looks incomplete or is held by another
+//! process: a generator is deleting it (decision KR7 of the canopy-db-robustez PRD).
 
 use std::fs;
 use std::io::{self, Write};
@@ -23,6 +25,7 @@ use canopydb::{DbOptions, EnvOptions, Environment};
 use crime_dataset::canopy::{
     BASE_DIR_NAME, CANOPYDB_VERSION, DATABASE_NAME, SCHEMA_VERSION, table_names,
 };
+use crime_dataset::probe::{self, phase};
 use crime_dataset::{CurrentError, MANIFEST_FILE_NAME, resolve_current};
 use crime_query::{OpenError, Source, TablesSource};
 use serde_json::Value;
@@ -60,12 +63,17 @@ const OPTIONS_FILE: &str = "OPTIONS";
 enum Attempt {
     /// The version named by `CURRENT` disappeared before the base was open: try again.
     Vanished,
+    /// The version looks incomplete or damaged: if `CURRENT` no longer names it, a generator is
+    /// deleting it and the opening starts over (decision KR7 of the canopy-db-robustez PRD);
+    /// otherwise this is the answer.
+    Broken(OpenError),
+    /// The answer, whatever `CURRENT` names now.
     Failed(OpenError),
 }
 
 impl From<OpenError> for Attempt {
     fn from(error: OpenError) -> Self {
-        Attempt::Failed(error)
+        Attempt::Broken(error)
     }
 }
 
@@ -87,14 +95,45 @@ pub fn open_waiting(
     stderr: &mut dyn Write,
     wait: Duration,
 ) -> Result<Box<dyn Source>, OpenError> {
+    open_resolving(folder, cancel, stderr, wait, &resolve_current)
+}
+
+/// [`open_waiting`] that finds the active version with `resolve` ([`resolve_current`] in the
+/// app): the seam the tests use to reproduce a version deleted right after `CURRENT` was read.
+#[doc(hidden)]
+pub fn open_resolving(
+    folder: &Path,
+    cancel: &dyn Fn() -> bool,
+    stderr: &mut dyn Write,
+    wait: Duration,
+    resolve: &dyn Fn(&Path) -> Result<PathBuf, CurrentError>,
+) -> Result<Box<dyn Source>, OpenError> {
     // When the wait started, so that a retry after a vanished version neither warns again nor
     // waits longer.
     let mut waiting_since = None;
     for _ in 0..OPEN_ATTEMPTS {
-        match open_version(folder, cancel, stderr, wait, &mut waiting_since) {
+        let version_dir = match resolve(folder) {
+            Ok(dir) => dir,
+            Err(CurrentError::MissingVersion(_)) => continue,
+            Err(CurrentError::Unreadable(error)) => {
+                return Err(unreadable(folder, format!("CURRENT: {error}")));
+            }
+            Err(CurrentError::NoDataset | CurrentError::InvalidName(_)) => {
+                return Err(not_found(folder));
+            }
+        };
+        match open_version(
+            folder,
+            &version_dir,
+            cancel,
+            stderr,
+            wait,
+            &mut waiting_since,
+        ) {
             Ok(source) => return Ok(Box::new(source)),
             Err(Attempt::Vanished) => {}
-            Err(Attempt::Failed(error)) => return Err(error),
+            Err(Attempt::Broken(_)) if replaced(folder, &version_dir) => {}
+            Err(Attempt::Broken(error) | Attempt::Failed(error)) => return Err(error),
         }
     }
     Err(not_found(folder))
@@ -102,30 +141,31 @@ pub fn open_waiting(
 
 fn open_version(
     folder: &Path,
+    version_dir: &Path,
     cancel: &dyn Fn() -> bool,
     stderr: &mut dyn Write,
     wait: Duration,
     waiting_since: &mut Option<Instant>,
 ) -> Result<TablesSource<CanopyTables>, Attempt> {
-    let version_dir = match resolve_current(folder) {
-        Ok(dir) => dir,
-        Err(CurrentError::MissingVersion(_)) => return Err(Attempt::Vanished),
-        Err(CurrentError::Unreadable(error)) => {
-            return Err(unreadable(folder, format!("CURRENT: {error}")).into());
-        }
-        Err(CurrentError::NoDataset | CurrentError::InvalidName(_)) => {
-            return Err(not_found(folder).into());
-        }
-    };
+    let version_dir = version_dir.to_path_buf();
     let manifest = read_manifest(folder, &version_dir)?;
     check_files(folder, &version_dir, &manifest)?;
     let base = version_dir.join(BASE_DIR_NAME);
     let stored = stored_options(folder, &version_dir, &base)?;
-    let environment = open_environment(folder, &base, cancel, stderr, wait, waiting_since)?;
-    let engine = |failure: EngineFailure| Attempt::Failed(engine_failure(folder, &failure));
+    let environment = open_environment(
+        folder,
+        &version_dir,
+        &base,
+        cancel,
+        stderr,
+        wait,
+        waiting_since,
+    )?;
+    probe::mark(phase::OPENED);
+    let engine = |failure: EngineFailure| Attempt::Broken(engine_failure(folder, &failure));
     let database = guarded(|| environment.get_database_with(DATABASE_NAME, stored))
         .map_err(engine)?
-        .ok_or_else(|| Attempt::Failed(not_found(folder)))?;
+        .ok_or_else(|| Attempt::Broken(not_found(folder)))?;
     let transaction = guarded(|| database.begin_read()).map_err(engine)?;
     for tree in table_names() {
         let present =
@@ -157,19 +197,22 @@ fn read_manifest(folder: &Path, version_dir: &Path) -> Result<CanopyManifest, At
             return Err(unreadable(folder, format!("{MANIFEST_FILE_NAME}: {error}")).into());
         }
     };
-    let text = std::str::from_utf8(&bytes).map_err(|_| Attempt::Failed(not_found(folder)))?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| Attempt::Broken(not_found(folder)))?;
     let manifest = match manifest::parse(text) {
         Ok(manifest) => manifest,
         Err(ManifestError::Invalid) => return Err(not_found(folder).into()),
         Err(ManifestError::OtherSchema(digits)) => {
-            return Err(rejected(crime_query::messages::incompatible_schema(digits)).into());
+            let message = crime_query::messages::incompatible_schema(digits);
+            return Err(Attempt::Failed(rejected(message)));
         }
     };
     if manifest.engine_version != CANOPYDB_VERSION || manifest.fork_commit.is_some() {
         let dataset =
             messages::version_text(&manifest.engine_version, manifest.fork_commit.as_deref());
         let own = messages::version_text(CANOPYDB_VERSION, None);
-        return Err(rejected(messages::other_version(&dataset, &own)).into());
+        return Err(Attempt::Failed(rejected(messages::other_version(
+            &dataset, &own,
+        ))));
     }
     Ok(manifest)
 }
@@ -202,7 +245,7 @@ fn stored_options(folder: &Path, version_dir: &Path, base: &Path) -> Result<DbOp
     let prefix = format!("{DATABASE_NAME}_");
     let entries = fs::read_dir(base).map_err(|error| {
         if version_dir.is_dir() {
-            Attempt::Failed(unreadable(folder, format!("{BASE_DIR_NAME}: {error}")))
+            Attempt::Broken(unreadable(folder, format!("{BASE_DIR_NAME}: {error}")))
         } else {
             Attempt::Vanished
         }
@@ -217,14 +260,14 @@ fn stored_options(folder: &Path, version_dir: &Path, base: &Path) -> Result<DbOp
                     .map(|name| name.to_string_lossy())
                     .is_some_and(|name| name.starts_with(&prefix) && name.ends_with("_l"))
         })
-        .ok_or_else(|| Attempt::Failed(not_found(folder)))?;
+        .ok_or_else(|| Attempt::Broken(not_found(folder)))?;
     let options_file = database_dir.join(OPTIONS_FILE);
     let bytes = fs::read(&options_file).map_err(|error| match error.kind() {
-        io::ErrorKind::NotFound => Attempt::Failed(not_found(folder)),
-        _ => Attempt::Failed(unreadable(folder, format!("{OPTIONS_FILE}: {error}"))),
+        io::ErrorKind::NotFound => Attempt::Broken(not_found(folder)),
+        _ => Attempt::Broken(unreadable(folder, format!("{OPTIONS_FILE}: {error}"))),
     })?;
     serde_json::from_slice(&bytes)
-        .map_err(|error| Attempt::Failed(unreadable(folder, format!("{OPTIONS_FILE}: {error}"))))
+        .map_err(|error| Attempt::Broken(unreadable(folder, format!("{OPTIONS_FILE}: {error}"))))
 }
 
 /// Opens the environment of `base`, waiting while another process has it open (decision KC2):
@@ -232,6 +275,7 @@ fn stored_options(folder: &Path, version_dir: &Path, base: &Path) -> Result<DbOp
 /// [`RETRY`] until `wait` ([`WAIT`] in the app) after the warning; Ctrl+C ends the wait.
 fn open_environment(
     folder: &Path,
+    version_dir: &Path,
     base: &Path,
     cancel: &dyn Fn() -> bool,
     stderr: &mut dyn Write,
@@ -239,9 +283,10 @@ fn open_environment(
     waiting_since: &mut Option<Instant>,
 ) -> Result<Environment, Attempt> {
     loop {
-        // A version deleted during the wait (a generator published another one): start over on
-        // the new one, instead of letting CanopyDB fail on, or create, a missing lock file.
-        if !base.is_dir() {
+        // A version replaced during the wait (a generator published another one and is deleting
+        // this one): start over on the new one right away (decision KR7), instead of waiting for
+        // it or letting CanopyDB fail on, or create, a missing lock file.
+        if !base.is_dir() || replaced(folder, version_dir) {
             return Err(Attempt::Vanished);
         }
         let mut options = EnvOptions::new(base);
@@ -268,11 +313,11 @@ fn open_environment(
         let next_attempt = Instant::now() + RETRY;
         loop {
             if cancel() {
-                return Err(OpenError::Cancelled.into());
+                return Err(Attempt::Failed(OpenError::Cancelled));
             }
             let now = Instant::now();
             if now >= deadline {
-                return Err(rejected(messages::still_open(folder)).into());
+                return Err(Attempt::Failed(rejected(messages::still_open(folder))));
             }
             if now >= next_attempt {
                 break;
@@ -280,6 +325,12 @@ fn open_environment(
             thread::sleep(CANCEL_POLL.min(next_attempt - now).min(deadline - now));
         }
     }
+}
+
+/// Whether `CURRENT` no longer names `version_dir`: a generator published another version and may
+/// be deleting this one (decision KR7 of the canopy-db-robustez PRD).
+fn replaced(folder: &Path, version_dir: &Path) -> bool {
+    !version_dir.is_dir() || !resolve_current(folder).is_ok_and(|dir| dir == version_dir)
 }
 
 /// An error or a panic of the engine (decision KC5): the detail line, then the original query

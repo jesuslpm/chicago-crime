@@ -321,6 +321,7 @@ dependencies = [
  "foundationdb-tuple",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

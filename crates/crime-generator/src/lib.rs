@@ -52,6 +52,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use chrono::SecondsFormat;
+use crime_dataset::probe::{self, phase};
 use crime_dataset::{IndexKind, MANIFEST_FILE_NAME, RecordCounts, SourceInfo, primary_key};
 
 use crate::cancel::CancelFlag;
@@ -278,6 +279,7 @@ fn build<S: Storage>(
         PrimaryEntry::compare,
     )
     .map_err(temp_error)?;
+    probe::mark(phase::READ);
     // Row by row, rejected ones included, so a long run of bad rows can be cancelled too.
     while let Some(outcome) = ingest.next_row()? {
         cancel.check(FailPoint::CancelInRows)?;
@@ -314,6 +316,7 @@ fn build<S: Storage>(
     // storage first and only then deletes the folders it may still have open.
     let mut storage = storage;
     storage.begin(version.path(), index_sort.dir())?;
+    probe::mark(phase::PRIMARY_LOAD);
     let duplicates = write_primary(config, sorted, &mut storage, log, cancel, |entry| {
         for index_entry in index::entries_of(entry)? {
             index_sort.push(index_entry).map_err(temp_error)?;
@@ -325,6 +328,7 @@ fn build<S: Storage>(
     let mut index_sorted = index_sort.finish().map_err(temp_error)?;
     let index_sort_segments = index_sorted.segment_count();
     log.line(&messages::index_sort_completed(index_sort_segments))?;
+    probe::mark(phase::INDEX_WRITE);
     write_indexes(
         config,
         &mut index_sorted,
@@ -332,6 +336,7 @@ fn build<S: Storage>(
         &mut storage,
         cancel,
     )?;
+    probe::mark(phase::DUMP);
     let written = storage.finish()?;
     index_sorted.close().map_err(temp_error)?;
     let index_entries = written.index_entries();

@@ -102,6 +102,7 @@ pub(crate) fn run_query(
     stdout: &mut dyn Write,
     stderr: &mut dyn Write,
 ) -> Outcome {
+    crime_dataset::probe::mark(crime_dataset::probe::phase::QUERY);
     let temporary = match &options.output {
         Some(path) => match temporary_next_to(path) {
             Ok(file) => Some((path.as_path(), file)),

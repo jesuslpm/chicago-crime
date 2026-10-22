@@ -20,7 +20,7 @@ pub mod messages;
 mod open;
 mod tables;
 
-pub use open::{PAGE_CACHE_BYTES, WAIT, open, open_waiting};
+pub use open::{PAGE_CACHE_BYTES, WAIT, open, open_resolving, open_waiting};
 
 /// The CanopyDB query app (decision KC1): the original's help with its own name, description and
 /// a note on the wait.

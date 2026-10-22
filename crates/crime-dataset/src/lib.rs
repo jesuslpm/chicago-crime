@@ -13,7 +13,8 @@
 //! - the layout of the output folder: version folders and the [`CURRENT_FILE_NAME`] file that
 //!   names the active one, read with [`resolve_current`];
 //! - [`canopy`]: the names and the manifest identity of a CanopyDB dataset, and the line that
-//!   explains a failure of the engine, shared by the two CanopyDB apps.
+//!   explains a failure of the engine, shared by the two CanopyDB apps;
+//! - [`probe`]: the hidden phase markers the robustness scenarios use to kill an app in a phase.
 //!
 //! Keys and values use the FoundationDB tuple format only (no FoundationDB database), because its
 //! byte order preserves the order of integers, text and `Nil`.
@@ -24,6 +25,7 @@ mod encoding;
 mod index;
 mod layout;
 mod manifest;
+pub mod probe;
 mod record;
 
 pub use datetime::{CivilDateTime, DateTimeError};

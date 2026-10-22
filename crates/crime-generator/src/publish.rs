@@ -27,6 +27,7 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
+use crime_dataset::probe::{self, phase};
 use crime_dataset::{
     CURRENT_FILE_NAME, CurrentError, MANIFEST_FILE_NAME, VERSION_DIR_PREFIX, is_version_dir_name,
     resolve_current,
@@ -230,10 +231,12 @@ impl OutputFolder {
     ) -> Result<Published, Abort> {
         let unwritable = |error: io::Error| Abort::output_io(&self.dir, &error);
         let json = format!("{manifest_json}\n");
+        probe::mark(phase::MANIFEST);
         write_synced(&version.dir.join(MANIFEST_FILE_NAME), json.as_bytes()).map_err(unwritable)?;
         self.switch_current(&version.name, cancel)?;
         version.published = true;
         self.published = true;
+        probe::mark(phase::SWITCHED);
 
         if let Some(previous) = self.current.take() {
             let previous = self.dir.join(previous);
@@ -257,6 +260,7 @@ impl OutputFolder {
         let unwritable = |error: io::Error| Abort::output_io(&self.dir, &error);
         let temp = self.dir.join(CURRENT_TEMP_FILE_NAME);
         let switched = write_synced(&temp, format!("{name}\n").as_bytes())
+            .map(|()| probe::mark(phase::CURRENT_TMP))
             .and_then(|()| fail::check(FailPoint::BeforeSwitch))
             .map_err(unwritable)
             .and_then(|()| cancel.check(FailPoint::CancelBeforeSwitch))
