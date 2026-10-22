@@ -116,8 +116,10 @@ pub fn build(input: &Path, output: &Path) -> Result<u64, Error> {
                 .map_err(|_| Error::OutputUnwritable(output.to_path_buf()))
         })?;
     }
+    // Flush both buffers and keep their errors: a silent drop would let a failed last write
+    // (a full disk) publish a truncated file under the requested name.
     let sink = writer.into_inner().map_err(|_| unwritable())?;
-    drop(sink);
+    sink.into_inner().map_err(|_| unwritable())?;
     temp.as_file().sync_all().map_err(|_| unwritable())?;
     temp.persist_noclobber(output).map_err(|_| {
         if output.symlink_metadata().is_ok() {
