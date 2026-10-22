@@ -50,7 +50,7 @@ criteria, verbatim:
 | T1 | S8 (no regression) | inline | done (`72843da`; acceptance proof in T5) | Extract the C# helpers and the query-output readers of the acceptance scripts into shared files, no behavior change. Smoke: both `.cs` compile, `Get-Stats`, `Split-BatchWords`, `Read-BatchStderr` answer as before, 0 parse errors in the three query scripts. |
 | T2 | S1–S6 | inline | done (feat commit after `4826d1a`) | The bench: `canopy-comparison.ps1` (library), `run-canopy-comparison.ps1` (script and help), `tests/canopy-comparison.tests.ps1` (17 tests, fake applications): all pass. Smoke on 200,000 rows of the reference CSV, R=1: `PASS: 50 runs, same results in all 11 queries`. |
 | T3 | S7 | inline | done with T2 (H5 link in T4) | Script help, README section "Compare the two pairs" and layout, Linux guides. |
-| T4 | S1, S2, S7 | inline | pending | Two bench runs on the reference CSV; first report and data table committed; H5 link. |
+| T4 | S1, S2 (part), S7 | inline | done; AC-M10 repeat half NOT MET (external load) | Run 1 `2026-10-22-120128-fea8c09`: PASS, 154 runs, 11 SAME, 3,966.6 s. Run 2 `2026-10-22-130851-82ffd76` with `-Baseline` run 1: PASS, 154 runs, 11 SAME, 3,210.0 s; 37 time rows `outside tolerance`, every memory, size and count row inside. Both reports committed; H5 links them. |
 | T5 | S8 | inline | pending | fmt, clippy, tests on Windows and WSL; the four acceptance checks on Windows. |
 
 Route evidence: one understood change per task, no parallel units, so every task stays inline (no writer
@@ -99,3 +99,15 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   `Initialize-FixedQueries`, which the query app acceptance also uses): independent verifier at the
   feature's end, after T5. T4 starts: bench run 1 on the reference CSV, 5 repetitions, `-WorkDir
   work\comparison`, machine without other load.
+- **L8** T4 (2026-10-22 12:01–14:02): run 1 (`-WorkDir` mistyped from bash as `work\comparison`, so it ran in
+  `workcomparison` at the repo root; moved to `work/comparison-run1` afterwards, nothing deleted; the report
+  shows that path) and run 2 (`work/comparison`, `-Baseline` run 1). Both `-SkipBuild` with the binaries built
+  by the smoke run (no Rust change since). AC-M2: SAME in the 11 queries in both runs (met). AC-M10: the
+  report has every section and figure (met); the repeat has 37 time rows outside the tolerance (not met).
+  Cause, from the data table: external load episodes that slowed both engines at once (F3 runs 2–5 of run 1:
+  1.1 s to 4.5 s in both pairs; F6 runs 1–3: two to three times slower), and run 2's generations slower
+  (156.4 s against 111.6 s) while its queries were faster and steadier (batch: 0 out of tolerance). Memory,
+  sizes and counts reproduce. Decision (default, no questions during the run): KM5 is not widened, since its
+  rule covers the variation of the reference machine without other load and the needed widening (about
+  80 %) would make the bench useless; AC-M10's repeat stays pending a run on a quiet machine, in the closing
+  report. README and script help: measured duration 54 and 66 minutes instead of the 40 estimated.

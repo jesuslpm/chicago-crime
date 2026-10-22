@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Comparison bench of the CanopyDB module (PRD canopy-db-comparacion): generates the same CSV with
     the SSTable pair and the CanopyDB pair, runs the fixed query set with both query apps, alone and
@@ -26,7 +26,8 @@
 
     Run it on Windows, with the machine without other load and a work folder of its own (it deletes
     its own comparison-* entries there; never share it with the acceptance checks). It needs about
-    14 GB free in -WorkDir. With the reference extract and 5 repetitions it takes about 40 minutes.
+    14 GB free in -WorkDir. With the reference extract and 5 repetitions it took 54 and 66 minutes on
+    the reference machine.
 
 .PARAMETER WorkDir
     Work folder for the datasets, logs and query outputs; created if missing.

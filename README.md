@@ -528,7 +528,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-canop
   each median next to the earlier one, the change in percent and whether it stays within the tolerance
   (20 % or 0.050 s for times, 10 % or 2 MiB for memory, 1 % for sizes).
 - **Cost**: run it with the machine without other load. It needs about 14 GB free in `-WorkDir`; with the
-  reference extract and 5 repetitions it takes about 40 minutes.
+  reference extract and 5 repetitions it took 54 and 66 minutes on the reference machine.
 
 The script and its tests (`scripts/acceptance/tests/canopy-comparison.tests.ps1`, run with
 `powershell -NoProfile -ExecutionPolicy Bypass -File`) run only on Windows.
