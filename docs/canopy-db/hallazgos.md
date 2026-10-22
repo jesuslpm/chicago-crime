@@ -26,6 +26,8 @@ cargo run -- h3
 Cada una trabaja en una carpeta nueva de la carpeta temporal del sistema, muestra lo que observa y termina con
 `REPRODUCED` y el código 0 si reproduce el comportamiento del hallazgo, o con `NOT REPRODUCED` y el código 1 si no.
 La de H5 mide un coste, así que se ejecuta en modo optimizado: `cargo run --release -- h5`.
+[`repro/patches/`](repro/patches/) guarda los prototipos de las contribuciones posibles, como parches sobre el
+código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo y medirlo.
 
 ## Resumen
 
@@ -157,14 +159,22 @@ La de H5 mide un coste, así que se ejecuta en modo optimizado: `cargo run --rel
 - **Tipo**: Rendimiento
 - **Descripción y efecto**: la única forma de escribir en un árbol es `Tree::insert`, una entrada cada vez dentro
   de una transacción. No hay una carga masiva que construya el árbol de abajo arriba a partir de entradas ya
-  ordenadas, como `MDB_APPEND` en LMDB, ni un modo de añadir al final. Cada entrada baja por el árbol, las páginas
-  se dividen y los volcados reescriben páginas, aunque la entrada llegue en orden. Para el módulo, el generador
-  CanopyDB ordena los registros y los índices igual que el original, pero no puede aprovecharlo:
+  ordenadas, como `MDB_APPEND` en LMDB, ni un modo de añadir al final. Cada entrada baja desde la raíz por todos
+  los niveles del árbol, aunque llegue en orden. CanopyDB sí optimiza la división de una hoja llena cuando la clave
+  es mayor que todas las suyas (`node_split_right` en `src/tree.rs`, "Optimize for sequential inserts"): la hoja
+  queda llena y la clave va a una página nueva. Pero no optimiza el descenso, y los nodos rama se dividen por la
+  mitad. Para el módulo, el generador CanopyDB ordena los registros y los índices igual que el original, pero no
+  puede aprovecharlo:
   - el generador completo tarda 1 min 41 s en su mejor medida, frente a 65–75 s del original, que escribe sus
     SSTables de forma secuencial (aceptación del 2026-10-21, Run A);
   - la base ocupa 2.718.945.280 bytes, frente a 1,1 GB de las SSTables con Snappy;
   - solo la escritura de los seis árboles con el volumen del conjunto tardó 66,6 s en la prueba previa
-    (registro de la ejecución [`canopy-db-generador`](../../odd/tasks/canopy-db-generador.md), L3, L11 y L15).
+    (registro de la ejecución [`canopy-db-generador`](../../odd/tasks/canopy-db-generador.md), L3, L11 y L15);
+  - en un perfil del 2026-10-22 (la carga de la reproducción mínima con los límites de memoria del generador y
+    contadores de ciclos en una copia de CanopyDB), el 99,7 % del tiempo está dentro de `Tree::insert`: los
+    `commit` suman 0,1 s y el checkpoint final menos de 0,1 s, porque el volcado corre en otro hilo. El árbol
+    tiene cuatro niveles; en cada inserción, la hoja se lleva el 27–29 % del tiempo y el descenso por los tres
+    niveles de nodos rama, el resto.
 
   Las cifras no son de un banco controlado; las mide `canopy-db-comparacion`.
 - **Reproducción mínima**: `cargo run --release -- h5` en [`repro/`](repro/). Escribe con `Tree::insert`, en
@@ -180,10 +190,50 @@ La de H5 mide un coste, así que se ejecuta en modo optimizado: `cargo run --rel
   La misma carga tardó 66,6 s en la prueba previa: la variación entre ejecuciones no está controlada, y es otra
   razón para medirla en el banco. La ausencia de la API se ve en
   la documentación de `Tree` de CanopyDB 0.2.5: su único método de escritura de una entrada es `insert`.
-- **Posible contribución**: una API de carga masiva para un árbol vacío (o de añadido al final con claves
-  crecientes) que escriba las hojas llenas de forma secuencial y construya los niveles superiores después. El
-  generador CanopyDB la usaría sin cambiar su contrato, y el banco de comparación mediría la diferencia. Antes de
-  publicar un issue o un PR hace falta la aprobación del responsable del proyecto (decisión K4).
+- **Posible contribución**: dos, de menor a mayor alcance. El generador CanopyDB usaría cualquiera de ellas sin
+  cambiar su contrato, y el banco de comparación mediría la diferencia. Antes de publicar un issue o un PR hace
+  falta la aprobación del responsable del proyecto (decisión K4).
+  1. **Un camino rápido para añadir al final**, sin API nueva. El prototipo está en
+     [`repro/patches/h5-append-fast-path.patch`](repro/patches/h5-append-fast-path.patch) (142 líneas añadidas a
+     `src/tree.rs` y `src/lib.rs` de la 0.2.5). `Tree` recuerda su hoja de la derecha. Una clave mayor que la
+     última de esa hoja que cabe en ella se inserta directamente, sin bajar por los nodos rama. Si no cabe, o el
+     prefijo de la hoja no encaja, la inserción toma el camino normal y después se busca otra vez la hoja de la
+     derecha. Los borrados, `delete_range`, `clear` y la compactación olvidan la hoja. Una inserción que no es al
+     final desactiva el camino rápido hasta el final de la transacción. No se aplica a valores que van a páginas
+     aparte ni a las transacciones concurrentes. La variable de entorno `CANOPY_APPEND=0` lo desactiva, para
+     comparar con el mismo binario.
+     - Verificación del 2026-10-22, con el camino rápido activo:
+       - Los tests de CanopyDB pasan: 57 correctos, 0 fallidos y 1 ignorado, que ya lo estaba. El paquete publicado
+         no trae `assets/gh_events.json`, los datos de sus tests de compresión, así que se usó un JSON sintético.
+       - Una comparación aleatoria con un `BTreeMap` no encontró diferencias en 14 semillas. Mezcla inserciones al
+         final y en medio, sobrescrituras, borrados, `delete_range`, `clear`, rollbacks, valores grandes y
+         transacciones con 256 KiB de memoria, que obligan a volcar nodos.
+       - La carga completa de H5 se leyó de vuelta en orden.
+     - Medida con la reproducción mínima, tres pares alternados el 2026-10-22: 39,0 / 35,3 / 33,2 s sin el camino
+       rápido y 14,7 / 14,1 / 13,4 s con él, unas 2,5 veces más rápido. La base ocupa lo mismo (3.284.644.140
+       bytes): el camino rápido no reduce el tamaño. Para medirlo, desde la raíz del repositorio, en PowerShell:
+
+       ```powershell
+       $dir = Join-Path $env:TEMP h5-append   # a folder that does not exist yet
+       New-Item -ItemType Directory $dir | Out-Null
+       $canopy = Resolve-Path "$env:USERPROFILE\.cargo\registry\src\*\canopydb-0.2.5" | Select-Object -First 1
+       Copy-Item -Recurse $canopy.Path "$dir\canopydb"
+       New-Item -ItemType Directory "$dir\repro" | Out-Null
+       Copy-Item -Recurse docs\canopy-db\repro\Cargo.toml, docs\canopy-db\repro\Cargo.lock, docs\canopy-db\repro\src "$dir\repro"
+       git -C "$dir\canopydb" apply (Resolve-Path docs\canopy-db\repro\patches\h5-append-fast-path.patch).Path
+       Push-Location "$dir\repro"
+       $patch = "patch.crates-io.canopydb.path='$dir\canopydb'"
+       $env:CANOPY_APPEND = "0"; cargo run --release --quiet --config $patch -- h5
+       $env:CANOPY_APPEND = "1"; cargo run --release --quiet --config $patch -- h5
+       Remove-Item Env:CANOPY_APPEND
+       Pop-Location
+       ```
+
+       El código fuente de CanopyDB 0.2.5 está en el registro de Cargo después de compilar `repro/` una vez. La
+       medida trabaja sobre una copia de `repro/` porque enlazar la copia parcheada cambia su `Cargo.lock`.
+  2. **Una API de carga masiva** para un árbol vacío (o de añadido al final con claves crecientes) que escriba las
+     hojas llenas de forma secuencial y construya los niveles superiores después. Ganaría más que el camino rápido
+     y es la única de las dos que reduciría el tamaño de la base, porque también llenaría los nodos rama.
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
