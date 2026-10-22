@@ -1,0 +1,15 @@
+# Fixed query set of the CanopyDB module (PRD canopy-db-consultor, decision KC7): F1 to F11, one
+# batch line each, in this order. <número> stands for the first shared case number of the CSV (the
+# first case number that a later row repeats, the one the query acceptance uses for AC-C6): replace
+# it on the F2 line before running this file with --batch.
+--where ID=634 --format json
+--where "Case Number=<número>" --format json
+--where "Primary Type=THEFT" --count
+--where "Primary Type=RITUALISM" --count
+--range Date=2019-08-01..2019-08-31 --count
+--where "Primary Type=THEFT" --range Date=2005-01-01..2015-12-31 --count
+--where "Primary Type=THEFT" --where District=008 --count
+--where "Primary Type=THEFT" --range Date=2019-08-01..2019-08-31 --where Arrest=true --count
+--startswith "Case Number=JA" --count
+--where "Primary Type=THEFT" --limit 1000 --format csv
+--where "Primary Type=THEFT" --format csv

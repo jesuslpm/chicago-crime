@@ -70,6 +70,11 @@
     CSV is only read. Only the entries this script creates in -WorkDir are deleted when
     it starts.
 
+    run-canopy-query-acceptance.ps1 runs this same script with -CanopyDb for the CanopyDB query app
+    (PRD canopy-db-consultor): the CanopyDB binaries, canopy-* entries in -WorkDir, the changes of
+    that PRD to some rows and its own rows, which query-acceptance-canopy.ps1 holds. Without
+    -CanopyDb nothing of it runs.
+
 .PARAMETER WorkDir
     Folder for the datasets, the inputs, the outputs and the report. It needs about 5 GB free.
 
@@ -87,6 +92,13 @@
 .PARAMETER SkipBuild
     Use the release binaries already built.
 
+.PARAMETER CanopyDb
+    Check the CanopyDB query app instead (passed by run-canopy-query-acceptance.ps1; start that
+    script rather than passing it here).
+
+.PARAMETER NotMetFindings
+    With -CanopyDb, the checked -NotMetByCanopyDb associations, criterion -> finding.
+
 .EXAMPLE
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/acceptance/run-query-acceptance.ps1 -WorkDir C:\query-acceptance
 #>
@@ -97,7 +109,9 @@ param(
     [string]$Csv,
     [int]$SliceRows = 1000000,
     [int]$CtrlCTimeoutSeconds = 300,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$CanopyDb,
+    [hashtable]$NotMetFindings = @{}
 )
 
 Set-StrictMode -Version 2.0
@@ -110,6 +124,22 @@ $WorkDir = [System.IO.Path]::GetFullPath($WorkDir).TrimEnd('\')
 $GeneratorExe = Join-Path $RepoRoot 'target\release\crime-generator.exe'
 $QueryExe = Join-Path $RepoRoot 'target\release\crime-query.exe'
 $AcceptanceExe = Join-Path $RepoRoot 'target\release\crime-acceptance.exe'
+$VerifierExe = $AcceptanceExe
+$QueryName = 'crime-query'
+$VerifierName = 'crime-acceptance'
+# dataset.schema_version in the JSON output (decision C9; for CanopyDB, the text of KC6).
+$JsonSchemaVersion = 2
+# Every entry of -WorkDir is named <prefix><name>: canopy-<name> with -CanopyDb.
+$EntryPrefix = ''
+if ($CanopyDb) {
+    $GeneratorExe = Join-Path $RepoRoot 'target\release\crime-canopy-generator.exe'
+    $QueryExe = Join-Path $RepoRoot 'target\release\crime-canopy-query.exe'
+    $VerifierExe = Join-Path $RepoRoot 'target\release\crime-canopy-acceptance.exe'
+    $QueryName = 'crime-canopy-query'
+    $VerifierName = 'crime-canopy-acceptance'
+    $JsonSchemaVersion = 'canopydb-2'
+    $EntryPrefix = 'canopy-'
+}
 $CtrlCHelper = Join-Path $PSScriptRoot 'send-ctrl-c.ps1'
 . (Join-Path $PSScriptRoot 'reference-extract.ps1')
 $Invariant = [System.Globalization.CultureInfo]::InvariantCulture
@@ -415,6 +445,12 @@ function Format-Command([string]$Program, [string[]]$Arguments) {
 
 function Write-Utf8([string]$Path, [string]$Text) { [System.IO.File]::WriteAllText($Path, $Text, $Utf8) }
 
+# Names as "a, b and c".
+function Format-Packages([string[]]$Names) {
+    if ($Names.Count -le 1) { return ($Names -join '') }
+    (@($Names | Select-Object -First ($Names.Count - 1)) -join ', ') + ' and ' + $Names[-1]
+}
+
 # --- Files ---
 
 function Read-SharedText([string]$Path) {
@@ -512,10 +548,11 @@ function Invoke-Program([string]$FilePath, [string[]]$Arguments, [switch]$Sample
     Wait-Program (Start-Program -FilePath $FilePath -Arguments $Arguments) -SampleMemory:$SampleMemory
 }
 
-function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switch]$Overwrite) {
+# Runs the generator under test, or with -Exe another generator with the same options.
+function Invoke-Generator([string]$Source, [string]$Output, [string]$Log, [switch]$Overwrite, [string]$Exe = $GeneratorExe) {
     $arguments = @('--input', $Source, '--output', $Output, '--temp-dir', $TempDir, '--log', $Log)
     if ($Overwrite) { $arguments += '--overwrite' }
-    Invoke-Program -FilePath $GeneratorExe -Arguments $arguments
+    Invoke-Program -FilePath $Exe -Arguments $arguments
 }
 
 # Every query that succeeds alone on the full dataset, once per distinct command line, for AC-B1:
@@ -536,7 +573,7 @@ function Invoke-Query([string[]]$Arguments, [string]$Dataset = $DatasetDir, [swi
     $run
 }
 
-function Format-Query($Run) { Format-Command 'crime-query' ($Run.Arguments | Select-Object -Skip 2) }
+function Format-Query($Run) { Format-Command $QueryName ($Run.Arguments | Select-Object -Skip 2) }
 
 # The stats line of a completed query (decision C5), or $null.
 function Get-Stats([string]$Stderr) {
@@ -707,14 +744,18 @@ function Test-Formats([string]$Label, [string[]]$Arguments, [string[]]$ExpectedW
 # must be seen holding more bytes than the header line. A run that fails when it opens the
 # dataset never creates that file, and one that fails before its first record writes the header
 # line at most. The run gets the properties TemporaryName, TemporaryBytes and WroteRecords.
-function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir, [string]$AfterWriting, [string]$Criterion = 'AC-C10') {
+#
+# With -EngineDetail (an engine error of the CanopyDB query app, KC5), the message must follow one
+# "Detalle del error de CanopyDB: ..." line.
+function Test-Rejection([string]$Row, [string[]]$Arguments, [string]$Message, [int]$ExitCode, [string]$Dataset = $DatasetDir, [string]$AfterWriting, [string]$Criterion = 'AC-C10', [switch]$EngineDetail) {
     $watch = $null
     if ($AfterWriting) {
         $watch = New-Object TemporaryOutputWatch -ArgumentList (Split-Path -Parent $AfterWriting), ('*' + $TemporarySuffix)
     }
     $run = Invoke-Query -Arguments $Arguments -Dataset $Dataset
     $lines = @(Get-Lines $run.Stderr)
-    $ok = $run.ExitCode -eq $ExitCode -and $lines.Count -eq 1 -and $lines[0] -ceq $Message -and $run.Stdout -eq ''
+    $linesOk = if ($EngineDetail) { Test-EngineErrorLines $lines $Message } else { $lines.Count -eq 1 -and $lines[0] -ceq $Message }
+    $ok = $run.ExitCode -eq $ExitCode -and $linesOk -and $run.Stdout -eq ''
     $evidence = '`{0}`: exit {1} (C6: {2}); stderr "{3}"; stdout empty: {4}' -f `
         (Format-Query $run), $run.ExitCode, $ExitCode, ($lines -join ' / '), ($run.Stdout -eq '')
     if ($watch) {
@@ -892,6 +933,12 @@ function Test-BatchRejection([string]$Criterion, [string]$Row, [string]$BatchFil
             (Format-Query $run), $linesText, $run.ExitCode, $ExitCode, ($stderrLines -join ' / ').Replace($WorkDir, '<work>'), ($run.Stdout -eq ''), $(if ($after) { $after } else { 'empty' }), ($after -ceq $before))
 }
 
+# The CanopyDB part (PRD canopy-db-consultor): the NOT MET rule and the CanopyDB checks.
+if ($CanopyDb) {
+    . (Join-Path $PSScriptRoot 'query-acceptance-notmet.ps1')
+    . (Join-Path $PSScriptRoot 'query-acceptance-canopy.ps1')
+}
+
 # --- Preparation ---
 
 $started = Get-Date
@@ -899,37 +946,42 @@ foreach ($path in @($Csv, $CtrlCHelper)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing file: $path" }
 }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
-$DatasetDir = Join-Path $WorkDir 'full'
+$DatasetDir = Join-Path $WorkDir ($EntryPrefix + 'full')
 # The folder earlier versions of this script gave the full dataset; it is only cleaned.
-$LegacyDatasetDir = Join-Path $WorkDir 'reference'
-$SmallDir = Join-Path $WorkDir 'small'
-$Schema1Dir = Join-Path $WorkDir 'schema1'
-$DamagedDir = Join-Path $WorkDir 'damaged'
-$SwapDir = Join-Path $WorkDir 'swap'
+$LegacyDatasetDir = Join-Path $WorkDir ($EntryPrefix + 'reference')
+$SmallDir = Join-Path $WorkDir ($EntryPrefix + 'small')
+$Schema1Dir = Join-Path $WorkDir ($EntryPrefix + 'schema1')
+$DamagedDir = Join-Path $WorkDir ($EntryPrefix + 'damaged')
+$SwapDir = Join-Path $WorkDir ($EntryPrefix + 'swap')
 # A copy of the swap dataset that AC-B2 republishes while a batch holds it open.
-$BatchSwapDir = Join-Path $WorkDir 'batch-swap'
-$EmptyDir = Join-Path $WorkDir 'no-dataset'
-$IncompleteDir = Join-Path $WorkDir 'incomplete'
-$TempDir = Join-Path $WorkDir 'temp'
-$LogDir = Join-Path $WorkDir 'logs'
-$InputDir = Join-Path $WorkDir 'inputs'
-$OutDir = Join-Path $WorkDir 'outputs'
-$ReportPath = Join-Path $WorkDir 'query-acceptance-report.md'
+$BatchSwapDir = Join-Path $WorkDir ($EntryPrefix + 'batch-swap')
+$EmptyDir = Join-Path $WorkDir ($EntryPrefix + 'no-dataset')
+$IncompleteDir = Join-Path $WorkDir ($EntryPrefix + 'incomplete')
+$TempDir = Join-Path $WorkDir ($EntryPrefix + 'temp')
+$LogDir = Join-Path $WorkDir ($EntryPrefix + 'logs')
+$InputDir = Join-Path $WorkDir ($EntryPrefix + 'inputs')
+$OutDir = Join-Path $WorkDir ($EntryPrefix + 'outputs')
+$ReportPath = Join-Path $WorkDir ($EntryPrefix + 'query-acceptance-report.md')
+$cleaned = @($DatasetDir, $LegacyDatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $BatchSwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)
+if ($CanopyDb) { $cleaned += $CanopyEntries }
 Write-Step "Cleaning the entries of a previous query acceptance in $WorkDir"
-foreach ($path in @($DatasetDir, $LegacyDatasetDir, $SmallDir, $Schema1Dir, $DamagedDir, $SwapDir, $BatchSwapDir, $EmptyDir, $IncompleteDir, $TempDir, $LogDir, $InputDir, $OutDir, $ReportPath)) {
+foreach ($path in $cleaned) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
 }
 foreach ($dir in @($TempDir, $LogDir, $InputDir, $OutDir, $EmptyDir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
 
+$requiredGb = if ($CanopyDb) { $CanopyRequiredGb } else { 5 }
 $freeBytes = (Get-Item -LiteralPath $WorkDir).PSDrive.Free
-if ($freeBytes -lt 5GB) { throw ('Only {0} free in {1}; about 5 GB are needed.' -f (Format-Mib $freeBytes), $WorkDir) }
+if ($freeBytes -lt $requiredGb * 1GB) { throw ('Only {0} free in {1}; about {2} GB are needed.' -f (Format-Mib $freeBytes), $WorkDir, $requiredGb) }
 
 if (-not $SkipBuild) {
-    Write-Step 'Building crime-generator, crime-query and crime-acceptance in release mode'
+    $packages = if ($CanopyDb) { $CanopyPackages } else { @('crime-generator', 'crime-query', 'crime-acceptance') }
+    Write-Step ('Building {0} in release mode' -f (Format-Packages $packages))
     $cargo = (Get-Command cargo).Source
-    $build = Invoke-Program -FilePath $cargo -Arguments @('build', '--release', '-p', 'crime-generator', '-p', 'crime-query', '-p', 'crime-acceptance')
+    $build = Invoke-Program -FilePath $cargo -Arguments (@('build', '--release') + @($packages | ForEach-Object { '-p'; $_ }))
     if ($build.ExitCode -ne 0) { throw "cargo build failed:`n$($build.Stderr)" }
 }
+if ($CanopyDb) { Assert-CanopyBinaries }
 
 $git = Get-Command git -ErrorAction SilentlyContinue
 $commit = 'unknown'
@@ -949,6 +1001,8 @@ Write-Step "Generating the full dataset into $DatasetDir"
 $generation = Invoke-Generator -Source $Csv -Output $DatasetDir -Log (Join-Path $LogDir 'full.log')
 if ($generation.ExitCode -ne 0) { throw "The generator failed (exit $($generation.ExitCode)):`n$($generation.Stderr)" }
 $current = Get-CurrentName $DatasetDir
+# AC-M6's copy, before anything opens the base, and the SSTable dataset of the same CSV.
+if ($CanopyDb) { Initialize-CanopyFullDatasets }
 $manifest = Get-Content -LiteralPath (Join-Path (Join-Path $DatasetDir $current) 'manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Write-Step ('Full dataset {0}: schema {1}, {2} records, {3}' -f $current, $manifest.schema_version, (Format-Count $manifest.records.valid), (Format-Seconds $generation.WallSeconds))
 $SourceSha256 = [string]$manifest.source.sha256
@@ -989,17 +1043,22 @@ foreach ($pair in @(@($SmallCsv, $SmallDir, 'small'), @($Slice1, $SwapDir, 'swap
     $run = Invoke-Generator -Source $pair[0] -Output $pair[1] -Log (Join-Path $LogDir "$($pair[2]).log")
     if ($run.ExitCode -ne 0) { throw "The generator failed on $($pair[0]):`n$($run.Stderr)" }
 }
+# The small SSTable datasets of schema 2 and 1 (AC-C18, AC-KC2).
+if ($CanopyDb) { Initialize-CanopySmallDatasets }
 
 # A schema-1 copy and a damaged copy of the small dataset, and an incomplete folder whose CURRENT
-# names a version folder that is not there.
+# names a version folder that is not there. For CanopyDB the schema-1 copy has "canopydb-1", and
+# the damaged file is the largest file of the base.
 $schema1Version = Copy-Dataset $SmallDir $Schema1Dir
 $schema1Manifest = Join-Path $schema1Version 'manifest.json'
 $manifestText = [System.IO.File]::ReadAllText($schema1Manifest, $Utf8)
-$editedManifest = [regex]::Replace($manifestText, '"schema_version":\s*2', '"schema_version": 1')
-if ($editedManifest -eq $manifestText) { throw 'The manifest has no "schema_version": 2 to edit.' }
+$schemaEdit = if ($CanopyDb) { @('"schema_version":\s*"canopydb-2"', '"schema_version": "canopydb-1"', '"schema_version": "canopydb-2"') } else { @('"schema_version":\s*2', '"schema_version": 1', '"schema_version": 2') }
+$editedManifest = [regex]::Replace($manifestText, $schemaEdit[0], $schemaEdit[1])
+if ($editedManifest -eq $manifestText) { throw "The manifest has no $($schemaEdit[2]) to edit." }
 Write-Utf8 $schema1Manifest $editedManifest
 $damagedVersion = Copy-Dataset $SmallDir $DamagedDir
-$damagedPrimary = Join-Path $damagedVersion 'primary.sst'
+$damagedPrimary = if ($CanopyDb) { Get-CanopyDataFile $damagedVersion } else { Join-Path $damagedVersion 'primary.sst' }
+$damagedName = $damagedPrimary.Substring($damagedVersion.Length + 1).Replace('\', '/')
 $primaryLength = (Get-Item -LiteralPath $damagedPrimary).Length
 $damageOffset = [long][math]::Floor($primaryLength / 2)
 $stream = [System.IO.File]::Open($damagedPrimary, 'Open', 'ReadWrite')
@@ -1026,56 +1085,76 @@ Write-Step "First case number repeated in the CSV: $sharedCase"
 
 Write-Step 'AC-C7: an existing ID, five runs'
 $idRuns = @(1..5 | ForEach-Object { Invoke-Query -Arguments @('--where', "ID=$lastId") })
-$idOk = @($idRuns | Where-Object { $_.ExitCode -ne 0 -or $_.WallSeconds -ge 1.0 -or @(Get-Lines $_.Stdout).Count -ne 3 }).Count -eq 0
-Add-Result 'AC-C7' $idOk ('`crime-query --where ID={0}` (table), whole process wall time per run, the first right after the generation: {1}; each run exit 0 with one record; limit 1 s' -f `
-        $lastId, (($idRuns | ForEach-Object { Format-Millis $_.WallSeconds }) -join ', '))
+$idRunsOk = @($idRuns | Where-Object { $_.ExitCode -ne 0 -or @(Get-Lines $_.Stdout).Count -ne 3 }).Count -eq 0
+$idTimeOk = @($idRuns | Where-Object { $_.WallSeconds -ge 1.0 }).Count -eq 0
+$idEvidence = '`{2} --where ID={0}` (table), whole process wall time per run, the first right after the generation: {1}; each run exit 0 with one record; limit 1 s' -f `
+    $lastId, (($idRuns | ForEach-Object { Format-Millis $_.WallSeconds }) -join ', '), $QueryName
+# For CanopyDB, NOT MET when associated and only the time fails (decision KC8).
+if ($CanopyDb) { Add-AssociableResult 'AC-C7' 'AC-C7' (Get-AssociatedOutcome 'AC-C7' $idRunsOk $idTimeOk $NotMetFindings) $idEvidence }
+else { Add-Result 'AC-C7' ($idRunsOk -and $idTimeOk) $idEvidence }
 
 # --- AC-C13: memory does not grow with the result ---
 
-Write-Step 'AC-C13: peak private memory of three counts and of two record listings'
-$memoryRuns = [ordered]@{
-    'count THEFT'                         = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--count') -SampleMemory
-    "count $RareType"                     = Invoke-Query -Arguments @('--where', "Primary Type=$RareType", '--count') -SampleMemory
-    'count THEFT, 2005-2015'              = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--range', 'Date=2005-01-01..2015-12-31', '--count') -SampleMemory
-}
-$listingRuns = [ordered]@{
-    'CSV file of THEFT'                   = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--format', 'csv', '--output', (Join-Path $OutDir 'memory-theft.csv')) -SampleMemory
-    "CSV file of $RareType"               = Invoke-Query -Arguments @('--where', "Primary Type=$RareType", '--format', 'csv', '--output', (Join-Path $OutDir 'memory-rare.csv')) -SampleMemory
-}
 $memoryRows = New-Object System.Collections.Generic.List[string]
-function Test-MemoryGroup([string]$Label, $Runs, [string]$Criterion = 'AC-C13') {
+# The peaks of a group of runs, one row of the memory table each: whether every run exited with 0
+# and was sampled, the largest/smallest ratio and the text of each run. A run with a ResultCount
+# property (a batch) shows that number of results instead of its stats line's.
+function Get-MemoryGroup($Runs) {
     $peaks = @($Runs.Values | ForEach-Object { $_.PeakBytes })
     $min = ($peaks | Measure-Object -Minimum).Minimum
     $max = ($peaks | Measure-Object -Maximum).Maximum
     $allOk = @($Runs.Values | Where-Object { $_.ExitCode -ne 0 -or $_.PeakBytes -le 0 }).Count -eq 0
     $parts = foreach ($name in $Runs.Keys) {
         $run = $Runs[$name]
-        $stats = Get-Stats $run.Stderr
-        $resultCount = if ($stats) { $stats.Count } else { -1 }
+        $counted = $run.PSObject.Properties['ResultCount']
+        $stats = if ($counted) { $null } else { Get-Stats $run.Stderr }
+        $resultCount = if ($counted) { $counted.Value } elseif ($stats) { $stats.Count } else { -1 }
         $memoryRows.Add(('| {0} | {1} | {2} | {3} ({4} bytes) | {5} |' -f $name, $run.ExitCode, (Format-Count $resultCount), (Format-Mib $run.PeakBytes), (Format-Count $run.PeakBytes), (Format-Seconds $run.WallSeconds)))
         '{0}: {1} results, {2}' -f $name, (Format-Count $resultCount), (Format-Mib $run.PeakBytes)
     }
     $ratio = if ($min -gt 0) { $max / $min } else { [double]::PositiveInfinity }
-    Add-Result "$Criterion ($Label)" ($allOk -and $ratio -le $MemoryRatioLimit) ('{0}; largest/smallest peak = {1} (rule: at most {2}, same order whatever the number of results; the query app shares a block cache bounded to 2,048 blocks, about 8 MiB)' -f `
-            ($parts -join '; '), (Format-Invariant '{0:N2}' @($ratio)), $MemoryRatioLimit)
+    [pscustomobject]@{ AllOk = $allOk; Ratio = $ratio; Parts = @($parts) }
 }
-Test-MemoryGroup 'counts' $memoryRuns
-Test-MemoryGroup 'records written' $listingRuns
+function Test-MemoryGroup([string]$Label, $Runs, [string]$Criterion = 'AC-C13') {
+    $group = Get-MemoryGroup $Runs
+    Add-Result "$Criterion ($Label)" ($group.AllOk -and $group.Ratio -le $MemoryRatioLimit) ('{0}; largest/smallest peak = {1} (rule: at most {2}, same order whatever the number of results; the query app shares a block cache bounded to 2,048 blocks, about 8 MiB)' -f `
+            ($group.Parts -join '; '), (Format-Invariant '{0:N2}' @($group.Ratio)), $MemoryRatioLimit)
+}
+# For CanopyDB, AC-C13 becomes AC-M8: F3, F4 and the fixed set in a batch with each query app, classified
+# once the selects give the expected counts.
+if ($CanopyDb) { Invoke-FixedMemoryRuns }
+else {
+    Write-Step 'AC-C13: peak private memory of three counts and of two record listings'
+    $memoryRuns = [ordered]@{
+        'count THEFT'                         = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--count') -SampleMemory
+        "count $RareType"                     = Invoke-Query -Arguments @('--where', "Primary Type=$RareType", '--count') -SampleMemory
+        'count THEFT, 2005-2015'              = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--range', 'Date=2005-01-01..2015-12-31', '--count') -SampleMemory
+    }
+    $listingRuns = [ordered]@{
+        'CSV file of THEFT'                   = Invoke-Query -Arguments @('--where', 'Primary Type=THEFT', '--format', 'csv', '--output', (Join-Path $OutDir 'memory-theft.csv')) -SampleMemory
+        "CSV file of $RareType"               = Invoke-Query -Arguments @('--where', "Primary Type=$RareType", '--format', 'csv', '--output', (Join-Path $OutDir 'memory-rare.csv')) -SampleMemory
+    }
+    Test-MemoryGroup 'counts' $memoryRuns
+    Test-MemoryGroup 'records written' $listingRuns
+}
 # AC-S8: a prefix that spans 5.761.892 case numbers against one that spans a single one.
 $prefixMemoryRuns = [ordered]@{
     'count Case Number starts with H'        = Invoke-Query -Arguments @('--startswith', 'Case Number=H', '--count') -SampleMemory
     'count Case Number starts with JK438266' = Invoke-Query -Arguments @('--startswith', 'Case Number=JK438266', '--count') -SampleMemory
 }
-Test-MemoryGroup 'Case Number prefixes' $prefixMemoryRuns -Criterion 'AC-S8'
-Add-Section (@(
-        '## AC-C13 and AC-S8: peak private memory'
-        ''
-        'Peak private committed bytes (PeakPagefileUsage, the counter behind PeakPagedMemorySize64), sampled every 10 ms and read again after the exit.'
-        ''
-        '| Query | Exit | Results | Peak private memory | Wall time |'
-        '|---|---|---|---|---|'
-        $memoryRows
-    ) -join "`n")
+# For CanopyDB the row and the memory section come once the selects give the expected counts.
+if (-not $CanopyDb) {
+    Test-MemoryGroup 'Case Number prefixes' $prefixMemoryRuns -Criterion 'AC-S8'
+    Add-Section (@(
+            '## AC-C13 and AC-S8: peak private memory'
+            ''
+            'Peak private committed bytes (PeakPagefileUsage, the counter behind PeakPagedMemorySize64), sampled every 10 ms and read again after the exit.'
+            ''
+            '| Query | Exit | Results | Peak private memory | Wall time |'
+            '|---|---|---|---|---|'
+            $memoryRows
+        ) -join "`n")
+}
 
 # --- The independent counts (in the background while the query-only checks run) ---
 
@@ -1116,9 +1195,12 @@ Start-Select 'prefix-district-8' @('--startswith', 'District=8')
 Start-Select 'prefix-district-00' @('--startswith', 'District=00')
 Start-Select 'prefix-case-h' @('--startswith', 'Case Number=H')
 Start-Select 'prefix-crim-day' @('--startswith', 'Primary Type=CRIM', '--range', $Day, '--rows-out', $CrimDayRows)
+# The expected counts of the fixed query set and of AC-S8's second prefix.
+if ($CanopyDb) { Start-CanopySelects }
 $verifierArguments = @('--csv', $Csv, '--dataset', $DatasetDir)
 if ($IsReference) { $verifierArguments += '--reference' }
-$verifierStarted = Start-Program -FilePath $AcceptanceExe -Arguments $verifierArguments
+# CanopyDB lets one process open a base at a time: its verifier runs at AC-C18, when no query runs.
+$verifierStarted = if ($CanopyDb) { $null } else { Start-Program -FilePath $VerifierExe -Arguments $verifierArguments }
 
 # --- AC-C10: every validation of the parent and child query tables ---
 
@@ -1170,20 +1252,27 @@ Test-Rejection 'child: output file that is a folder' @('--where', 'ID=634', '--f
 $damagedOut = Join-Path $OutDir 'damaged'
 New-Item -ItemType Directory -Path $damagedOut | Out-Null
 $damagedTarget = Join-Path $damagedOut 'result.csv'
-$damaged = Test-Rejection 'child: the version becomes unreadable mid-query (output file)' @('--range', $Everything, '--format', 'csv', '--output', $damagedTarget) (Get-UnreadableMessage $DamagedDir) 1 $DamagedDir -AfterWriting $damagedTarget
+$damaged = Test-Rejection 'child: the version becomes unreadable mid-query (output file)' @('--range', $Everything, '--format', 'csv', '--output', $damagedTarget) (Get-UnreadableMessage $DamagedDir) 1 $DamagedDir -AfterWriting $damagedTarget -EngineDetail:$CanopyDb
 $damagedEntries = @(Get-EntryNames $damagedOut)
 $damagedStdout = Invoke-Query -Arguments @('--range', $Everything, '--format', 'csv') -Dataset $DamagedDir
 $damagedStdoutLines = @(Get-Lines $damagedStdout.Stderr)
 $damagedStdoutRows = @(Get-Lines $damagedStdout.Stdout)
 $damagedStdoutWrote = $damagedStdoutRows.Count -ge 2 -and $damagedStdoutRows[0] -ceq $Header
-Add-Result 'AC-C10 child: the version becomes unreadable mid-query (stdout)' ($damagedStdout.ExitCode -eq 1 -and $damagedStdoutLines.Count -eq 1 -and $damagedStdoutLines[0] -ceq (Get-UnreadableMessage $DamagedDir) -and -not (Get-Stats $damagedStdout.Stderr) -and $damagedStdoutWrote) `
-('`{0}` on a copy of the small dataset with 4 KiB overwritten at byte {1} of primary.sst ({2} bytes): exit {3}; stderr "{4}"; {5} CSV lines reached stdout before the abort, the header first and then records: {6}; no stats line' -f `
-        (Format-Query $damagedStdout), (Format-Count $damageOffset), (Format-Count $primaryLength), $damagedStdout.ExitCode, ($damagedStdoutLines -join ' / '), $damagedStdoutRows.Count, $damagedStdoutWrote)
+# For CanopyDB the message follows the engine's detail line (KC5).
+$damagedStdoutLinesOk = if ($CanopyDb) { Test-EngineErrorLines $damagedStdoutLines (Get-UnreadableMessage $DamagedDir) }
+else { $damagedStdoutLines.Count -eq 1 -and $damagedStdoutLines[0] -ceq (Get-UnreadableMessage $DamagedDir) }
+Add-Result 'AC-C10 child: the version becomes unreadable mid-query (stdout)' ($damagedStdout.ExitCode -eq 1 -and $damagedStdoutLinesOk -and -not (Get-Stats $damagedStdout.Stderr) -and $damagedStdoutWrote) `
+('`{0}` on a copy of the small dataset with 4 KiB overwritten at byte {1} of {7} ({2} bytes): exit {3}; stderr "{4}"; {5} CSV lines reached stdout before the abort, the header first and then records: {6}; no stats line' -f `
+        (Format-Query $damagedStdout), (Format-Count $damageOffset), (Format-Count $primaryLength), $damagedStdout.ExitCode, ($damagedStdoutLines -join ' / '), $damagedStdoutRows.Count, $damagedStdoutWrote, $damagedName)
 
 # --- AC-C18 (second half): a schema-1 dataset is rejected ---
 
-Add-Result 'AC-C18 (schema 1)' ($schemaRun.ExitCode -eq 1 -and @(Get-Lines $schemaRun.Stderr)[0] -ceq $Messages.Schema) `
-('a copy of a generated dataset with "schema_version": 1 in its manifest: exit {0}; stderr "{1}"' -f $schemaRun.ExitCode, $schemaRun.Stderr.Trim())
+# For CanopyDB, an SSTable dataset of schema 2 is rejected instead (PRD canopy-db-consultor, AC-KC1).
+if ($CanopyDb) { Test-Rejection '(SSTable dataset of schema 2)' @('--where', 'ID=634') (Get-NotFoundMessage $SmallSstDir) 1 $SmallSstDir -Criterion 'AC-C18' | Out-Null }
+else {
+    Add-Result 'AC-C18 (schema 1)' ($schemaRun.ExitCode -eq 1 -and @(Get-Lines $schemaRun.Stderr)[0] -ceq $Messages.Schema) `
+    ('a copy of a generated dataset with "schema_version": 1 in its manifest: exit {0}; stderr "{1}"' -f $schemaRun.ExitCode, $schemaRun.Stderr.Trim())
+}
 
 # --- AC-C15: a rejected or failing query leaves no file with the requested name ---
 
@@ -1240,7 +1329,7 @@ $ctrlCOk = $ctrlC.RunningWhenSent -and $ctrlC.Sent -and $null -ne $ctrlC.Observe
     -and $ctrlCErrLines.Count -eq 1 -and $ctrlCErrLines[0] -ceq $Messages.Cancelled -and $ctrlCEntries.Count -eq 0 `
     -and [System.IO.File]::ReadAllText($ctrlCStdout, $Utf8) -eq ''
 Add-Result 'AC-C10 child: Ctrl+C (output file)' $ctrlCOk ('`{0}` in a console of its own; Ctrl+C sent at {1} s once {2}, while running: {3}; exit {4} after {5} s; stderr "{6}"; the target folder holds afterwards: {7}' -f `
-        (Format-Command 'crime-query' ($ctrlCArguments | Select-Object -Skip 2)), $ctrlC.SentAtSeconds, $(if ($ctrlC.Observed) { $ctrlC.Observed } else { 'the timeout passed (FAIL)' }), `
+        (Format-Command $QueryName ($ctrlCArguments | Select-Object -Skip 2)), $ctrlC.SentAtSeconds, $(if ($ctrlC.Observed) { $ctrlC.Observed } else { 'the timeout passed (FAIL)' }), `
         $ctrlC.RunningWhenSent, $ctrlC.ExitCode, $ctrlC.SecondsToExit, ($ctrlCErrLines -join ' / '), $(if ($ctrlCEntries.Count -eq 0) { 'nothing' } else { $ctrlCEntries -join ', ' }))
 
 # --- The selects are needed from here on ---
@@ -1339,7 +1428,7 @@ if ($null -ne $document) {
     $interval = @(if ($dateCondition.Count -eq 1) { $dateCondition[0].intervals })
     $c16Ok = $jsonRun.ExitCode -eq 0 -and $typeCondition.Count -eq 1 -and (@($typeCondition[0].values) -join ',') -eq 'theft' `
         -and $interval.Count -eq 1 -and $interval[0].from -eq '2019-08-01T00:00:00' -and $interval[0].to -eq '2019-08-31T23:59:59' `
-        -and $document.dataset.version -eq $current -and $document.dataset.schema_version -eq 2 -and @($document.results).Count -eq (Get-SelectCount 'theft-month')
+        -and $document.dataset.version -eq $current -and $document.dataset.schema_version -eq $JsonSchemaVersion -and @($document.results).Count -eq (Get-SelectCount 'theft-month')
     $c16Text = 'query {0}; dataset {1}; {2} results (select: {3}); CURRENT names {4}' -f `
     ($document.query | ConvertTo-Json -Depth 6 -Compress), ($document.dataset | ConvertTo-Json -Compress), @($document.results).Count, (Get-SelectCount 'theft-month'), $current
 }
@@ -1443,9 +1532,9 @@ $afterRun = Invoke-Query -Dataset $SwapDir -Arguments @('--range', $Everything, 
 $afterDiff = if ($afterRun.ExitCode -eq 0) { [QueryAcceptance]::CompareRowSets($afterFile, $Slice2Rows, $ByValue) } else { 'the query failed' }
 $switched = $publish.ExitCode -eq 0 -and $v2Name -ne $v1Name
 Add-Result 'AC-C12 (query in flight)' ($switched -and $v1Gone -and $runningAtPublish -and $runningAfterPublish -and $swapDone.ExitCode -eq 0 -and $null -eq $duringDiff) `
-('`crime-query --dataset swap --range "{0}" --format csv` on version 1 ({1}, {2} rows of slice 1) held after its first 1,000 rows; generator --overwrite with slice 2 exit {3}, CURRENT {1} -> {4}, old version folder gone: {5}; query still running when the generator ended: {6}; then exit {7}, {8} rows, equal to select on slice 1 ({9}) {11} in any order: {10}' -f `
+('`{12} --dataset {13}swap --range "{0}" --format csv` on version 1 ({1}, {2} rows of slice 1) held after its first 1,000 rows; generator --overwrite with slice 2 exit {3}, CURRENT {1} -> {4}, old version folder gone: {5}; query still running when the generator ended: {6}; then exit {7}, {8} rows, equal to select on slice 1 ({9}) {11} in any order: {10}' -f `
         $Everything, $v1Name, (Format-Count $slice1Count), $publish.ExitCode, $v2Name, $v1Gone, $runningAfterPublish, $swapDone.ExitCode, $(if ($duringStats) { Format-Count $duringStats.Count } else { '-' }), `
-    (Format-Count (Get-SelectCount 'slice-1')), $(if ($null -eq $duringDiff) { 'yes' } else { $duringDiff }), $RowMatchText)
+    (Format-Count (Get-SelectCount 'slice-1')), $(if ($null -eq $duringDiff) { 'yes' } else { $duringDiff }), $RowMatchText, $QueryName, $EntryPrefix)
 Add-Result 'AC-C12 (next query)' ($switched -and $afterRun.ExitCode -eq 0 -and $null -eq $afterDiff) `
 ('a new query afterwards: exit {0}, equal to select on slice 2 ({1} rows) {3} in any order: {2}' -f `
         $afterRun.ExitCode, (Format-Count (Get-SelectCount 'slice-2')), $(if ($null -eq $afterDiff) { 'yes' } else { $afterDiff }), $RowMatchText)
@@ -1546,6 +1635,8 @@ $hCount = Get-QueryCount $hRun
 $hFixedText = if ($CaseHFigure -ge 0) { '; PRD figure {0}' -f (Format-Count $CaseHFigure) } else { '' }
 Add-Result 'AC-S8 (count of H)' ($hCount -ge 0 -and $hCount -eq (Get-SelectCount 'prefix-case-h') -and ($CaseHFigure -lt 0 -or $hCount -eq $CaseHFigure)) `
 ('`{0}`: {1}; select on the CSV: {2}{3}' -f (Format-Query $hRun), (Format-Count $hCount), (Format-Count (Get-SelectCount 'prefix-case-h')), $hFixedText)
+# For CanopyDB, the memory row now that the selects give the expected counts (NOT MET, KC8).
+if ($CanopyDb) { Add-PrefixMemoryRow }
 
 # AC-S9: table, CSV and JSON hold the same records; the JSON holds the prefix in lowercase.
 $crimDayArgs = @('--startswith', 'Primary Type=CRIM', '--range', $Day)
@@ -1708,7 +1799,7 @@ for ($i = 0; $i -lt $b1Entries.Count; $i++) {
     }
     $group = if ($entry.Kind -eq 'count') { 'counts' } elseif ($entry.Kind -eq 'table') { 'tables' } else { 'files' }
     foreach ($problem in $own) { $b1Problems[$group].Add(('line {0}: {1}' -f $entry.Line, $problem)) }
-    $b1Rows.Add(('| {0} | `{1}` | {2} | {3} | {4} |' -f $entry.Line, (Format-Command 'crime-query' $entry.Arguments).Replace('|', '\|'), $aloneText, $batchText, $(if ($own.Count -eq 0) { 'same' } else { ($own -join '; ').Replace('|', '\|') })))
+    $b1Rows.Add(('| {0} | `{1}` | {2} | {3} | {4} |' -f $entry.Line, (Format-Command $QueryName $entry.Arguments).Replace('|', '\|'), $aloneText, $batchText, $(if ($own.Count -eq 0) { 'same' } else { ($own -join '; ').Replace('|', '\|') })))
 }
 $b1Expected = @($b1Files | ForEach-Object { Split-Path -Leaf $_.Output } | Sort-Object) -join ', '
 $b1Found = @(Get-EntryNames $b1Out) -join ', '
@@ -1855,8 +1946,8 @@ for ($i = 0; $i -lt $b2Queries.Count; $i++) {
 if (-not $b2Differs) { $b2Problems.Add('no query answers differently on the two versions, so the check cannot tell them apart') }
 $b2Switched = $b2Publish.ExitCode -eq 0 -and $b2New -ne $b2Old
 Add-Result 'AC-B2 (batch held while a new version is published)' ($b2Switched -and $b2OldGone -and $b2RunningAtPublish -and $b2RunningAfterPublish -and $b2Done.ExitCode -eq 0) `
-('`crime-query --dataset batch-swap --batch {0}` on a copy of the swap dataset (version {1}, slice 2), held after the count of its first query and 1,000 rows of its second; generator --overwrite with slice 1 exit {2}, CURRENT {1} -> {3}, old version folder gone: {4}; batch still running at the publication: {5}, and when the generator ended: {6}; then exit {7}; batch lines {8}' -f `
-        (Split-Path -Leaf $b2File), $b2Old, $b2Publish.ExitCode, $b2New, $b2OldGone, $b2RunningAtPublish, $b2RunningAfterPublish, $b2Done.ExitCode, (Format-BatchLines $b2Lines))
+('`{9} --dataset {10}batch-swap --batch {0}` on a copy of the swap dataset (version {1}, slice 2), held after the count of its first query and 1,000 rows of its second; generator --overwrite with slice 1 exit {2}, CURRENT {1} -> {3}, old version folder gone: {4}; batch still running at the publication: {5}, and when the generator ended: {6}; then exit {7}; batch lines {8}' -f `
+        (Split-Path -Leaf $b2File), $b2Old, $b2Publish.ExitCode, $b2New, $b2OldGone, $b2RunningAtPublish, $b2RunningAfterPublish, $b2Done.ExitCode, (Format-BatchLines $b2Lines), $QueryName, $EntryPrefix)
 Add-Result 'AC-B2 (every query reads the opened version)' ($b2Done.ExitCode -eq 0 -and $b2Problems.Count -eq 0) ('query 1 (count) {0}; query 2 (stdout) equals select on slice 2 ({1} rows) {2} in any order: {3}; queries 3 and 4 hold the IDs of the same query alone before the publication; query 5 (count) {4}; every query has the warnings and stats of its run alone on the opened version, the headers and the final line; ID {5} (slice 2) and ID {6} (slice 1) tell the versions apart: {7}{8}' -f `
         $b2FirstCount, (Format-Count (Get-SelectCount 'slice-2')), $RowMatchText, $(if ($null -eq $b2CsvDiff) { 'yes' } else { $b2CsvDiff }), $b2LastCount, $slice2Id, $slice1Id, $b2Differs, (Format-Problems $b2Problems))
 Add-Result 'AC-B2 (JSON version)' ($b2VersionOk -and $b2Versions.Count -eq 2 -and $b2Switched) ('the dataset.version member of each JSON output of the batch names the version it opened ({0}): {1}' -f $b2Old, ($b2Versions -join '; '))
@@ -1911,13 +2002,14 @@ $b8NoFinal = @($b8ErrLines | Where-Object { $_ -match $BatchCompletedPattern }).
 $b8Ok = $b8.RunningWhenSent -and $b8.Sent -and $b8DuringSecond -and $b8.ExitCode -eq 130 -and $b8Stderr -and $b8NoFinal `
     -and ($b8Entries -join ',') -ceq 'first.csv' -and $b8FirstSame -and [System.IO.File]::ReadAllText($b8StdoutFile, $Utf8) -eq ''
 Add-Result 'AC-B8' $b8Ok ('`{0}` in a console of its own, batch lines {1}; Ctrl+C sent at {2} s once {3}, while running: {4}; exit {5} after {6} s; stderr "{7}"; no final line: {8}; the output folder holds afterwards: {9} (no second.csv, no temporary file, no third.json); first.csv equals the same query alone on stdout: {10}' -f `
-        (Format-Command 'crime-query' ($b8Arguments | Select-Object -Skip 2)), (Format-BatchLines $b8Lines), $b8.SentAtSeconds, $(if ($b8.Observed) { $b8.Observed } else { 'the timeout passed (FAIL)' }), `
+        (Format-Command $QueryName ($b8Arguments | Select-Object -Skip 2)), (Format-BatchLines $b8Lines), $b8.SentAtSeconds, $(if ($b8.Observed) { $b8.Observed } else { 'the timeout passed (FAIL)' }), `
         $b8.RunningWhenSent, $b8.ExitCode, $b8.SecondsToExit, ($b8ErrLines -join ' / '), $b8NoFinal, $(if ($b8Entries.Count -eq 0) { 'nothing' } else { $b8Entries -join ', ' }), $b8FirstSame)
 
 # --- AC-C18: the independent verifier ---
 
 Write-Step 'AC-C18: waiting for the independent verifier'
-$verifier = Wait-Program $verifierStarted
+# CanopyDB: the verifier opens the base, so it runs now, when no query runs.
+$verifier = if ($CanopyDb) { Invoke-Program -FilePath $VerifierExe -Arguments $verifierArguments } else { Wait-Program $verifierStarted }
 $verdicts = @{}
 foreach ($line in Get-Lines $verifier.Stdout) {
     $match = [regex]::Match($line, '^(PASS|FAIL|SKIP)  (\S+)  (.*)$')
@@ -1929,30 +2021,38 @@ $named = foreach ($criterion in @('AC-C18-LOWERCASE', 'AC-G3', 'AC-G3-SAMPLE', '
 }
 $verifierOk = $verifier.ExitCode -eq 0 -and $verdicts.Count -gt 0 -and $notPassed.Count -eq 0 -and $verdicts.ContainsKey('AC-C18-LOWERCASE') -and $verdicts.ContainsKey('AC-G3')
 $verifierFlag = if ($IsReference) { ' --reference' } else { '' }
-Add-Result 'AC-C18 (verifier)' $verifierOk ('`crime-acceptance --csv <csv> --dataset full{0}`: exit {1} in {2}, {3} checks, not PASS: {4}; {5}' -f `
-        $verifierFlag, $verifier.ExitCode, (Format-Seconds $verifier.WallSeconds), $verdicts.Count, $(if ($notPassed.Count -eq 0) { 'none' } else { $notPassed -join ', ' }), ($named -join ' / '))
+Add-Result 'AC-C18 (verifier)' $verifierOk ('`{6} --csv <csv> --dataset {7}full{0}`: exit {1} in {2}, {3} checks, not PASS: {4}; {5}' -f `
+        $verifierFlag, $verifier.ExitCode, (Format-Seconds $verifier.WallSeconds), $verdicts.Count, $(if ($notPassed.Count -eq 0) { 'none' } else { $notPassed -join ', ' }), ($named -join ' / '), $VerifierName, $EntryPrefix)
 Add-Section (@(
-        '## Independent verifier on the full dataset'
+        $(if ($CanopyDb) { '## CanopyDB verifier on the full dataset' } else { '## Independent verifier on the full dataset' })
         ''
-        ('`crime-acceptance --csv <CSV> --dataset full{0}`: exit {1}.' -f $verifierFlag, $verifier.ExitCode)
+        ('`{2} --csv <CSV> --dataset {3}full{0}`: exit {1}.' -f $verifierFlag, $verifier.ExitCode, $VerifierName, $EntryPrefix)
         ''
         (Format-Code $verifier.Stdout)
     ) -join "`n")
 
+# A NOT MET row of the CanopyDB run (decision KC8) is not a failure; without -CanopyDb every row is
+# PASS or FAIL.
+$failedText = if ($CanopyDb) { 'FAIL' } else { 'not PASS' }
+
 # --- AC-S12: the consultor criteria give the same results ---
 
 $consultorRows = @($Results | Where-Object { $_.Criterion -match '^AC-C[0-9]+' })
-$consultorFailed = @($consultorRows | Where-Object { $_.Result -ne 'PASS' })
+$consultorFailed = @($consultorRows | Where-Object { $_.Result -eq 'FAIL' })
 $consultorCriteria = @($consultorRows | ForEach-Object { [regex]::Match($_.Criterion, '^AC-C[0-9]+').Value } | Sort-Object -Unique)
-Add-Result 'AC-S12' ($consultorRows.Count -gt 0 -and $consultorFailed.Count -eq 0) ('the consultor criteria repeated on this build: {0} AC-C rows of {1} criteria, not PASS: {2}' -f `
-        $consultorRows.Count, $consultorCriteria.Count, $(if ($consultorFailed.Count -eq 0) { 'none' } else { (@($consultorFailed | ForEach-Object { $_.Criterion }) -join ', ') }))
+Add-Result 'AC-S12' ($consultorRows.Count -gt 0 -and $consultorFailed.Count -eq 0) ('the consultor criteria repeated on this build: {0} AC-C rows of {1} criteria, {3}: {2}' -f `
+        $consultorRows.Count, $consultorCriteria.Count, $(if ($consultorFailed.Count -eq 0) { 'none' } else { (@($consultorFailed | ForEach-Object { $_.Criterion }) -join ', ') }), $failedText)
 
 # --- AC-B10 (AC-M9): the existing checks still pass, unchanged, next to the batch ones ---
 
 $existingRows = @($Results | Where-Object { $_.Criterion -notmatch '^AC-B[0-9]+' })
-$existingFailed = @($existingRows | Where-Object { $_.Result -ne 'PASS' })
-Add-Result 'AC-B10 (AC-M9)' ($existingRows.Count -gt 0 -and $existingFailed.Count -eq 0) ('every check of the query app and startswith PRDs, the same as before the batch on this build: {0} rows (AC-C, AC-S and the dataset rows), not PASS: {1}' -f `
-        $existingRows.Count, $(if ($existingFailed.Count -eq 0) { 'none' } else { (@($existingFailed | ForEach-Object { $_.Criterion }) -join ', ') }))
+$existingFailed = @($existingRows | Where-Object { $_.Result -eq 'FAIL' })
+Add-Result 'AC-B10 (AC-M9)' ($existingRows.Count -gt 0 -and $existingFailed.Count -eq 0) ('every check of the query app and startswith PRDs, the same as before the batch on this build: {0} rows (AC-C, AC-S and the dataset rows), {2}: {1}' -f `
+        $existingRows.Count, $(if ($existingFailed.Count -eq 0) { 'none' } else { (@($existingFailed | ForEach-Object { $_.Criterion }) -join ', ') }), $failedText)
+
+# --- The CanopyDB rows (PRD canopy-db-consultor): AC-M2, AC-M5 to AC-M8, AC-KC2 to AC-KC7 ---
+
+if ($CanopyDb) { Invoke-CanopyChecks }
 
 # --- Report ---
 
@@ -1967,21 +2067,25 @@ Add-Section (@(
         $selectRows
     ) -join "`n")
 
-# AC-C rows by criterion, then the rows of no criterion, then AC-S rows, then AC-B rows by criterion.
+# AC-C rows by criterion, then the rows of no criterion, then AC-S rows, then AC-B rows by criterion
+# (then, for CanopyDB, AC-M rows and AC-KC rows by criterion).
 $ordered = @($Results | Sort-Object @{ Expression = {
-            $m = [regex]::Match($_.Criterion, '^AC-([CSB])([0-9]+)')
-            if (-not $m.Success) { 99 } elseif ($m.Groups[1].Value -eq 'C') { [int]$m.Groups[2].Value } elseif ($m.Groups[1].Value -eq 'S') { 1000 + [int]$m.Groups[2].Value } else { 2000 + [int]$m.Groups[2].Value }
+            $m = [regex]::Match($_.Criterion, '^AC-(KC|[CSBM])([0-9]+)')
+            if (-not $m.Success) { 99 } elseif ($m.Groups[1].Value -eq 'C') { [int]$m.Groups[2].Value } elseif ($m.Groups[1].Value -eq 'S') { 1000 + [int]$m.Groups[2].Value }
+            elseif ($m.Groups[1].Value -eq 'B') { 2000 + [int]$m.Groups[2].Value } elseif ($m.Groups[1].Value -eq 'M') { 3000 + [int]$m.Groups[2].Value } else { 4000 + [int]$m.Groups[2].Value }
         }
     }, Order)
-$failed = @($Results | Where-Object { $_.Result -ne 'PASS' })
+$failed = @($Results | Where-Object { $_.Result -eq 'FAIL' })
 $resultRows = foreach ($result in $ordered) {
     '| {0} | {1} | {2} |' -f $result.Criterion, $result.Result, $result.Evidence.Replace('|', '\|')
 }
 $criteriaSeen = @($Results | ForEach-Object { [regex]::Match($_.Criterion, '^AC-[CSB][0-9]+').Value } | Where-Object { $_ } | Sort-Object -Unique)
-$overall = if ($failed.Count -eq 0) { "PASS: all $($Results.Count) checks passed ($($criteriaSeen.Count) criteria)" } else { "FAIL: $($failed.Count) of $($Results.Count) checks failed" }
+# For CanopyDB, the result line of decision KC8: NOT MET rows are not failures.
+$overall = if ($CanopyDb) { (Get-OverallResult $ordered).Line }
+elseif ($failed.Count -eq 0) { "PASS: all $($Results.Count) checks passed ($($criteriaSeen.Count) criteria)" } else { "FAIL: $($failed.Count) of $($Results.Count) checks failed" }
 $duration = ((Get-Date) - $started).TotalSeconds
 $report = @(
-    '# Acceptance of the crime query app'
+    $(if ($CanopyDb) { '# Acceptance of the CanopyDB crime query app' } else { '# Acceptance of the crime query app' })
     ''
     ('- **Result**: {0}' -f $overall)
     ('- **Date**: {0:yyyy-MM-dd HH:mm} (duration {1})' -f $started, (Format-Seconds $duration))
@@ -1991,6 +2095,7 @@ $report = @(
     ('- {0}' -f (Format-CsvMode $SourceSha256))
     ('- **Dataset**: `{0}`, version {1}, schema {2}, {3} records, generated in {4}' -f $DatasetDir, $current, $manifest.schema_version, (Format-Count $manifest.records.valid), (Format-Seconds $generation.WallSeconds))
     ('- **Small datasets**: small ({0} rows), swap v1 / v2 ({1} / {2} rows)' -f (Format-Count $smallCount), (Format-Count $slice1Count), (Format-Count $slice2Count))
+    if ($CanopyDb) { Get-CanopyReportHeader }
     ''
     '## Results'
     ''
