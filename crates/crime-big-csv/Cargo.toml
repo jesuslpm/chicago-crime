@@ -1,0 +1,18 @@
+[package]
+name = "crime-big-csv"
+description = "Builds the big CSV of scenario R13: the reference CSV followed by two copies of its records with new IDs and case numbers."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]
+clap.workspace = true
+# Only the expected header of the reference CSV.
+crime-dataset.workspace = true
+csv.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+# The CanopyDB generator must accept the big CSV without rejections (AC-KR5).
+crime-canopy-generator = { path = "../crime-canopy-generator" }
+crime-generator = { path = "../crime-generator" }
