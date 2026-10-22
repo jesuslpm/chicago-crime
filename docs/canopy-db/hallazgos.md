@@ -10,6 +10,8 @@ mínima y la versión afectada (flujo E del PRD del módulo).
 - Ninguna acción pública fuera del proyecto (issue, PR, comentario, fork o commits en el fork) se hace sin la
   aprobación del responsable del proyecto, una por una (decisión K4); cada aprobación se anota en su entrada.
 - Los issues y PR se redactan en inglés, el idioma del repositorio de CanopyDB.
+- Cada entrada enlaza en `Borrador del issue` el borrador en inglés de su issue, listo para publicarse
+  cuando el responsable del proyecto lo apruebe (decisión K4).
 - Un campo sin contenido lleva `—`.
 
 ## Reproducciones
@@ -61,6 +63,7 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
   ```
 
   `options` no se vuelve a usar. La forma que aplica el ajuste es `Environment::with_options(options)`.
+- **Borrador del issue**: [issues/H1.md](issues/H1.md)
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
@@ -85,6 +88,7 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
   process B ended with code Some(3) after 5.0 s
   REPRODUCED
   ```
+- **Borrador del issue**: [issues/H2.md](issues/H2.md)
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
@@ -117,6 +121,7 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
   La reescritura de `OPTIONS` se observó en la prueba previa del generador: abrir con las opciones por defecto
   una base escrita con otras cambió `OPTIONS` de 300 a 299 bytes (registro de la ejecución
   [`canopy-db-generador`](../../odd/tasks/canopy-db-generador.md), L3).
+- **Borrador del issue**: [issues/H3.md](issues/H3.md)
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
@@ -146,6 +151,7 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
   ```
 
   El README no menciona ningún valor por defecto de la caché.
+- **Borrador del issue**: [issues/H4.md](issues/H4.md)
 - **Estado**: Detectado
 - **Aprobaciones**: —
 - **Enlaces**: —
@@ -190,6 +196,7 @@ código fuente publicado de CanopyDB; cada entrada explica cómo aplicar el suyo
   La misma carga tardó 66,6 s en la prueba previa: la variación entre ejecuciones no está controlada, y es otra
   razón para medirla en el banco. La ausencia de la API se ve en
   la documentación de `Tree` de CanopyDB 0.2.5: su único método de escritura de una entrada es `insert`.
+- **Borrador del issue**: [issues/H5.md](issues/H5.md)
 - **Posible contribución**: dos, de menor a mayor alcance. El generador CanopyDB usaría cualquiera de ellas sin
   cambiar su contrato, y el banco de comparación mediría la diferencia. Antes de publicar un issue o un PR hace
   falta la aprobación del responsable del proyecto (decisión K4).
