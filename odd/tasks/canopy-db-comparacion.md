@@ -134,3 +134,15 @@ trigger). T1 touches shared acceptance code (risk item 6: only the acceptance ru
   the counts it gave (KM6 asks for that in the batch); the Baseline header check tolerates a BOM; Ctrl+C has
   no test (no AC); report 1 records the mistyped work folder (L8); the 14 GB need is an estimate (the kept
   folders took 8.4 GB). The verifier's scratch folders were removed.
+- **L11** Closing RDD review. The whole last slice `4826d1a..3bb79ad` was refused at START with
+  `lens_context_budget_exceeded` (no authority created; the two report data tables are ~880 rows each), so
+  it is reviewed as smaller candidates. Review 2 — `4826d1a..44ef53a` (the bench commit), from a detached
+  HEAD at `44ef53a`, back on the branch afterwards: assessed `medium`; lenses resilience, readability,
+  reliability; approved and acknowledged (authority burned), lineage `review-d9eb9280bf3778a4`. Findings, all
+  informational: R2-001 SUGGESTION, the peak parsed with `ConvertFrom-SpanishSeconds`: renamed
+  `ConvertFrom-SpanishDecimal`; R2-002 SUGGESTION, the `<número>` placeholder became an unnamed literal: named
+  `$FixedQueryPlaceholder` in `query-output.ps1`; R3-002 SUGGESTION, a baseline with the header but a damaged
+  row stopped with a raw cast error: `Read-ComparisonData` now rejects it with the PRD message, new test
+  "AC-KM3: a baseline with the header but a damaged row is not a data file" (19 of 19 pass); R3-001 WARNING,
+  `Split-FirstBatch` relies on run 0's result counts to split the batch output: kept, since a batch run 0
+  without a query's stats line is already a failed run and its queries from there on are `INCOMPLETE`.

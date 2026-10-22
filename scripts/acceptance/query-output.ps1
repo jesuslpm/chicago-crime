@@ -1,20 +1,23 @@
 ﻿<#
 .SYNOPSIS
-    Patterns and readers of the query apps' standard error, shared by the query app acceptance
-    checks and the comparison bench.
+    Patterns and readers of the query apps' output, shared by the query app acceptance checks and
+    the comparison bench (run-canopy-comparison.ps1).
 
 .DESCRIPTION
-    Dot-sourced. Defines $StatsPattern, $BatchHeaderPattern and $BatchCompletedPattern, and the
-    functions ConvertFrom-SpanishSeconds, Get-Lines, Get-Stats, Read-BatchStderr, Split-BatchWords,
-    Read-JsonDocument, Read-JsonFile, Compare-JsonDocuments and Read-FixedQueries. It holds no state.
+    Dot-sourced. Defines $StatsPattern, $BatchHeaderPattern, $BatchCompletedPattern and
+    $FixedQueryPlaceholder, and the functions ConvertFrom-SpanishDecimal, Get-Lines, Get-Stats,
+    Read-BatchStderr, Split-BatchWords, Read-JsonDocument, Read-JsonFile, Compare-JsonDocuments and
+    Read-FixedQueries. It holds no state.
 #>
 
 $StatsPattern = '^(?<count>[0-9.]+) resultados? en (?<seconds>[0-9.]+,[0-9]{3}) s\. Índices usados: (?<indexes>.*)\. Filtros sin índice: (?<filters>.*)\.$'
 $BatchHeaderPattern = '^--- Consulta (?<index>[0-9]+) de (?<total>[0-9]+) \(línea (?<line>[0-9]+)\) ---$'
 $BatchCompletedPattern = '^Lote completado: (?<total>[0-9.]+) consultas? en (?<seconds>[0-9.]+,[0-9]{3}) s\.$'
+# The placeholder of canopy-fixed-queries.txt for the CSV's first shared case number.
+$FixedQueryPlaceholder = '<número>'
 
-# A time as the query apps print it ("1.234,567") in seconds.
-function ConvertFrom-SpanishSeconds([string]$Text) {
+# A decimal as the applications print it ("1.234,567"), such as a time in seconds or a size in MiB.
+function ConvertFrom-SpanishDecimal([string]$Text) {
     [decimal]::Parse($Text.Replace('.', '').Replace(',', '.'), [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
@@ -30,7 +33,7 @@ function Get-Stats([string]$Stderr) {
                 Count   = [long]$match.Groups['count'].Value.Replace('.', '')
                 Indexes = $match.Groups['indexes'].Value
                 Filters = $match.Groups['filters'].Value
-                Seconds = ConvertFrom-SpanishSeconds $match.Groups['seconds'].Value
+                Seconds = ConvertFrom-SpanishDecimal $match.Groups['seconds'].Value
             }
         }
     }
@@ -115,7 +118,7 @@ function Read-FixedQueries([string]$Path, [string]$SharedCase) {
         $line = $lines[$i]
         $rest = $line.TrimStart(' ', "`t")
         if ($rest -eq '' -or $rest.StartsWith('#')) { $batchLines.Add($line); continue }
-        $line = $line.Replace('<número>', $SharedCase)
+        $line = $line.Replace($FixedQueryPlaceholder, $SharedCase)
         $words = Split-BatchWords $line
         $formatAt = [array]::IndexOf($words, '--format')
         $limitAt = [array]::IndexOf($words, '--limit')

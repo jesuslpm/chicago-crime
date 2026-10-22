@@ -416,6 +416,16 @@ Test-Case 'Relative -Csv and -Baseline follow the PowerShell location, not the p
     Assert-True ($lines -ccontains '## Baseline') 'baseline section'
 }
 
+Test-Case 'AC-KM3: a baseline with the header but a damaged row is not a data file' {
+    $repo = New-FakeRepo
+    $baseline = Join-Path $repo.Root 'damaged.csv'
+    [System.IO.File]::WriteAllText($baseline, "phase,pair,query,run,exit_code,metric,value`ngeneration,sstable,,one,0,duration_s,62.100`n")
+    $environment = New-FakeEnvironment
+    $message = Get-Message { Invoke-CanopyComparison -RepoRoot $repo.Root -WorkDir $repo.WorkDir -Csv $repo.Csv -Repetitions 1 -Baseline $baseline -Environment $environment 6>$null }
+    Assert-Equal "Baseline file is not a comparison bench data file: $baseline" $message 'message'
+    Assert-Equal 0 $Fake.Calls.Count 'nothing ran'
+}
+
 Test-Case 'KM5: tolerance of each kind of measure, one condition is enough' {
     Assert-True (Test-WithinTolerance 'process_s' 1.2 1.0) 'time 20 %'
     Assert-True (-not (Test-WithinTolerance 'process_s' 1.3 1.0)) 'time over 20 % and 0.050 s'

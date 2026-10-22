@@ -125,7 +125,8 @@ function Write-ComparisonData([string]$Path, $Rows) {
     [System.IO.File]::WriteAllText($Path, (($lines -join "`n") + "`n"), $ComparisonUtf8)
 }
 
-# The rows of a data table, or $null when its first line is not the header. A carriage return at the
+# The rows of a data table, or $null when its first line is not the header or a row has not seven fields with
+# whole numbers as run and exit code. A carriage return at the
 # end of a line is ignored.
 function Read-ComparisonData([string]$Path) {
     $lines = @([System.IO.File]::ReadAllText($Path, $ComparisonUtf8) -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
@@ -134,8 +135,10 @@ function Read-ComparisonData([string]$Path) {
     foreach ($line in ($lines | Select-Object -Skip 1)) {
         if ($line -eq '') { continue }
         $fields = $line -split ',', 7
-        if ($fields.Count -ne 7) { continue }
-        $rows.Add([pscustomobject]@{ phase = $fields[0]; pair = $fields[1]; query = $fields[2]; run = [int]$fields[3]; exit_code = [int]$fields[4]; metric = $fields[5]; value = $fields[6] })
+        $run = 0
+        $exitCode = 0
+        if ($fields.Count -ne 7 -or -not [int]::TryParse($fields[3], [ref]$run) -or -not [int]::TryParse($fields[4], [ref]$exitCode)) { return $null }
+        $rows.Add([pscustomobject]@{ phase = $fields[0]; pair = $fields[1]; query = $fields[2]; run = $run; exit_code = $exitCode; metric = $fields[5]; value = $fields[6] })
     }
     , $rows.ToArray()
 }
@@ -272,7 +275,7 @@ function ConvertTo-Mib([long]$Bytes) { if ($Bytes -lt 0) { $null } else { [decim
 function ConvertFrom-SummaryDuration([string]$Text) {
     $match = [regex]::Match($Text, '^(?:(?<h>[0-9]+) h )?(?:(?<m>[0-9]+) min )?(?<s>[0-9]+,[0-9]) s$')
     if (-not $match.Success) { return $null }
-    $seconds = ConvertFrom-SpanishSeconds $match.Groups['s'].Value
+    $seconds = ConvertFrom-SpanishDecimal $match.Groups['s'].Value
     if ($match.Groups['m'].Success) { $seconds += 60 * [decimal]$match.Groups['m'].Value }
     if ($match.Groups['h'].Success) { $seconds += 3600 * [decimal]$match.Groups['h'].Value }
     $seconds
@@ -293,7 +296,7 @@ function Read-GenerationSummary([string]$LogPath) {
     $duration = [regex]::Match($text, '(?m)^Duración: (?<d>.+)\.\r?$')
     if ($duration.Success) { $values['duration_s'] = ConvertFrom-SummaryDuration $duration.Groups['d'].Value }
     $peak = [regex]::Match($text, '(?m)^Pico de memoria privada comprometida: (?<mib>[0-9.]+,[0-9]) MiB')
-    if ($peak.Success) { $values['peak_mib'] = ConvertFrom-SpanishSeconds $peak.Groups['mib'].Value }
+    if ($peak.Success) { $values['peak_mib'] = ConvertFrom-SpanishDecimal $peak.Groups['mib'].Value }
     $files = [regex]::Matches($text, '(?m)^Archivo .+: (?<bytes>[0-9.]+) bytes \(')
     if ($files.Count -gt 0) {
         $size = [decimal]0
@@ -332,7 +335,7 @@ function New-BatchRun([string]$Pair, [int]$Run, $Result, [string]$StdoutPath) {
             if ($stats) { $values["F$i query_s"] = $stats.Seconds; $values["F$i results"] = [decimal]$stats.Count }
         }
     }
-    if ($null -ne $parsed.Final) { $values['batch_total_s'] = ConvertFrom-SpanishSeconds $parsed.Final.Groups['seconds'].Value }
+    if ($null -ne $parsed.Final) { $values['batch_total_s'] = ConvertFrom-SpanishDecimal $parsed.Final.Groups['seconds'].Value }
     foreach ($metric in $ComparisonBatchTotalMetrics) { $order.Add($metric) }
     [pscustomobject]@{
         Phase = 'batch'; Pair = $Pair; Query = ''; Run = $Run; ExitCode = $Result.ExitCode; Values = $values; Stdout = $StdoutPath
