@@ -72,7 +72,8 @@ fn a_base_still_open_after_the_wait_is_rejected_with_its_message() {
         ]
     );
     assert!(
-        elapsed >= Duration::from_secs(1) && elapsed < Duration::from_secs(3),
+        // The run also resolves CURRENT, reads the manifest and checks the files before the wait.
+        elapsed >= Duration::from_secs(1) && elapsed < Duration::from_secs(2),
         "{elapsed:?}"
     );
 }

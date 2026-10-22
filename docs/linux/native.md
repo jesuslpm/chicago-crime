@@ -64,9 +64,10 @@ The binaries are in `target/release/`, without the `.exe` extension:
 ./target/release/crime-canopy-query --dataset ~/datasets/chicago-canopy --where "Primary Type=THEFT" --where District=008 --count
 ```
 
-The CanopyDB generator's and query app's acceptance scripts run only on Windows. On Linux its memory criterion (AC-M4)
-is checked by hand: run it on the full reference CSV and read the line `Pico de memoria privada
-comprometida` of its summary, which must stay within 512 MiB.
+The acceptance scripts of the CanopyDB generator and of the CanopyDB query app run only on Windows. On
+Linux the generator's memory criterion (AC-M4) is checked by hand: run the generator on the full reference
+CSV and read the line `Pico de memoria privada comprometida` of its summary, which must stay within
+512 MiB. The query app's memory criterion (AC-M8) is checked on Windows only.
 
 Every option and message is the same as on Windows (see the [README](../../README.md)).
 

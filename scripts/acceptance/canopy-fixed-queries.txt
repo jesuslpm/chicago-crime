@@ -1,7 +1,8 @@
 # Fixed query set of the CanopyDB module (PRD canopy-db-consultor, decision KC7): F1 to F11, one
 # batch line each, in this order. <número> stands for the first shared case number of the CSV (the
 # first case number that a later row repeats, the one the query acceptance uses for AC-C6): replace
-# it on the F2 line before running this file with --batch.
+# it on the F2 line before running this file with --batch. The acceptance check pairs each line with
+# its expected count by position: keep the order, and update query-acceptance-canopy.ps1 when a line changes.
 --where ID=634 --format json
 --where "Case Number=<número>" --format json
 --where "Primary Type=THEFT" --count

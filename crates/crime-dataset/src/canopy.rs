@@ -37,7 +37,7 @@ pub const CANOPYDB_VERSION: &str = "0.2.5";
 
 /// The six trees of the database, in the order of the manifest's `tables`: the primary table,
 /// then one per index in [`crate::IndexKind::ALL`] order.
-pub fn table_names() -> [&'static str; 6] {
+pub fn table_names() -> [&'static str; 1 + crate::IndexKind::ALL.len()] {
     std::array::from_fn(|i| match i {
         0 => PRIMARY_TABLE_NAME,
         _ => crate::IndexKind::ALL[i - 1].name(),
