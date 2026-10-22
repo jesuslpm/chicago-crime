@@ -35,9 +35,11 @@ use crate::tables::{CanopyTables, EngineFailure, guarded};
 pub const WAIT: Duration = Duration::from_secs(30);
 
 /// The page cache of the base. CanopyDB reads its file with positional reads, so the cache is
-/// private memory of the process; a small one keeps the peak of a query that reads millions of
-/// keys close to that of a query that reads a few (decision K8, AC-M8).
-pub const PAGE_CACHE_BYTES: usize = 8 << 20;
+/// private memory of the process, and it grows on demand: a count of a rare type peaks at about
+/// 1 MiB. Measured on the reference CSV (2026-10-22), an 8 MiB cache took the `THEFT` count to
+/// 9.9 MiB (ratio 9.9, AC-M8 asks at most 3), 2 MiB to 3.2 MiB (3.8) and 1 MiB to 2.2 MiB (2.3),
+/// for 0.43, 0.43 and 0.51 s: the operating system's file cache still holds the pages (K8).
+pub const PAGE_CACHE_BYTES: usize = 1 << 20;
 
 /// How many times opening resolves `CURRENT` when the version it named vanished meanwhile.
 const OPEN_ATTEMPTS: usize = 3;

@@ -378,8 +378,9 @@ It differs in what only a CanopyDB dataset has:
 - **JSON output.** The `dataset` member shows `"schema_version": "canopydb-2"`, the manifest's text,
   instead of the number `2`.
 - **Memory.** CanopyDB reads its file into a page cache of its own, which is the process's private
-  memory, so the app sets an 8 MiB cache (CanopyDB's default is 1 GiB): the peak memory then barely
-  grows with what a query reads.
+  memory, so the app sets a 1 MiB cache (CanopyDB's default is 1 GiB): the peak memory then barely
+  grows with what a query reads. On the reference CSV, counting `THEFT` peaks at 2.2 MiB and counting a
+  rare type at 1 MiB; with an 8 MiB cache the first one reached 9.9 MiB, for no measurable speed-up.
 
 ### Fixed query set
 
