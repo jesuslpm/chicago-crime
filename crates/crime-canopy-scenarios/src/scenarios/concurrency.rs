@@ -424,6 +424,10 @@ fn r9_run(context: &Context, id: &str) -> io::Result<VariantResult> {
             ));
         }
     }
+    // No query at all would make the check pass without testing anything.
+    if runs.is_empty() {
+        failures.push("ningún consultor llegó a consultar durante las publicaciones".to_owned());
+    }
     result.check("consultas", failures.is_empty(), first_few(&failures));
 
     let mut bad_rejections = Vec::new();

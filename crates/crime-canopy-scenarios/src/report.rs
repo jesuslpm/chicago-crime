@@ -300,6 +300,16 @@ pub fn state_of(result: &VariantResult, associations: &Associations) -> State {
 /// The line of a variant in the run's output.
 pub fn line(result: &VariantResult, state: &State) -> String {
     let mut text = format!("{:<14} {}", state.label(), result.id);
+    let details = details(result, state);
+    if !details.is_empty() {
+        let _ = write!(text, "  {}", details.join("; "));
+    }
+    text
+}
+
+/// What a variant's line says after its state and id: why it did not run or apply, the notice of
+/// a finding that may be resolved, its failed checks and what it observed.
+fn details(result: &VariantResult, state: &State) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     match state {
         State::NotRun(reason) | State::NotApplicable(reason) => parts.push(reason.clone()),
@@ -313,10 +323,7 @@ pub fn line(result: &VariantResult, state: &State) -> String {
         parts.push(format!("falla {}: {}", check.name, check.detail));
     }
     parts.extend(result.observed.iter().cloned());
-    if !parts.is_empty() {
-        let _ = write!(text, "  {}", parts.join("; "));
-    }
-    text
+    parts
 }
 
 /// The last line of the run and its exit code.
@@ -359,11 +366,12 @@ pub fn log_row(
         .id
         .split_once('/')
         .unwrap_or((result.id.as_str(), "—"));
-    let observed = line(result, state)
-        .split_once("  ")
-        .map(|(_, rest)| rest.to_owned())
-        .unwrap_or_else(|| "—".to_owned())
-        .replace('|', "\\|");
+    let details = details(result, state);
+    let observed = if details.is_empty() {
+        "—".to_owned()
+    } else {
+        details.join("; ").replace('|', "\\|")
+    };
     Some(format!(
         "| {scenario} {variant} | `{system}` | {date} | {canopydb} | {commit} | {outcome} | {observed} |"
     ))
@@ -478,6 +486,20 @@ mod tests {
             State::NotMet
         );
         assert_eq!(merged[0].observed[0], "repeticiones: 3, con fallo: 1");
+    }
+
+    #[test]
+    fn the_observed_field_holds_only_what_the_variant_saw() {
+        let mut met = result("R1/dump/con", &[("codigo", true)]);
+        met.observe("exit 0 en 1.2 s");
+        let row = log_row(&met, &State::Met, "Windows", "2026-10-22", "0.2.5", "abc").unwrap();
+        assert_eq!(
+            row,
+            "| R1 dump/con | `Windows` | 2026-10-22 | 0.2.5 | abc | `Sin bug` | exit 0 en 1.2 s |"
+        );
+        let empty = result("R2/x", &[("codigo", true)]);
+        let row = log_row(&empty, &State::Met, "Linux", "2026-10-22", "0.2.5", "abc").unwrap();
+        assert!(row.ends_with("| `Sin bug` | — |"), "{row}");
     }
 
     #[test]

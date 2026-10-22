@@ -18,3 +18,7 @@
 2026-10-22T13:05:52+01:00	bg-end	acceptance	R13 first run
 2026-10-22T14:20:08+01:00	mark	review	T3-T4
 2026-10-22T14:28:53+01:00	mark	fix	T8
+2026-10-22T14:32:06+01:00	mark	acceptance	T8
+2026-10-22T14:32:59+01:00	bg-start	acceptance	Windows final runs
+2026-10-22T14:34:30+01:00	bg-start	acceptance	Linux final runs
+2026-10-22T14:52:07+01:00	mark	fix	T8

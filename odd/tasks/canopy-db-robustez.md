@@ -119,3 +119,20 @@ shared contract or depend on the others.
 - **L13** (T3): one unexplained miss in a first R2 run under peak load: a generator ended during `read` with empty
   stderr and only `read` in its phase file; the retry landed and it never happened again (evidence kept in
   `work/old-T3/runs-R2-first/0004-R2_carga/`). Watched in the final runs.
+- **L14** (AC-M12, 2026-10-22 14:35): `gh` as `jesuslpm`: no issue, PR, issue comment or PR comment on
+  `arthurprs/canopydb` (`gh search issues|prs --repo arthurprs/canopydb --author @me` and `--commenter @me` give
+  `[]`), and no fork (`repos/jesuslpm/canopydb` gives 404; none of the repo's forks is the user's). Every finding
+  H1–H5 has its reproduction, version and state, and nothing needed an approval. Met.
+- **L15** (T8): final runs started 14:2x on both systems, three runners each (R9 / R1 / the rest), each with its own
+  work folder (`work/final-*`) and a copy of the reference dataset; Linux from the copy at `7e18bad`.
+- **L16** (independent verify, sonnet high, of `3d07096..7e18bad`): S2, S3, S4, S6, S7, S8 MET (S8 with a
+  differential of both generators and both query apps, HEAD vs `3d07096`, on a 2,000-row CSV: identical but for
+  timings, `generated_at` and random names; and of broken CanopyDB datasets: identical messages, codes and
+  timing); S1 and S5 PARTIAL. Blocker B1: the `Observado` field of every scenario-log row began with spaces and the
+  variant id (`log_row` split the padded line): fixed with a RED/GREEN test; rows of the runs already started are
+  corrected when copied to the log. Advisories fixed: A2 (R9 `consultas` no longer passes with no query), A4 (PRD
+  row "Versión que desaparece durante la espera" annotated), A5 (`--list` needs no `--csv`/`--work`). Advisories
+  kept: A1 (the R1/R2 `volcado` signal lands at the start of the dump phase, during the stretched pause before
+  the final checkpoint starts, not inside the checkpoint write: the whole dump-to-publish lasts under 1 s),
+  A3 (R13 reads the generator's own peak line, as the generator acceptance does for AC-M4), A5 of KR7 (a dataset
+  replaced more than three times during one opening ends with `not_found`, as the baseline did).

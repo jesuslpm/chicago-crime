@@ -22,11 +22,11 @@ use crime_canopy_scenarios::scenarios::{self, Scenario};
 #[command(name = "crime-canopy-scenarios")]
 struct Cli {
     /// CSV de referencia.
-    #[arg(long, value_name = "ARCHIVO")]
-    csv: PathBuf,
+    #[arg(long, value_name = "ARCHIVO", required_unless_present = "list")]
+    csv: Option<PathBuf>,
     /// Carpeta de trabajo: el conjunto de referencia, sus copias y cada ejecución.
-    #[arg(long, value_name = "CARPETA")]
-    work: PathBuf,
+    #[arg(long, value_name = "CARPETA", required_unless_present = "list")]
+    work: Option<PathBuf>,
     /// Escenarios que se ejecutan, separados por comas (por ejemplo R1,R5). Por defecto, todos.
     #[arg(long, value_name = "LISTA", value_delimiter = ',')]
     only: Vec<String>,
@@ -111,7 +111,10 @@ fn run(cli: &Cli) -> Result<u8, String> {
             "Faltan binarios (compila con cargo build --release --workspace): {missing:?}."
         ));
     }
-    let context = Context::new(bins, &cli.csv, &cli.work, &cli.fixed_queries, cli.repeat)
+    let (Some(csv), Some(work)) = (&cli.csv, &cli.work) else {
+        return Err("Faltan --csv y --work.".to_owned());
+    };
+    let context = Context::new(bins, csv, work, &cli.fixed_queries, cli.repeat)
         .map_err(|error| error.to_string())?;
 
     let selected: Vec<&Scenario> = catalog
@@ -144,7 +147,7 @@ fn run(cli: &Cli) -> Result<u8, String> {
     }
     let (summary, code) = report::summary(&states);
     println!("{summary}");
-    let log = cli.work.join(format!(
+    let log = work.join(format!(
         "registro-{system}-{}.md",
         date.format("%Y%m%d-%H%M%S")
     ));
