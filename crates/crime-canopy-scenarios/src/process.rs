@@ -269,6 +269,37 @@ impl Running {
     pub fn started(&self) -> Instant {
         self.started
     }
+
+    /// The peak private committed memory of the app, in bytes, as the acceptance checks measure
+    /// it (`PeakPagefileUsage`, also once it has ended); `None` where the system does not tell
+    /// (Linux) or for a hosted run.
+    pub fn peak_private_bytes(&self) -> Option<u64> {
+        if self.hosted {
+            return None;
+        }
+        peak_private_bytes(&self.child)
+    }
+}
+
+#[cfg(windows)]
+fn peak_private_bytes(child: &Child) -> Option<u64> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    // SAFETY: the handle belongs to `child`, which is alive while borrowed; the counters are
+    // plain data of the size given.
+    unsafe {
+        let mut counters: PROCESS_MEMORY_COUNTERS = std::mem::zeroed();
+        let size = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
+        (GetProcessMemoryInfo(child.as_raw_handle(), &mut counters, size) != 0)
+            .then_some(counters.PeakPagefileUsage as u64)
+    }
+}
+
+#[cfg(not(windows))]
+fn peak_private_bytes(_child: &Child) -> Option<u64> {
+    None
 }
 
 impl Drop for Running {
