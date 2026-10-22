@@ -154,6 +154,11 @@ batch file:
 
 Clarifications:
 
+- *Annotation of 2026-10-22, at implementation: the detail line follows the rule of KG7, as KC5 says, not the
+  row's: each run of carriage returns and line feeds in the engine text becomes a single space, and those at
+  the start and end are removed: two engine lines separated by a carriage return and a line feed end up
+  separated by a single space.*
+
 - **Shape of the manifest** (KC3): as in the original, all the fields of the CanopyDB manifest of the [CanopyDB
   generator PRD](canopy-db-generador.prd.en.md#manifest) are mandatory and with their type, and unknown ones
   are tolerated. In particular, `engine.name` is `canopydb`; `engine.version` is a non-empty text;

@@ -10,6 +10,7 @@ sorting under a fixed memory budget, and product-driven development.
 | Generator (`crime-generator`) | Done and verified | Reads the CSV once and publishes a primary table keyed by ID, five secondary indexes and a manifest, with a peak memory of about 93 MiB (limit 512 MiB). |
 | CanopyDB generator (`crime-canopy-generator`) | Done | The same generator, options and messages, publishing the dataset in a [CanopyDB](https://github.com/arthurprs/canopydb) base instead of LevelDB tables, to compare the two engines ([module PRD](docs/prd/chicago-crime/canopy-db.prd.md)). See [CanopyDB generator](#canopydb-generator). |
 | Query app (`crime-query`) | Done and verified | Answers lookups by ID, case number, indexed values and date ranges, with filters on the other fields, as a table, CSV or JSON, without loading the dataset into memory; one query per run, or a batch of queries from a file. |
+| CanopyDB query app (`crime-canopy-query`) | Done | The same query app over the CanopyDB generator's dataset, with the same answers. See [CanopyDB query app](#canopydb-query-app). |
 
 ## Get the dataset
 
@@ -340,6 +341,55 @@ target\release\crime-query.exe --dataset C:\datasets\chicago --batch queries.txt
 | 2 | The command line, or a line of the batch, is not valid; nothing was queried. |
 | 130 | Cancelled with Ctrl+C; no half-written output file is left. |
 
+## CanopyDB query app
+
+`crime-canopy-query` is the query app over a dataset published by the
+[CanopyDB generator](#canopydb-generator) ([PRD](docs/prd/chicago-crime/canopy-db-consultor.prd.md)). It
+shares the query app's whole code, so its options, queries, batches, outputs, messages and exit codes are
+the ones above, and it returns the same records:
+
+```powershell
+target\release\crime-canopy-query.exe --dataset C:\datasets\chicago-canopy --where "Primary Type=THEFT" --where District=008 --count
+```
+
+It differs in what only a CanopyDB dataset has:
+
+- **One process at a time.** CanopyDB lets a single process open a base. While another one has it open
+  (another query or batch, or the CanopyDB verifier), the query prints
+  `Aviso: otro proceso tiene abierto el conjunto de datos en <carpeta>; se esperará hasta 30 s.` and
+  waits. If the base is released in time it answers as usual; if not, it ends with
+  `El conjunto de datos en <carpeta> sigue abierto por otro proceso. Inténtalo de nuevo cuando termine.`
+  and exit code 1. Ctrl+C during the wait ends with `Consulta cancelada.` and 130. A batch holds the
+  base until its last query ends. The wait does not count in a query's stats line; it does in the batch's
+  final line.
+- **Datasets it accepts.** Only a `canopydb-2` manifest with the CanopyDB generator's shape. A LevelDB
+  dataset, of any schema, gives `No se encontró un conjunto de datos válido en <carpeta>.`; another
+  CanopyDB schema, `El conjunto usa el esquema v<N> y este consultor admite v2. Regenera el conjunto.`
+  A base written with another CanopyDB version or with a fork (`engine` in the manifest) is refused before
+  it is opened, because CanopyDB's files do not record their format version:
+  `El conjunto se escribió con CanopyDB <versión> y este consultor usa CanopyDB 0.2.5. Regenera el conjunto.`
+  A missing file of the manifest's `files` or a missing table gives the not-found message: the app never
+  creates a file, a database or a table.
+- **Reading changes nothing you query.** The base is opened with the options stored in it. CanopyDB may
+  rewrite its own internal files, but no file is added and the manifest and the records do not change.
+  Read-only folders and media are refused, because CanopyDB opens its files for writing.
+- **Engine failures** give the query app's `No se pudo leer el conjunto de datos en <carpeta>.`, exit code
+  1, with one line before it on standard error: `Detalle del error de CanopyDB: <error>`.
+- **JSON output.** The `dataset` member shows `"schema_version": "canopydb-2"`, the manifest's text,
+  instead of the number `2`.
+- **Memory.** CanopyDB reads its file into a page cache of its own, which is the process's private
+  memory, so the app sets an 8 MiB cache (CanopyDB's default is 1 GiB): the peak memory then barely
+  grows with what a query reads.
+
+### Fixed query set
+
+[`scripts/acceptance/canopy-fixed-queries.txt`](scripts/acceptance/canopy-fixed-queries.txt) holds the
+eleven queries of the CanopyDB module (F1 to F11) that the acceptance check runs with both query apps,
+alone and in a batch, and that the comparison benchmark reuses: by ID, by a shared case number, counts
+of `THEFT` and of the rare type `RITUALISM`, a month, eleven years of thefts, two indexes, two indexes
+and a filter, a prefix, a listing with a limit and the listing of every theft. Replace `<número>` with
+the first case number the CSV repeats before running it with `--batch`.
+
 ## Verify
 
 [`scripts/acceptance/run-acceptance.ps1`](scripts/acceptance/run-acceptance.ps1) checks AC-G1 to AC-G10
@@ -488,6 +538,7 @@ through `edge-tts`, so generating needs an internet connection.
 | `crates/crime-acceptance` | Independent verifier of a published dataset and independent filtering of the CSV. |
 | `crates/crime-canopy-generator` | The CanopyDB generator: the generator's pipeline with a CanopyDB storage. |
 | `crates/crime-canopy-acceptance` | Independent verifier of a CanopyDB dataset, with a mode that compares two datasets of either engine. |
+| `crates/crime-canopy-query` | The CanopyDB query app: the query app with a CanopyDB reader. |
 | `docs/canopy-db` | The CanopyDB findings register and its reproductions. |
 | `scripts/acceptance` | Acceptance scripts for the reference extract or any later download (generator and query app). |
 | `scripts/worktree` | Scripts that create, list, merge and remove per-change copies (worktrees); see the [worktree guide](docs/worktrees.md). |

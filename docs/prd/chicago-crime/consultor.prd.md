@@ -128,7 +128,9 @@ Se aplican las validaciones del consultor del documento padre, salvo la fila "Co
   condición sea mucho más selectiva. Se podrá añadir más adelante si las mediciones lo justifican.
 - Consultar una versión del conjunto distinta de la activa.
 - Cachés o índices auxiliares creados por el consultor: el consultor nunca escribe en la carpeta del
-  conjunto.
+  conjunto. *Anotación del 2026-10-22: el consultor CanopyDB puede escribir en los archivos internos del
+  motor, sin cambiar el contenido consultable ni el manifiesto ni crear archivos (decisión K6 de
+  [canopy-db.prd.md](canopy-db.prd.md)); el consultor original no cambia.*
 - Ejecutar o verificar en sistemas distintos de Windows. *(Anotación del 2026-10-14: Linux lo cubre el [PRD de
   soporte para Linux](soporte-linux.prd.md).)*
 
@@ -234,7 +236,9 @@ el cuerpo del PRD.
   como el del generador, pero el consumo no crece con el tamaño del resultado. Contar `THEFT` (1,8 millones)
   usa una memoria comparable a la de contar un tipo raro. Motivo: el padre exige no cargar el conjunto
   entero. La ordenación externa que necesitaría ordenar resultados grandes pasa a un cambio posterior junto
-  con C11.
+  con C11. *Anotación del 2026-10-22: vale también para el consultor CanopyDB y para el lote, y se comprueba
+  con el cociente máximo de 3 de AC-M8 (decisión K8 de [canopy-db.prd.md](canopy-db.prd.md),
+  [canopy-db-consultor.prd.md](canopy-db-consultor.prd.md)).*
 
 - **C8 — Archivo de salida** (confirmada el 2026-10-13): con formato CSV o JSON se puede indicar un archivo
   de salida. Los resultados se escriben en él en lugar de en la salida estándar; avisos, errores y
@@ -245,7 +249,9 @@ el cuerpo del PRD.
   archivo, contiene la consulta interpretada junto a los resultados: cada condición tal como se aplicó (con
   los valores y los rangos de fecha resueltos a instantes exactos según C1 y C2), el límite si lo hubo y la
   versión del conjunto consultada. Motivo: el archivo documenta por sí solo qué se buscó y sobre qué datos,
-  sin ambigüedad.
+  sin ambigüedad. *Anotación del 2026-10-22: en el consultor CanopyDB, `schema_version` es el texto del
+  manifiesto, `"canopydb-2"` (decisión KC6 de [canopy-db-consultor.prd.md](canopy-db-consultor.prd.md)); el
+  consultor original no cambia.*
 - **C10 — Intersección de índices y filtros** (confirmada el 2026-10-13): toda consulta necesita al menos una
   condición indexada. Las condiciones indexadas se combinan con Y lógico por intersección de los ID que
   devuelve cada índice; las condiciones sin índice filtran los registros de esa intersección. Una consulta

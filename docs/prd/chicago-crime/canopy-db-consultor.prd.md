@@ -152,6 +152,11 @@ archivo de lote:
 
 Precisiones:
 
+- *Anotación del 2026-10-22, al implementar: la línea de detalle sigue la regla de KG7, como dice KC5, y no la
+  de la fila: cada grupo seguido de retornos de carro y saltos de línea del texto del motor se sustituye por un
+  solo espacio, y los del principio y del final se quitan: dos líneas del motor separadas por un retorno de
+  carro y un salto de línea quedan separadas por un solo espacio.*
+
 - **Forma del manifiesto** (KC3): como en el original, todos los campos del manifiesto CanopyDB del
   [PRD del generador CanopyDB](canopy-db-generador.prd.md#manifiesto) son obligatorios y con su tipo, y los
   desconocidos se toleran. En particular, `engine.name` es `canopydb`; `engine.version` es un texto no vacío;

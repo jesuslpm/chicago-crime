@@ -39,6 +39,9 @@ solo valen para las aplicaciones CanopyDB; las originales conservan todas sus re
   carpeta publicada y del manifiesto, la lista de archivos del resumen final y lo que hace la opción sin
   compresión.
 
+*Anotación del 2026-10-22: el consultor CanopyDB añade dos excepciones, su ayuda y el `schema_version` de su
+salida JSON (decisiones KC1 y KC6 de [canopy-db-consultor.prd.md](canopy-db-consultor.prd.md)).*
+
 El lote de consultas (K7) es la única novedad que llega también al consultor original. Así, ante la misma
 consulta, las dos parejas devuelven los mismos registros y la comparación es justa.
 

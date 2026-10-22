@@ -40,6 +40,9 @@ only to the CanopyDB applications; the original ones keep all their rules:
   shape of the published folder and of the manifest, the list of files in the final summary and what the
   no-compression option does.
 
+*Annotation of 2026-10-22: the CanopyDB query app adds two exceptions, its help and the `schema_version` of
+its JSON output (decisions KC1 and KC6 of [canopy-db-consultor.prd.md](canopy-db-consultor.prd.md)).*
+
 The query batch (K7) is the only novelty that also reaches the original query app. This way, for the same
 query, the two pairs return the same records and the comparison is fair.
 
