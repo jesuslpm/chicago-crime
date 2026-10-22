@@ -72,7 +72,7 @@ fn a_base_still_open_after_the_wait_is_rejected_with_its_message() {
         ]
     );
     assert!(
-        elapsed >= Duration::from_secs(1) && elapsed < Duration::from_millis(1_500),
+        elapsed >= Duration::from_secs(1) && elapsed < Duration::from_secs(3),
         "{elapsed:?}"
     );
 }

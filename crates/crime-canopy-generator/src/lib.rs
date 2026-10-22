@@ -254,7 +254,6 @@ impl Storage for CanopyStorage {
     }
 }
 
-/// The message of a panic, as `panic!` received it.
 /// Failures of the engine injected by the tests (feature `fail-points`); without the feature
 /// nothing is ever injected.
 pub mod fault {

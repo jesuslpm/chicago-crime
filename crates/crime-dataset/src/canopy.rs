@@ -35,6 +35,15 @@ pub const ENGINE_NAME: &str = "canopydb";
 /// only opens a base that names it (decision KC4).
 pub const CANOPYDB_VERSION: &str = "0.2.5";
 
+/// The six trees of the database, in the order of the manifest's `tables`: the primary table,
+/// then one per index in [`crate::IndexKind::ALL`] order.
+pub fn table_names() -> [&'static str; 6] {
+    std::array::from_fn(|i| match i {
+        0 => PRIMARY_TABLE_NAME,
+        _ => crate::IndexKind::ALL[i - 1].name(),
+    })
+}
+
 /// The line that explains a failure of the engine (decisions KG7 and KC5): the error as CanopyDB
 /// gives it, on one line.
 pub fn engine_detail(error: &str) -> String {
@@ -60,6 +69,21 @@ pub fn panic_detail(payload: &(dyn std::any::Any + Send)) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_tables_are_the_primary_table_and_the_indexes() {
+        assert_eq!(
+            table_names(),
+            [
+                "primary",
+                "date",
+                "primary_type",
+                "district",
+                "community_area",
+                "case_number"
+            ]
+        );
+    }
 
     #[test]
     fn the_detail_is_one_line_with_the_engine_text() {

@@ -21,9 +21,9 @@ use std::time::{Duration, Instant};
 
 use canopydb::{DbOptions, EnvOptions, Environment};
 use crime_dataset::canopy::{
-    BASE_DIR_NAME, CANOPYDB_VERSION, DATABASE_NAME, PRIMARY_TABLE_NAME, SCHEMA_VERSION,
+    BASE_DIR_NAME, CANOPYDB_VERSION, DATABASE_NAME, SCHEMA_VERSION, table_names,
 };
-use crime_dataset::{CurrentError, IndexKind, MANIFEST_FILE_NAME, resolve_current};
+use crime_dataset::{CurrentError, MANIFEST_FILE_NAME, resolve_current};
 use crime_query::{OpenError, Source, TablesSource};
 use serde_json::Value;
 
@@ -127,9 +127,7 @@ fn open_version(
         .map_err(engine)?
         .ok_or_else(|| Attempt::Failed(not_found(folder)))?;
     let transaction = guarded(|| database.begin_read()).map_err(engine)?;
-    let trees =
-        std::iter::once(PRIMARY_TABLE_NAME).chain(IndexKind::ALL.iter().map(|kind| kind.name()));
-    for tree in trees {
+    for tree in table_names() {
         let present =
             guarded(|| Ok(transaction.get_tree(tree.as_bytes())?.is_some())).map_err(engine)?;
         if !present {
@@ -199,6 +197,8 @@ fn check_files(
 /// The options stored with the `crime` database, which CanopyDB replaces with the opener's:
 /// passing them back leaves the base as it was.
 fn stored_options(folder: &Path, version_dir: &Path, base: &Path) -> Result<DbOptions, Attempt> {
+    // CanopyDB 0.2.5 keeps each database of an environment in a folder named
+    // `<database>_<random id>_l`; its options are the `OPTIONS` file inside.
     let prefix = format!("{DATABASE_NAME}_");
     let entries = fs::read_dir(base).map_err(|error| {
         if version_dir.is_dir() {
@@ -239,6 +239,11 @@ fn open_environment(
     waiting_since: &mut Option<Instant>,
 ) -> Result<Environment, Attempt> {
     loop {
+        // A version deleted during the wait (a generator published another one): start over on
+        // the new one, instead of letting CanopyDB fail on, or create, a missing lock file.
+        if !base.is_dir() {
+            return Err(Attempt::Vanished);
+        }
         let mut options = EnvOptions::new(base);
         options.page_cache_size = PAGE_CACHE_BYTES;
         // One try of the lock: the wait is ours, so that it can warn and be cancelled.

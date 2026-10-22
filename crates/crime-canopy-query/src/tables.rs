@@ -73,11 +73,6 @@ pub(crate) fn guarded<T>(
     }
 }
 
-/// The name of the tree of an index.
-fn tree_name(kind: IndexKind) -> &'static str {
-    kind.name()
-}
-
 /// The open base: one read transaction over its `crime` database.
 pub struct CanopyTables {
     // Dropped in this order: the transaction before the database, the database before the
@@ -153,13 +148,13 @@ impl Tables for CanopyTables {
     }
 
     fn index_contains(&self, kind: IndexKind, key: &[u8]) -> Result<bool, ReadError> {
-        self.with_tree(tree_name(kind), |tree| Ok(tree.get(key)?.is_some()))
+        self.with_tree(kind.name(), |tree| Ok(tree.get(key)?.is_some()))
     }
 
     fn index_cursor(&self, kind: IndexKind) -> Box<dyn KeyCursor> {
         Box::new(PagedCursor {
             transaction: Rc::clone(&self.transaction),
-            tree: tree_name(kind),
+            tree: kind.name(),
             folder: self.folder.clone(),
             keys: Vec::new(),
             position: 0,

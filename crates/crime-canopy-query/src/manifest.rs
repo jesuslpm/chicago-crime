@@ -5,8 +5,7 @@
 //! (decision KG3) must be there with its type, `engine.fork_commit` included even though it may
 //! be `null`, and unknown fields are tolerated, as in the original query app.
 
-use crime_dataset::IndexKind;
-use crime_dataset::canopy::{ENGINE_NAME, PRIMARY_TABLE_NAME, SCHEMA_VERSION};
+use crime_dataset::canopy::{ENGINE_NAME, SCHEMA_VERSION, table_names};
 use serde_json::{Map, Value};
 
 /// The prefix of a CanopyDB `schema_version`, followed by the number of the logical schema.
@@ -80,9 +79,8 @@ fn shape(root: &Map<String, Value>) -> Option<CanopyManifest> {
     text(root, "compression")?;
 
     let tables = root.get("tables")?.as_array()?;
-    let names =
-        std::iter::once(PRIMARY_TABLE_NAME).chain(IndexKind::ALL.iter().map(|kind| kind.name()));
-    if tables.len() != 1 + IndexKind::ALL.len() {
+    let names = table_names();
+    if tables.len() != names.len() {
         return None;
     }
     for (table, name) in tables.iter().zip(names) {
